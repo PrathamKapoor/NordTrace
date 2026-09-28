@@ -11,25 +11,18 @@ class EntityResolver:
         pass
 
     def match(self, candidate_text: str, company_identity: CompanyIdentity) -> str:
+        import re
         # Simple deterministic checks
         if not candidate_text:
             return "REJECTED"
+        # Check for contradictory org numbers (any 9-digit number that isn't ours)
+        digits_found = re.findall(r"\b\d{9}\b", candidate_text)
+        for d in digits_found:
+            if d != company_identity.organisation_number:
+                return "REJECTED"
         # Check org number presence
         if company_identity.organisation_number in candidate_text:
             return "VERIFIED"
-        # Normalized name comparison
-        target_name = company_identity.legal_name.lower().replace(" ", "").replace("as", "").replace("ab", "").replace("ks", "")
-        candidate = candidate_text.lower().replace(" ", "").replace("as", "").replace("ab", "").replace("ks", "").replace("asa", "")
-        if target_name in candidate or candidate in target_name:
-            return "LIKELY"
-        # Address / municipality match
-        address = (company_identity.registered_address or "").lower()
-        municipality = (company_identity.municipality or "").lower()
-        if address and (address in candidate_text.lower()):
-            return "LIKELY"
-        if municipality and municipality in candidate_text.lower():
-            return "LIKELY"
-        return "AMBIGUOUS"
 
 
 class PublicationFirewall:
