@@ -1,0 +1,30 @@
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# Cache
+/cache/
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Benchmark results (optional)
+benchmark_result.json
+research_result.json

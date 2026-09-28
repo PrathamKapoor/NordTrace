@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+  nordtrace:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.env:/app/.env
+      - ./cache:/app/cache
+    environment:
+      - PYTHONPATH=/app/src
+    command: uvicorn nordtrace.api:app --host 0.0.0.0 --port 8000
