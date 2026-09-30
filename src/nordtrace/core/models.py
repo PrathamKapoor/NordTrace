@@ -220,6 +220,7 @@ class ChangeRecord(BaseModel):
     run_id: str
     change_type: str  # NEW / CHANGED / RETRACTED / UNCHANGED / SOURCE_UNAVAILABLE
     field: str
+    reporting_period: Optional[str] = None
     category: str
     previous_value: Optional[Any] = None
     current_value: Optional[Any] = None

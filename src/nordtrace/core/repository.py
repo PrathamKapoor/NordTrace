@@ -324,15 +324,17 @@ class Repository:
 
     def insert_sources_bulk(self, sources: Iterable[SourceRecord], run_id: str, org_number: str) -> None:
         with self._lock:
-            self.conn.executemany(
-                "INSERT OR REPLACE INTO sources (source_id, run_id, org_number, url, domain, source_type, authority_tier, title, retrieved_at, published_at, http_status, content_hash, access_status, error_detail) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                [
-                    (s.source_id, run_id, org_number, s.url, s.domain, s.source_type, s.authority_tier,
-                     s.title, s.retrieved_at, s.published_at, s.http_status, s.content_hash, s.access_status, s.error_detail)
-                    for s in sources
-                ],
-            )
+            rows = [
+                (s.source_id, run_id, org_number, s.url, s.domain, s.source_type, s.authority_tier,
+                 s.title, s.retrieved_at, s.published_at, s.http_status, s.content_hash, s.access_status, s.error_detail)
+                for s in sources if s.source_id and org_number
+            ]
+            if rows:
+                self.conn.executemany(
+                    "INSERT OR REPLACE INTO sources (source_id, run_id, org_number, url, domain, source_type, authority_tier, title, retrieved_at, published_at, http_status, content_hash, access_status, error_detail) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    rows,
+                )
             self.conn.commit()
 
     def get_sources(self, org_number: str, run_id: Optional[str] = None) -> List[SourceRecord]:
@@ -380,6 +382,20 @@ class Repository:
                  fact.valid_from, fact.valid_to, fact.reporting_period, fact.source_id, fact.evidence_id,
                  fact.retrieved_at, fact.published_at, fact.entity_verdict, fact.fact_confidence,
                  fact.status, fact.conflict_note),
+            )
+            self.conn.commit()
+
+    def insert_evidence_bulk(self, evidence: Iterable[EvidenceRecord]) -> None:
+        with self._lock:
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO evidence (evidence_id, source_id, url, source_title, source_type, authority_tier, retrieved_at, published_at, evidence_text, page_or_section, content_hash, entity_match_details, entity_verdict, org_number) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (e.evidence_id, e.source_id, e.url, e.source_title, e.source_type, e.authority_tier,
+                     e.retrieved_at, e.published_at, e.evidence_text, e.page_or_section, e.content_hash,
+                     json.dumps(e.entity_match_details, ensure_ascii=False), e.entity_verdict, e.org_number)
+                    for e in evidence
+                ],
             )
             self.conn.commit()
 
