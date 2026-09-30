@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NordTrace — Norwegian Company Intelligence</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --surface2: #1c2128; --border: #30363d;
+  --text: #e6edf3; --dim: #8b949e; --accent: #2f81f7; --ok: #3fb950;
+  --warn: #d29922; --danger: #f85149; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+.container { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.02em; }
+h1 span { color: var(--accent); }
+.tagline { color: var(--dim); margin: 0; }
+.searchbar { display: flex; gap: 8px; margin: 20px 0 8px; }
+.searchbar input { flex: 1; max-width: 340px; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 10px 12px; font-size: 14px; outline: none; }
+.searchbar input:focus { border-color: var(--accent); }
+.searchbar button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 10px 18px; font-weight: 600; cursor: pointer; }
+.searchbar button:disabled { opacity: .6; cursor: wait; }
+.hint { color: var(--dim); font-size: 12.5px; margin: 0 0 24px; }
+.error-box { background: rgba(248,81,73,.1); border: 1px solid var(--danger); color: var(--danger); border-radius: 6px; padding: 12px 14px; margin: 12px 0; display: none; }
+.spinner { display: none; margin: 16px 0; color: var(--dim); }
+.spinner.on { display: block; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin-top: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.card h3 { margin: 0 0 10px; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
+.kv { margin: 6px 0; }
+.kv .k { color: var(--dim); font-size: 12px; }
+.kv .v { font-size: 14px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.b-verified { background: rgba(63,185,80,.15); color: var(--ok); }
+.b-likely { background: rgba(47,129,247,.15); color: var(--accent); }
+.b-ambiguous { background: rgba(210,153,34,.15); color: var(--warn); }
+.b-rejected { background: rgba(248,81,73,.15); color: var(--danger); }
+.b-na { background: rgba(139,148,158,.15); color: var(--dim); }
+section { margin-top: 32px; }
+section > h2 { font-size: 1rem; margin: 0 0 12px; color: var(--text); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--dim); font-weight: 600; padding: 8px; border-bottom: 1px solid var(--border); }
+td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: var(--surface2); }
+.mono { font-family: var(--mono); font-size: 12px; }
+.a { color: var(--accent); text-decoration: none; }
+.a:hover { text-decoration: underline; }
+.na { color: var(--dim); font-style: italic; }
+progress { width: 100%; height: 6px; }
+.budget-row { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
+.budget-item { min-width: 180px; }
+.budget-item .v { font-family: var(--mono); }
+.hidden { display: none; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; flex-wrap: wrap; }
+.tab { padding: 8px 14px; cursor: pointer; color: var(--dim); border-bottom: 2px solid transparent; font-size: 13px; }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.footer { margin-top: 60px; color: var(--dim); font-size: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
+.evidence-panel { background: var(--surface2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 14px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>Nord<span>Trace</span> — Norwegian Company Intelligence</h1>
+      <p class="tagline">Research any Norwegian organisation using public, evidence-backed sources.</p>
+    </div>
+  </header>
+
+  <div class="searchbar">
+    <input id="orgInput" placeholder="Organisation number (9 digits)" maxlength="20" inputmode="numeric"
+           aria-label="Organisation number">
+    <button id="searchBtn" onclick="research()">Research company</button>
+  </div>
+  <p class="hint">Every fact is traceable to its source · identity verified against the Norwegian registry ·
+     change detection between runs · request/runtime/cost budgets enforced.</p>
+  <div id="errorBox" class="error-box" role="alert"></div>
+  <div id="spinner" class="spinner" aria-live="polite">Researching… (real registry + web crawl, typically 15–30s)</div>
+
+  <div id="results" class="hidden">
+    <!-- Identity -->
+    <section>
+      <h2>Identity</h2>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; gap:16px; flex-wrap:wrap;">
+            <div class="kv"><div class="k">Legal name</div><div class="v" id="cName">—</div></div>
+            <div class="kv"><div class="k">Organisation number</div><div class="v mono" id="cOrgnr">—</div></div>
+            <div class="kv"><div class="k">Form</div><div class="v" id="cForm">—</div></div>
+            <div class="kv"><div class="k">Status</div><div class="v" id="cStatus">—</div></div>
+          </div>
+          <span id="entityBadge" class="badge b-na">—</span>
+        </div>
+        <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:10px;">
+          <div class="kv"><div class="k">Address</div><div class="v" id="cAddr">—</div></div>
+          <div class="kv"><div class="k">Industry</div><div class="v" id="cInd">—</div></div>
+          <div class="kv"><div class="k">Website</div><div class="v" id="cWeb">—</div></div>
+          <div class="kv"><div class="k">Registered</div><div class="v" id="cReg">—</div></div>
+          <div class="kv"><div class="k">Employees</div><div class="v" id="cEmp">—</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Facts -->
+    <section>
+      <h2>Verified facts <span class="na" id="factCount"></span></h2>
+      <table id="factsTable">
+        <thead><tr><th>Category</th><th>Field</th><th>Value</th><th>Period</th><th>Confidence</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="evidencePanel" class="evidence-panel hidden"></div>
+    </section>
+
+    <!-- Changes -->
+    <section>
+      <h2>Changes since previous run</h2>
+      <table id="changesTable">
+        <thead><tr><th>Type</th><th>Field</th><th>Previous</th><th>Current</th><th>Detected</th><th></th></tr></thead>
+        <tbody><tr><td colspan="6" class="na">No changes recorded (first run, or nothing changed).</td></tr></tbody>
+      </table>
+    </section>
+
+    <!-- Sources -->
+    <section>
+      <h2>Sources</h2>
+      <table id="sourcesTable">
+        <thead><tr><th>Source</th><th>Type</th><th>Tier</th><th>Status</th><th>Retrieved</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <h2 style="margin-top:18px;">Rejected / failed sources <span class="na">(wrong-company protection)</span></h2>
+      <table id="rejectedTable">
+        <thead><tr><th>URL</th><th>Reason</th><th>Status</th></tr></thead>
+        <tbody><tr><td colspan="3" class="na">No rejected sources.</td></tr></tbody>
+      </table>
+    </section>
+
+    <!-- Trace -->
+    <section>
+      <h2>Research trace</h2>
+      <div id="traceBox" class="mono" style="background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:14px;"></div>
+    </section>
+
+    <!-- Run dashboard -->
+    <section>
+      <h2>Run</h2>
+      <div class="budget-row">
+        <div class="budget-item"><div class="k">Requests</div><div class="v" id="bReq">—</div></div>
+        <div class="budget-item"><div class="k">Estimated API cost</div><div class="v" id="bCost">—</div></div>
+        <div class="budget-item"><div class="k">Duration</div><div class="v" id="bTime">—</div></div>
+        <div class="budget-item"><div class="k">Coverage</div><div class="v" id="bCov">—</div></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="footer">
+    NordTrace — evidence-backed Norwegian company intelligence. No fabricated facts; every claim links to its source.
+    <a class="a" href="/docs">API docs</a>
+  </footer>
+</div>
+
+<script>
+const API = "";
+
+function showError(msg) {
+  const b = document.getElementById("errorBox");
+  b.textContent = msg; b.style.display = "block";
+}
+function clearError() {
+  const b = document.getElementById("errorBox");
+  b.style.display = "none";
+}
+function esc(s) {
+  const AMP = String.fromCharCode(38);
+  const LT = String.fromCharCode(60);
+  const GT = String.fromCharCode(62);
+  const QU = String.fromCharCode(39);
+  let result = "";
+  for (const ch of String(s)) {
+    if (ch === AMP) result += AMP + "amp;";
+    else if (ch === LT) result += AMP + "lt;";
+    else if (ch === GT) result += AMP + "gt;";
+    else if (ch === QU) result += AMP + "#39;";
+    else if (ch === String.fromCharCode(34)) result += AMP + "quot;";
+    else result += ch;
+  }
+  return result;
+}
+function na(v) { return (v === null || v === undefined || v === "") ? '<span class="na">Not publicly available</span>' : esc(v); }
+
+async function research() {
+  clearError();
+  const input = document.getElementById("orgInput").value.replace(/[\s-]/g, "");
+  if (!/^\d{9}$/.test(input)) { showError("Enter a valid 9-digit organisation number."); return; }
+  const btn = document.getElementById("searchBtn");
+  btn.disabled = true;
+  document.getElementById("spinner").classList.add("on");
+  try {
+    const r = await fetch(`${API}/research`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ organisation_number: input })
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      showError(`Research failed: ${e.detail || r.status}`); return;
+    }
+    const { run_id } = await r.json();
+    // poll until completed
+    let run;
+    for (let i = 0; i < 240; i++) {
+      await new Promise(res => setTimeout(res, 1000));
+      const rr = await fetch(`${API}/research/${run_id}`);
+      if (!rr.ok) continue;
+      run = await rr.json();
+      if (run.state === "completed" || run.state === "failed") break;
+    }
+    if (!run || run.state !== "completed") {
+      showError("Research did not complete. " + (run ? `State: ${run.state}` : ""));
+      return;
+    }
+    await loadCompany(input, run_id);
+  } catch (e) {
+    showError("Network error: " + e.message);
+  } finally {
+    btn.disabled = false;
+    document.getElementById("spinner").classList.remove("on");
+  }
+}
+
+async function loadCompany(orgnr, runId) {
+  const r = await fetch(`${API}/companies/${orgnr}`);
+  if (!r.ok) { showError(`Company lookup failed: ${r.status}`); return; }
+  const d = await r.json();
+  renderIdentity(d);
+  renderFacts(d);
+  renderChanges(d);
+  renderSources(d);
+  renderRun(d);
+  const t = await fetch(`${API}/runs/${runId}/trace`).catch(() => null);
+  if (t && t.ok) renderTrace(await t.json());
+  document.getElementById("results").classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function renderIdentity(d) {
+  const c = d.company || {};
+  document.getElementById("cName").textContent = c.legal_name || "—";
+  document.getElementById("cOrgnr").textContent = c.organisation_number || "—";
+  document.getElementById("cForm").textContent = (c.organisation_form_description || c.organisation_form) || "—";
+  document.getElementById("cStatus").textContent = c.status || "—";
+  document.getElementById("cAddr").innerHTML = na(c.registered_address);
+  document.getElementById("cInd").innerHTML = na(c.industry_description ? `${c.industry_description} (${c.industry_code})` : c.industry_code);
+  document.getElementById("cWeb").innerHTML = c.website ? `<a class="a" href="${esc(c.website)}" target="_blank" rel="noopener noreferrer">${esc(c.website)}</a>` : na(null);
+  document.getElementById("cReg").innerHTML = na(c.registration_date);
+  document.getElementById("cEmp").innerHTML = na(c.employee_count);
+  const badge = document.getElementById("entityBadge");
+  if (c.status === "active") { badge.textContent = "✓ registry identity verified"; badge.className = "badge b-verified"; }
+  else { badge.textContent = "status: " + (c.status || "unknown"); badge.className = "badge b-ambiguous"; }
+}
+
+function confidenceBadge(f) {
+  const ev = f.entity_verdict || "AMBIGUOUS";
+  const map = { VERIFIED: "b-verified", LIKELY: "b-likely", AMBIGUOUS: "b-ambiguous", REJECTED: "b-rejected" };
+  return `<span class="badge ${map[ev] || "b-na"}">${esc(ev)}</span>`;
+}
+
+function renderFacts(d) {
+  const tb = document.querySelector("#factsTable tbody");
+  const facts = (d.facts || []).filter(f => f.status === "PUBLISHED");
+  document.getElementById("factCount").textContent = facts.length ? `(${facts.length})` : "";
+  tb.innerHTML = facts.map(f => `
+    <tr class="clickable" data-fact='${esc(JSON.stringify(f))}'>
+      <td>${esc(f.category)}</td>
+      <td>${esc(f.field)}</td>
+      <td>${esc(formatValue(f))}</td>
+      <td>${na(f.reporting_period)}</td>
+      <td>${confidenceBadge(f)}</td>
+      <td class="a">evidence →</td>
+    </tr>`).join("") || '<tr><td colspan="6" class="na">No verified facts.</td></tr>';
+  tb.querySelectorAll("tr.clickable").forEach(tr => {
+    tr.addEventListener("click", () => showEvidence(JSON.parse(tr.dataset.fact)));
+  });
+}
+
+function formatValue(f) {
+  if (f.value === null || f.value === undefined) return '<span class="na">Not publicly available</span>';
+  if (typeof f.value === "number") {
+    const s = f.value.toLocaleString("en-US").replace(/,/g, " ");
+    return f.currency ? `${esc(f.currency)} ${s}` : s;
+  }
+  if (typeof f.value === "object") {
+    if (f.value.name) return esc(f.value.name + (f.value.role ? ` — ${f.value.role}` : ""));
+    if (f.value.event) return esc(f.value.event + (f.value.date ? ` (${f.value.date})` : ""));
+    if (f.value.title) return esc(f.value.title);
+    return esc(JSON.stringify(f.value).slice(0, 120));
+  }
+  const s = String(f.value);
+  return s.length > 160 ? esc(s.slice(0, 160)) + "…" : esc(s);
+}
+
+function showEvidence(f) {
+  fetch(`${API}/companies/${f.org_number}/sources`)
+    .then(r => r.json())
+    .then(data => {
+      const src = (data.sources || []).find(s => s.source_id === f.source_id);
+      const panel = document.getElementById("evidencePanel");
+      panel.classList.remove("hidden");
+      panel.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong>Evidence</strong>
+          <a class="a" href="#" onclick="document.getElementById('evidencePanel').classList.add('hidden'); return false;">close ×</a>
+        </div>
+        <div class="kv"><span class="k">Fact:</span> <span class="v mono">${esc(f.category)}/${esc(f.field)}${f.reporting_period ? ` (${esc(f.reporting_period)})` : ""}</span></div>
+        <div class="kv"><span class="k">Value:</span> <span class="v">${formatValue(f)}</span></div>
+        <div class="kv"><span class="k">Entity verification:</span> ${confidenceBadge(f)}</div>
+        ${src ? `
+          <div class="kv"><span class="k">Source:</span> <span class="v">${esc(src.source_type)} (tier ${src.authority_tier})</span></div>
+          <div class="kv"><span class="k">URL:</span> ${src.url ? `<a class="a" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer">${esc(src.url)}</a>` : na(null)}</div>
+          <div class="kv"><span class="k">Retrieved:</span> ${na(src.retrieved_at)}</div>
+          <div class="kv"><span class="k">HTTP status:</span> ${na(src.http_status)}</div>
+          <div class="kv"><span class="k">Content hash:</span> <span class="mono">${na(src.content_hash)}</span></div>` : ""}
+        <div class="kv"><span class="k">Evidence ID:</span> <span class="mono">${esc(f.evidence_id)}</span></div>`;
+      panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+}
+
+const CHANGE_BADGE = { NEW: "b-verified", CHANGED: "b-likely", RETRACTED: "b-rejected", SOURCE_UNAVAILABLE: "b-ambiguous", UNCHANGED: "b-na" };
+
+function renderChanges(d) {
+  const tb = document.querySelector("#changesTable tbody");
+  const changes = d.changes || [];
+  const meaningful = changes.filter(c => c.change_type !== "UNCHANGED");
+  if (!meaningful.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="na">No changes recorded (first run, or nothing changed).</td></tr>';
+    return;
+  }
+  tb.innerHTML = meaningful.map(c => `
+    <tr>
+      <td><span class="badge ${CHANGE_BADGE[c.change_type] || "b-na"}">${esc(c.change_type)}</span></td>
+      <td>${esc(c.category)}/${esc(c.field)}${c.reporting_period ? ` (${esc(c.reporting_period)})` : ""}</td>
+      <td>${c.previous_value === null || c.previous_value === undefined ? '<span class="na">—</span>' : esc(shortVal(c.previous_value))}</td>
+      <td>${c.current_value === null || c.current_value === undefined ? '<span class="na">—</span>' : esc(shortVal(c.current_value))}</td>
+      <td class="mono">${esc((c.detected_at || "").slice(0, 16).replace("T", " "))}</td>
+      <td class="na">${esc(c.explanation || "")}</td>
+    </tr>`).join("");
+}
+
+function shortVal(v) {
+  const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+  return s.length > 50 ? s.slice(0, 50) + "…" : s;
+}
+
+function renderSources(d) {
+  const tb = document.querySelector("#sourcesTable tbody");
+  const sources = (d.sources || []).filter(s => s.access_status === "success");
+  tb.innerHTML = sources.map(s => `
+    <tr>
+      <td>${s.url ? `<a class="a" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.url.slice(0, 70))}</a>` : na(null)}</td>
+      <td>${esc(s.source_type)}</td>
+      <td>${esc(s.authority_tier)}</td>
+      <td><span class="badge ${s.access_status === "success" ? "b-verified" : "b-rejected"}">${esc(s.access_status)}</span></td>
+      <td class="mono">${esc((s.retrieved_at || "").slice(0, 16).replace("T", " "))}</td>
+    </tr>`).join("") || '<tr><td colspan="5" class="na">No sources retrieved.</td></tr>';
+  const rtb = document.querySelector("#rejectedTable tbody");
+  const rejected = d.rejected_sources || [];
+  rtb.innerHTML = rejected.map(r => `
+    <tr>
+      <td>${r.url ? esc(r.url.slice(0, 70)) : '<span class="na">—</span>'}</td>
+      <td>${esc(r.reason || "")}</td>
+      <td><span class="badge b-rejected">${esc(r.access_status || "rejected")}</span></td>
+    </tr>`).join("") || '<tr><td colspan="3" class="na">No rejected sources — all candidates matched the target company or were not fetched.</td></tr>';
+}
+
+function renderTrace(t) {
+  const box = document.getElementById("traceBox");
+  box.innerHTML = (t.trace || []).map(e =>
+    `<div>${esc(e.timestamp.replace("T", " ").slice(0, 19))}  ${esc(e.stage.padEnd(12))} ${esc(e.message)}</div>`
+  ).join("") || "No trace events.";
+}
+
+function renderRun(d) {
+  const m = d.research_metadata || {};
+  const req = m.request_count ?? 0, reqLimit = m.request_budget ?? 2000;
+  document.getElementById("bReq").textContent = `${req.toLocaleString("en-US").replace(/,/g, " ")} / ${reqLimit.toLocaleString("en-US").replace(/,/g, " ")}`;
+  const cost = m.estimated_cost_usd ?? 0, costLimit = m.cost_budget_usd ?? 10;
+  document.getElementById("bCost").textContent = `$${Number(cost).toFixed(2)} / $${Number(costLimit).toFixed(2)}`;
+  document.getElementById("bTime").textContent = m.completed_at && m.started_at
+    ? `${Math.round((new Date(m.completed_at) - new Date(m.started_at)) / 1000)}s` : "—";
+  const cov = d.coverage || {};
+  const found = Object.values(cov).filter(v => v === "found").length;
+  document.getElementById("bCov").textContent = `${found}/${Object.keys(cov).length} categories`;
+}
+
+document.getElementById("orgInput").addEventListener("keydown", e => { if (e.key === "Enter") research(); });
+</script>
+</body>
+</html>
