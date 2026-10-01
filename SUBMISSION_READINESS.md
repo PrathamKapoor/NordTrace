@@ -1,7 +1,7 @@
 # Submission Readiness Scorecard
 
-**Date:** 2026-10-01
-**Commit:** `d470978` (main) — every status below is backed by an actual command/result.
+**Date:** 2026-10-02
+**Commit:** `c29db8c`+ (main) — every status below is backed by an actual command/result.
 
 | Requirement | Status | Evidence |
 |---|---|---|
@@ -23,9 +23,9 @@
 | CLI | **PASS** | research/batch/resume/benchmark/validate/validate-db/serve — all live-verified |
 | Frontend | **PASS** | Real SPA consuming API; browser-verified (research flow, evidence drawer with real URL/hash, zero static demo data); degraded-source messaging ("X was temporarily rate-limited during this run") |
 | Security | **PASS** | SSRF guard (octal/decimal/hex IPs, CGNAT, metadata); prompt injection as data; secrets grep-verified; 11 security tests |
-| Tests | **PASS** | 213 passed (204 unit + 9 live integration) |
+| Tests | **PASS** | 237 passed (228 unit + 9 live integration) |
 | Docker | **PASS** | Image builds (sha256:cea06cab); CLI research inside container; /health + /dashboard 200 OK |
-| 100-company benchmark | **PASS** | Executed: 88/100 available, 100/100 entity resolved, 1,179 facts, 924/2,000 requests, 280s, $0.00 |
+| 100-company benchmark | **PASS** | Executed ×3: v4 final — 88/100 available, 100/100 entity resolved, 1,420 facts (+241 vs baseline), 1,506/2,000 requests, 469.8s, $0.00; v3 regression (92 FAILED) found and fixed |
 | LLM (live) | **NOT RUN** | No `LLM_API_KEY` in environment; mock provider fully tested (8 tests) |
 | Scanned-PDF OCR | **KNOWN LIMITATION** | Honest extraction-failure; no OCR dependency added (documented decision) |
 

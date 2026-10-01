@@ -14,9 +14,9 @@ Every claim below corresponds to a command that was actually run on 2026-10-01.
 
 | Command | Result |
 |---|---|
-| `python -m pytest tests/unit -q` | **204 passed**, 1 warning (anyio deprecation, not ours), ~65s |
+| `python -m pytest tests/unit -q` | **228 passed**, 1 warning (anyio deprecation, not ours), ~65s |
 | `python -m pytest tests/integration -q -m live` | **9 passed**, ~248s (live network to Brreg + NAV + simulated 100-company) |
-| Total | **213 passed** |
+| Total | **237 passed** |
 
 Unit suite coverage:
 - orgnr validation: 18 tests (valid registered, checksum failures, separators, digit counts)
@@ -84,7 +84,7 @@ Extrapolated 100-company run: ~900 requests, ~6 min, $0.00 — within all budget
 
 | Item | Status | Evidence |
 |---|---|---|
-| 100-company live benchmark | **PASS** (executed) | 88/100 available, 100/100 entity resolved, 1,179 facts, 924/2,000 requests, 280s/2,700s, $0.00 — `docs/BENCHMARK_ANALYSIS.md` |
+| 100-company live benchmark | **PASS** (executed ×3: v2/v3/v4) | v4: 88/100 available, 100/100 entity resolved, **1,420 facts**, 1,506/2,000 requests, 469.8s/2,700s, $0.00; v3 regression (92 FAILED under Brreg connect-failure) found and fixed → v4 0 FAILED — `docs/COVERAGE_IMPROVEMENT_REPORT.md` |
 | Lint gate | **PASS** | `ruff check src/ tests/` → 0 errors (880 → 0) |
 | Type-check gate | **PASS** | `mypy src/nordtrace` → 0 errors in 29 source files |
 | Docker build | **PASS** | `docker build -t nordtrace .` → image built (sha256:cea06cab…) |

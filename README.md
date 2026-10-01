@@ -148,7 +148,7 @@ Example output (abridged, real):
 
 | Suite | Command | Result |
 |---|---|---|
-| Unit tests (217 tests) | `pytest tests/unit` | **204 passed** |
+| Unit tests (241 tests) | `pytest tests/unit` | **228 passed** |
 | Live integration (9 tests) | `pytest tests/integration -m live` | **9 passed** (E2E, refresh, budget attack, concurrency, resume, contamination, 100-sim, resume@37, 1s deadline) |
 | Lint | `ruff check src/ tests/` | **0 errors** |
 | Type check | `mypy src/nordtrace` | **0 errors in 29 source files** |
@@ -158,7 +158,7 @@ Example output (abridged, real):
 | Live CLI research | `python -m nordtrace.cli research 982463718` | **available**, 23 facts, 13 requests, $0.00, ~20s |
 | Frontend flow | browser automation | research → identity → facts → evidence drawer → trace, all real data |
 
-### 100-company live benchmark (executed)
+### 100-company live benchmark (executed, after coverage maximization)
 
 | Metric | Result |
 |---|---|
@@ -166,15 +166,18 @@ Example output (abridged, real):
 | `available` | 88 |
 | `not_available` | 12 (no registry website / no accounts — honest, not fabricated) |
 | Entity resolution | **100/100** |
-| Verified facts | 1,179 |
-| Evidence records | 643 |
-| Rejected sources | 246 |
-| Requests | **924 / 2,000** |
-| Runtime | **280s / 2,700s** |
+| Verified facts | **1,420** (v2 baseline: 1,179 — +241 via coverage pass) |
+| Evidence records | 662 |
+| Rejected sources | 437 (tighter firewall + more candidates) |
+| Requests | **1,506 / 2,000** |
+| Runtime | **469.8s / 2,700s** |
 | Cost | **$0.0000 / $10.00** (deterministic extraction; LLM disabled without key) |
-| NAV during run | IP-level 429 block → circuit breaker opened, jobs degraded gracefully |
+| facts/request | 0.94 |
+| NAV during run | IP-level 429 block → circuit breaker opened, jobs degraded gracefully; registry rate_limited → BLOCKED terminal state (v3 regression: 92 FAILED → fixed → 0 FAILED) |
 
-See `docs/BENCHMARK_ANALYSIS.md` for coverage by category and source bottlenecks.
+See `docs/BENCHMARK_ANALYSIS.md` (bottlenecks), `docs/COVERAGE_GAP_ANALYSIS.md`
+(measured failure modes per category) and `docs/COVERAGE_IMPROVEMENT_REPORT.md`
+(before/after) for details.
 
 ---
 
@@ -217,6 +220,9 @@ See `LIMITATIONS.md`. Key points:
 | `REFRESH_MODEL.md` | Change detection + refresh |
 | `COST_MODEL.md` | Cost tracking design |
 | `BENCHMARK.md` | Benchmark methodology |
+| `docs/BENCHMARK_ANALYSIS.md` | 100-company run: bottlenecks + coverage |
+| `docs/COVERAGE_GAP_ANALYSIS.md` | Measured failure modes per category |
+| `docs/COVERAGE_IMPROVEMENT_REPORT.md` | Before/after metrics |
 | `LIMITATIONS.md` | Known limitations |
 | `AUDIT.md` | Forensic audit of prior claims (2026-09-29) |
 | `VERIFICATION_REPORT.md` | Actual verification commands + results (2026-10-01) |
