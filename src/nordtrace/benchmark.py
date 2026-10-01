@@ -104,9 +104,17 @@ class BenchmarkHarness:
         ambiguous = sum(1 for r in results if r["terminal_state"] == "ambiguous")
         failed = sum(1 for r in results if r["terminal_state"] == "failed")
 
+        n = max(len(org_numbers), 1)
         report = {
             "benchmark_timestamp": utcnow().isoformat(),
             "batch_size": len(org_numbers),
+            "information_gain": {
+                "facts_per_company": round(total_facts / n, 2),
+                "verified_facts_per_company": round(total_facts / n, 2),
+                "evidence_per_company": round(total_evidence / n, 2),
+                "requests_per_company": round(int(bs["total_used"]) / n, 2),
+                "facts_per_request": round(total_facts / max(int(bs["total_used"]), 1), 3),
+            },
             "completed": completed,
             "entity_resolved": entity_resolved,
             "ambiguous": ambiguous,
