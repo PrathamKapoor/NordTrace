@@ -90,7 +90,11 @@ class BatchRunner:
         return run
 
     def _checkpoint(self, run: ResearchRun) -> None:
-        """Persist run state after each company (checkpointing)."""
+        """Persist run state after each company (checkpointing).
+        Reads fresh state from the DB so mark_company_state isn't clobbered."""
         run.request_count = self.budget.requests.total_used
         run.estimated_cost_usd = round(self.budget.cost.total_used, 6)
+        fresh = self.repo.get_run(run.run_id)
+        if fresh:
+            run.company_states = fresh.company_states
         self.repo.update_run(run)

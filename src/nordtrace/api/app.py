@@ -74,16 +74,17 @@ def _run_research_blocking(orgnr: str, run_id: str) -> None:
             run.state = RunState.COMPLETED.value
             run.request_count = budget.requests.total_used
             run.estimated_cost_usd = round(budget.cost.total_used, 6)
-            repo.mark_company_state(run_id, orgnr, outcome.terminal_state)
             repo.update_run(run)
+            # mark AFTER update_run so update_run doesn't clobber the fresh state
+            repo.mark_company_state(run_id, orgnr, outcome.terminal_state)
     except Exception as e:
         logger.exception("background research failed")
         run = repo.get_run(run_id)
         if run:
             run.state = RunState.FAILED.value
             run.completed_at = utcnow().isoformat()
-            repo.mark_company_state(run_id, orgnr, TerminalState.FAILED.value)
             repo.update_run(run)
+            repo.mark_company_state(run_id, orgnr, TerminalState.FAILED.value)
     finally:
         loop.run_until_complete(pipeline.aclose())
         loop.close()
@@ -123,10 +124,14 @@ async def get_research(run_id: str):
         "companies": run.companies,
         "company_states": run.company_states,
     }
-    # attach full results for single-company runs
+    # attach full results for single-company runs (only when the company persisted)
     if len(run.companies) == 1:
         org = run.companies[0]
-        out["result"] = _company_payload(repo, org, run_id)
+        if repo.get_company(org) is not None:
+            try:
+                out["result"] = _company_payload(repo, org, run_id)
+            except HTTPException:
+                pass
     return out
 
 

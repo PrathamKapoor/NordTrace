@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import re
 import socket
 import time
 from dataclasses import dataclass, field
@@ -54,6 +55,8 @@ def _is_private_ip(ip: str) -> bool:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return True  # unparseable → treat as unsafe
+    if isinstance(addr, ipaddress.IPv4Address) and addr in ipaddress.ip_network("100.64.0.0/10"):
+        return True  # CGNAT / shared address space
     return (
         addr.is_private
         or addr.is_loopback
@@ -80,12 +83,17 @@ def validate_url(url: str, allowed_domains: Optional[List[str]] = None) -> Tuple
         raise SSRFError("missing host")
     if host in _PRIVATE_HOST_HINTS:
         raise SSRFError(f"host {host!r} is blocked")
-    # Literal IP targets are blocked
+    # All numeric host forms (decimal/octal/hex IPv4) are blocked as raw IPs
+    host_is_numeric_ip = False
     try:
         ipaddress.ip_address(host)
-        raise SSRFError("raw IP targets are blocked")
+        host_is_numeric_ip = True
     except ValueError:
-        pass
+        # try IPv4 numeric variants: pure-integer decimal, 0x hex, octal-ish labels
+        if re.match(r"^\d+$", host) or re.match(r"^(0x[0-9a-f]+|0[0-7]+)(\.(0x[0-9a-f]+|0[0-7]+|\d+))*$", host, re.I):
+            host_is_numeric_ip = True
+    if host_is_numeric_ip:
+        raise SSRFError("raw/numeric IP targets are blocked")
     # DNS resolution guard
     for ip in _resolve_host(host):
         if _is_private_ip(ip):

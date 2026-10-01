@@ -368,7 +368,7 @@ def _page_title(soup: BeautifulSoup) -> Optional[str]:
 
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_PHONE_RE = re.compile(r"(?:\+47[\s-]?)?(?:\d{2}[\s-]?){4}\d{2}")
+_PHONE_RE = re.compile(r"(?:\+47[\s-]?)?\d{2}[\s-]?\d{2}[\s-]?\d{2}[\s-]?\d{2}(?:[\s-]?\d{2})?|(?:\+47[\s-]?)?\d{3}[\s-]?\d{2}[\s-]?\d{3}")
 _ADDR_RE = re.compile(r"\b[A-ZÆØÅ][\wæøå-]+(?:veien|gata|gaten|street|road|vei|allé|all)\s*\d+[A-Za-z]?\b")
 
 
@@ -395,6 +395,6 @@ def _extract_names(text: str) -> List[Tuple[str, str]]:
     for pat, label in _ROLE_PATTERNS:
         for m in pat.finditer(text):
             name = m.group(2).strip().rstrip(".,;")
-            if 2 < len(name.split()) <= 5 and not any(w.islower() and w == "og" for w in name.split()):
+            if 2 <= len(name.split()) <= 5 and not any(w == "og" for w in name.split()):
                 out.append((name, label))
     return out[:8]
