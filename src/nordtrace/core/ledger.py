@@ -56,6 +56,9 @@ class CitationValidator:
             return False, "evidence belongs to different source"
         if not ev.evidence_text:
             return False, "evidence text empty"
+        # 5. cross-company contamination: evidence must belong to the same company
+        if ev.org_number and ev.org_number != fact.org_number:
+            return False, f"evidence belongs to different company ({ev.org_number})"
         # 4. value supported
         if fact.value is None:
             return False, "fact value is None"
