@@ -43,7 +43,7 @@ class BenchmarkHarness:
                 if len(orgs) >= limit:
                     break
                 src = await gw.fetch(
-                    f"{settings.brreg_base_url}/enheter?navn={name}&size=3",
+                    f"{settings.brreg_base_url}/enheter?navn={name}&size=25",
                     stage="benchmark",
                     source_type="registry",
                     authority_tier=0,

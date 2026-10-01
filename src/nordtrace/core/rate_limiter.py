@@ -37,6 +37,7 @@ class DomainState:
     consecutive_failures: int = 0
     circuit_open: bool = False
     _opened_at: float = 0.0
+    _cooldown_mult: int = 1
     rate_limited_events: int = 0
     total_requests: int = 0
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
@@ -48,10 +49,12 @@ class DomainState:
         return self._semaphore
 
     def breaker_allows(self) -> bool:
-        """True if requests may proceed (CLOSED, or HALF-OPEN after cooldown)."""
+        """True if requests may proceed (CLOSED, or HALF-OPEN after cooldown).
+        Cooldown grows exponentially for repeated OPENs (IP-level blocks)."""
         if not self.circuit_open:
             return True
-        if (time.monotonic() - self._opened_at) >= self.policy.breaker_cooldown:
+        cooldown = self.policy.breaker_cooldown * self._cooldown_mult
+        if (time.monotonic() - self._opened_at) >= cooldown:
             # half-open: allow one controlled attempt
             return True
         return False
@@ -66,6 +69,11 @@ class DomainState:
             self.rate_limited_events += 1
         self.consecutive_failures += 1
         if self.consecutive_failures >= self.policy.breaker_threshold:
+            # exponential cooldown: each repeated OPEN doubles the wait (capped)
+            if self.circuit_open:
+                self._cooldown_mult = min(self._cooldown_mult * 2, 16)
+            else:
+                self._cooldown_mult = 1
             self.circuit_open = True
             self._opened_at = time.monotonic()
 

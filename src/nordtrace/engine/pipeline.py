@@ -194,8 +194,8 @@ class ResearchPipeline:
                     except ValueError:
                         registry_payload = None
 
-            # 4. website discovery + crawl
-            if self.budget.can_make_request() and ident.website:
+            # 4. website discovery + crawl (registry hjemmeside or name-derived candidates)
+            if self.budget.can_make_request():
                 w_evs, w_facts, w_sources, w_rejected, w_cov = await self.website.crawl(ident, run_id)
                 for s in w_sources:
                     ledger.add_source(s)
@@ -215,8 +215,10 @@ class ResearchPipeline:
                     f"crawl complete: {len(w_sources)} sources, {len(w_facts)} facts, "
                     f"{len(w_rejected)} rejected",
                 )
-            elif not ident.website:
-                outcome.rejected.append({"url": None, "reason": "no website registered in registry"})
+            else:
+                outcome.rejected.append(
+                    {"url": None, "reason": "request budget exhausted before website stage"}
+                )
 
             # 5. jobs (NAV)
             if self.budget.can_make_request():

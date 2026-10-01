@@ -179,3 +179,32 @@ def test_pipeline_survives_rate_limited_source(tmp_path, monkeypatch):
     # company still gets a terminal state; jobs degraded, not fatal
     assert outcome.terminal_state in ("available", "not_available")
     assert any(r.get("reason") == "rate_limited" for r in outcome.rejected)
+
+
+def test_exponential_cooldown_doubles():
+    """Repeated OPENs double the cooldown (capped at 16x) — protects against
+    IP-level blocks without wasting budget on half-open retries."""
+    state = DomainState(policy=SourcePolicy(breaker_threshold=2, breaker_cooldown=10))
+    state.record_failure(rate_limited=True)
+    state.record_failure(rate_limited=True)
+    assert state.circuit_open and state._cooldown_mult == 1
+    state.record_failure(rate_limited=True)
+    assert state._cooldown_mult == 2
+    state.record_failure(rate_limited=True)
+    assert state._cooldown_mult == 4
+    for _ in range(3):
+        state.record_failure(rate_limited=True)
+    assert state._cooldown_mult == 16  # capped
+
+
+def test_exponential_cooldown_blocks_longer():
+    state = DomainState(policy=SourcePolicy(breaker_threshold=1, breaker_cooldown=1))
+    state.record_failure(rate_limited=True)
+    state.record_failure(rate_limited=True)  # second OPEN → 2x cooldown
+    assert state.circuit_open
+    time.sleep(1.1)
+    rl = RateLimiter()
+    rl._domains["x.no"] = state
+    # cooldown is now 2s; 1.1s elapsed → still blocked
+    with pytest.raises(RateLimited):
+        asyncio.run(rl.acquire("x.no"))
