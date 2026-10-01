@@ -1,19 +1,20 @@
-# Evidence Model
+# Evidence Model (actual)
 
-Every `Fact` must reference exactly one `Evidence`.
-Every `Evidence` must reference exactly one `Source`.
+Every `Fact` references exactly one `Evidence`. Every `Evidence` references exactly one `Source`.
 
-## Fields
-- `evidence_id`: Unique identifier
-- `source_id`: Parent source
-- `url`: Source URL (optional for PDFs or internal records)
-- `source_title`: Human-readable source name
-- `evidence_text`: Snippet / extracted text
-- `page_section`: Page or section within source
-- `content_hash`: SHA-256 of retrieved content (for snapshot comparison)
-- `entity_match_details`: Structured identity match results (VERIFIED, LIKELY, AMBIGUOUS, REJECTED)
-- `entity_confidence`: Final identity match classification
+## Fields (implemented)
+- `evidence_id`: unique identifier
+- `source_id`: parent source
+- `url`: source URL
+- `source_title`: human-readable source name
+- `evidence_text`: snippet / extracted text
+- `page_or_section`: page number for PDFs, section for pages
+- `content_hash`: SHA-256 of retrieved content (snapshot comparison)
+- `entity_match_details`: structured identity match results
+- `entity_verdict`: VERIFIED / LIKELY / AMBIGUOUS / REJECTED
 
-## Publication rule
-Only facts with `entity_confidence` in (`VERIFIED`, `LIKELY`) and a non-empty `evidence_text` can reach `PUBLISHED` status.
-Facts where identity is `REJECTED` are never published; the rejection is recorded in the firewall log.
+## Publication rule (enforced by CitationValidator)
+Only facts with `entity_verdict` in (VERIFIED, LIKELY), a successfully retrieved
+source (`access_status=success`), existing evidence with non-empty text, and a
+non-null value reach `PUBLISHED`. Financial facts must carry `currency`.
+Everything else: FAILED / NOT_AVAILABLE. REJECTED entity facts are never published.
