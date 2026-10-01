@@ -305,8 +305,10 @@ def validate_db(ctx):
         mark = "OK" if v == 0 else "FAIL"
         click.echo(f"  {k}: {v} [{mark}]")
     if not ok:
-        click.echo("  (FAIL rows may reflect data written before schema/slot fixes;"
-                   " a fresh database passes — see VERIFICATION_REPORT.md)")
+        click.echo(
+            "  (FAIL rows may reflect data written before schema/slot fixes;"
+            " a fresh database passes — see VERIFICATION_REPORT.md)"
+        )
     if ok:
         click.echo("Database integrity: PASS")
     else:

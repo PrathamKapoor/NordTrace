@@ -131,10 +131,17 @@ class WebsiteAdapter:
         cands: List[Dict] = []
         if identity.website:
             cands.append({"url": identity.website, "reason": "registry hjemmeside", "confidence": 0.9})
-        # name-derived guesses are deliberately conservative (.no/.com)
+        # name-derived guesses: deliberately conservative.
+        # Brand = first core token (TELENOR PAKISTAN AS -> telenor, NOT
+        # telenor-pakistan — market qualifiers are not the brand).
+        # Multi-token names also try the joined form (NORDIC SOLUTIONS -> nordic-solutions).
         core = normalize_name(identity.legal_name).split()
+        bases = []
         if core:
-            base = "-".join(core[:2]).replace(" ", "-")
+            bases.append(core[0])
+            if len(core) >= 2:
+                bases.append("-".join(core[:2]))
+        for base in dict.fromkeys(bases):
             for tld in ("no", "com"):
                 cands.append(
                     {"url": f"https://www.{base}.{tld}", "reason": f"name-derived .{tld}", "confidence": 0.3}
@@ -157,15 +164,18 @@ class WebsiteAdapter:
             return True, "orgnr present on page"
         if normalize_name(identity.legal_name) and normalize_name(identity.legal_name) in text_l:
             return True, "legal name present on page"
-        # fallback: strong brand token match (>=0.85 name similarity)
+        # fallback: resolver VERIFIED only (orgnr match or name+corroboration).
+        # LIKELY is deliberately NOT accepted for homepage attachment: a parent's
+        # brand site (e.g. telenor.no) matches a subsidiary's name-core too, and
+        # wrong-company attribution is worse than a missing description.
         match = self.resolver.evaluate(identity, candidate_text=page_text[:4000], candidate_url=url)
-        if match.verdict in (MatchVerdict.VERIFIED.value, MatchVerdict.LIKELY.value):
-            return True, f"resolver {match.verdict}: {match.reason}"
+        if match.verdict == MatchVerdict.VERIFIED.value:
+            return True, f"resolver VERIFIED: {match.reason}"
         return False, f"no identity confirmation on page (resolver: {match.verdict})"
 
     # ------------------------------------------------------------ crawl
     async def crawl(
-        self, identity: CompanyIdentity, run_id: str
+        self, identity: CompanyIdentity, run_id: str, skip_verified_domains: bool = False
     ) -> Tuple[List[EvidenceRecord], List[Fact], List[SourceRecord], List[Dict], Dict[str, str]]:
         """Focused crawl. Returns (evidences, facts, sources, rejected, coverage_updates).
 
@@ -332,6 +342,44 @@ class WebsiteAdapter:
                     cov["locations"] = "found"
             elif ptype == "CAREERS":
                 cov["jobs"] = cov.get("jobs") or "found"
+                # extract individual job openings from the careers page
+                openings = _extract_job_openings(BeautifulSoup(page_cached.text, "lxml"), link)
+                for job in openings[:6]:
+                    evj = EvidenceRecord(
+                        source_id=src.source_id,
+                        url=job.get("url") or link,
+                        source_title="Official website (careers)",
+                        source_type=self.source_type,
+                        authority_tier=self.authority_tier,
+                        retrieved_at=now,
+                        evidence_text=f"{job['title']} — {job.get('location') or 'sted ukjent'}",
+                        content_hash=src.content_hash,
+                        entity_verdict=match.verdict,
+                        org_number=identity.organisation_number,
+                    )
+                    evidences.append(evj)
+                    facts.append(
+                        Fact(
+                            org_number=identity.organisation_number,
+                            run_id=run_id,
+                            category="jobs",
+                            field="job_posting",
+                            value={
+                                "title": job["title"],
+                                "location": job.get("location"),
+                                "deadline": job.get("deadline"),
+                                "url": job.get("url") or link,
+                                "source": "company_careers_page",
+                            },
+                            normalized_value=f"{job['title']}|{job.get('location')}",
+                            source_id=src.source_id,
+                            evidence_id=evj.evidence_id,
+                            retrieved_at=now,
+                            entity_verdict=match.verdict,
+                            fact_confidence=0.75,
+                            status=FactStatus.PUBLISHED.value,
+                        )
+                    )
                 facts.append(
                     Fact(
                         org_number=identity.organisation_number,
@@ -483,6 +531,60 @@ _ROLE_PATTERNS = [
     (re.compile(r"(CFO|finansdirektør)\s*[:\-]?\s*([A-ZÆØÅ][\wæøå.\- ]{2,50})", re.I), "CFO"),
     (re.compile(r"(CTO|teknologidirektør)\s*[:\-]?\s*([A-ZÆØÅ][\wæøå.\- ]{2,50})", re.I), "CTO"),
 ]
+
+
+# job hints in the link path: match full segments or keyword-prefixed last
+# segments — inherited parent paths (/om/jobbitelenor/...) must NOT count
+_JOB_URL_HINTS = re.compile(
+    r"/(?:stilling(?:er)?|ledige-stillinger|vacanc|vacant|open-positions|available-positions|jobs?|jobb)([-_/]|$)",
+    re.I,
+)
+_JOB_SEGMENT_PREFIX = re.compile(r"^(stilling|vacanc|vacant|ledige|open-position|available-position)", re.I)
+_JOB_TEXT_HINTS = re.compile(r"\b(stilling|vacancy|position)\b", re.I)
+_GENERIC_NAV_TEXT = re.compile(
+    r"^(karriere|careers?|jobb|jobs?|jobbe|ledige stillinger"
+    r"|se (flere |alle )?(ledige stillinger|stillinger)"
+    r"|les mer( og s[øo]k her)?|les mer - .*|s[øo]k her|apply here|read more|view all|mer info|informasjon)$",
+    re.I,
+)
+
+
+def _extract_job_openings(soup: BeautifulSoup, page_url: str) -> List[Dict]:
+    """Extract individual job openings from a careers page. A link counts as an
+    opening when its URL targets a job-listing path (stilling/jobb/vacancy) AND
+    the anchor text is not generic navigation. Deterministic, no LLM."""
+    out: List[Dict] = []
+    seen = set()
+    for a in soup.find_all("a", href=True):
+        href = str(a["href"]).strip()
+        text = re.sub(r"\s+", " ", a.get_text(" ", strip=True) or "").strip()
+        if not href or not text or len(text) < 4 or len(text) > 120:
+            continue
+        if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        full = urljoin(page_url, href)
+        # URL must target a job-listing path (segment-based, not inherited parent)
+        path = urlsplit(full).path or ""
+        segs = [s for s in path.lower().split("/") if s]
+        url_is_listing = _JOB_URL_HINTS.search(path) or any(_JOB_SEGMENT_PREFIX.match(seg) for seg in segs)
+        if not url_is_listing:
+            continue
+        # generic nav text is acceptable when the URL is a dedicated job-listing
+        # path (e.g. 'Se flere ledige stillinger' -> /vacant-positions/); it is
+        # filtered only for ambiguous pages
+        if not url_is_listing and _GENERIC_NAV_TEXT.match(text):
+            continue
+        k = full.split("#")[0]
+        if k in seen:
+            continue
+        seen.add(k)
+        # clean wrapper text: 'Les mer om stillingen ‘X’' -> 'X'
+        m = re.search(
+            r"stilling(?:en)?\s*[\u2018\u0022\u201c]([^\u2019\u0022\u201d]+)[\u2019\u0022\u201d]", text, re.I
+        )
+        title = m.group(1).strip() if m else text
+        out.append({"title": title[:120], "url": k, "location": None, "deadline": None})
+    return out
 
 
 def _extract_names(text: str) -> List[Tuple[str, str]]:

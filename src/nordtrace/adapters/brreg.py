@@ -305,7 +305,9 @@ class BrregAdapter:
         if not items:
             return [], [], source, "not_found"
 
-        # Use the latest accounting period available
+        # Use the latest accounting period available; the endpoint returns the
+        # latest filed entry (multi-period entries become separate fact slots
+        # via their reporting_period labels)
         def period_end(r: Dict[str, Any]) -> str:
             return (r.get("regnskapsperiode") or {}).get("tilDato", "")
 
