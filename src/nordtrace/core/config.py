@@ -1,4 +1,5 @@
 """NordTrace configuration (pydantic-settings)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,7 +45,7 @@ class Settings(BaseSettings):
     # --- Crawler limits ---
     max_pages_per_company: int = 8
     max_response_bytes: int = 5 * 1024 * 1024  # 5 MiB
-    max_pdf_bytes: int = 20 * 1024 * 1024      # 20 MiB
+    max_pdf_bytes: int = 20 * 1024 * 1024  # 20 MiB
     max_redirects: int = 5
     crawl_timeout: float = 15.0
     respect_robots: bool = True
@@ -54,10 +55,7 @@ class Settings(BaseSettings):
     database_path: str = str(APP_ROOT / "data" / "nordtrace.db")
 
     # --- HTTP identity ---
-    user_agent: str = (
-        "NordTrace/1.0 (Norwegian company research agent; "
-        "research use; contact via repository)"
-    )
+    user_agent: str = "NordTrace/1.0 (Norwegian company research agent; research use; contact via repository)"
 
     # --- Logging ---
     log_level: str = "INFO"

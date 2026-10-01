@@ -3,12 +3,13 @@
 Deterministic template builder; optional LLM polish behind strict grounding.
 Unknowns are listed explicitly ("Not publicly available") instead of guessed.
 """
+
 from __future__ import annotations
 
 from typing import List, Optional
 
 from nordtrace.core.ledger import FactLedger
-from nordtrace.core.models import ChangeRecord, CompanyIdentity, Coverage, Fact, FactStatus
+from nordtrace.core.models import ChangeRecord, CompanyIdentity, Coverage, Fact
 
 
 def build_summary(
@@ -32,10 +33,11 @@ def build_summary(
 
     # 2. main business areas
     ind_f = _latest(ledger, org, "identity", "industry_description")
-    ind = (ind_f.value if ind_f is not None and getattr(ind_f, "value", None) else None) or identity.industry_description
+    ind = (
+        ind_f.value if ind_f is not None and getattr(ind_f, "value", None) else None
+    ) or identity.industry_description
     if ind:
-        parts.append(f"Industry: {ind}"
-                     + (f" ({identity.industry_code})" if identity.industry_code else ""))
+        parts.append(f"Industry: {ind}" + (f" ({identity.industry_code})" if identity.industry_code else ""))
     else:
         parts.append("Industry: not available.")
 
@@ -82,7 +84,8 @@ def build_summary(
     sig = [c for c in changes if c.change_type in ("CHANGED", "NEW", "RETRACTED")]
     if sig:
         ch_str = "; ".join(
-            f"{c.field}: {_short(c.previous_value)} → {_short(c.current_value)}" if c.previous_value is not None
+            f"{c.field}: {_short(c.previous_value)} → {_short(c.current_value)}"
+            if c.previous_value is not None
             else f"{c.field}: new ({_short(c.current_value)})"
             for c in sig[:4]
         )

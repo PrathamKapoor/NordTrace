@@ -4,6 +4,7 @@ Compare previous verified facts (from an earlier run) with current facts.
 Detect NEW / CHANGED / RETRACTED / UNCHANGED / SOURCE_UNAVAILABLE per fact
 slot, with explanations. Preserves history (previous values stay in the ledger).
 """
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional
@@ -14,7 +15,7 @@ _CHANGE_EXPLANATIONS = {
     "NEW": "New verified fact not present in the previous run.",
     "CHANGED": "Value changed since the previous run.",
     "RETRACTED": "Fact present in the previous run but not found in this run.",
-    "SOURCE_UNAVAILABLE": "Source was unavailable in this run; previous value retained but marked unverified.",
+    "SOURCE_UNAVAILABLE": "Source was unavailable in this run; previous value retained but marked unverified.",  # noqa: E501
     "UNCHANGED": "Value confirmed by this run.",
 }
 
@@ -61,8 +62,9 @@ def detect_changes(
     return changes
 
 
-def _mk(org_number: str, run_id: str, slot: str, prev: Optional[Fact], cur: Optional[Fact],
-        ctype: str, now: str) -> ChangeRecord:
+def _mk(
+    org_number: str, run_id: str, slot: str, prev: Optional[Fact], cur: Optional[Fact], ctype: str, now: str
+) -> ChangeRecord:
     category, field, period = (slot.split("|") + ["", ""])[:3]
     return ChangeRecord(
         org_number=org_number,

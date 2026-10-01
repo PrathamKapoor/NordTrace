@@ -3,11 +3,12 @@
 The fact ledger is the source of truth: profiles are derived from facts,
 never the other way around.
 """
+
 from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -88,7 +89,7 @@ class CategoryState(str, Enum):
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(microsecond=0)
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 def new_id(prefix: str) -> str:
@@ -274,7 +275,7 @@ class ResearchRun(BaseModel):
 
 class Coverage(BaseModel):
     states: Dict[str, str] = Field(
-        default_factory=lambda: {c: CategoryState.NOT_FOUND.value for c in COVERAGE_CATEGORIES}
+        default_factory=lambda: dict.fromkeys(COVERAGE_CATEGORIES, CategoryState.NOT_FOUND.value)
     )
 
     def set(self, category: str, state: str) -> None:
@@ -288,7 +289,10 @@ class Coverage(BaseModel):
 
     def researched_count(self) -> int:
         return sum(
-            1 for s in self.states.values() if s in (CategoryState.FOUND.value, CategoryState.BLOCKED.value, CategoryState.NOT_AVAILABLE.value)
+            1
+            for s in self.states.values()
+            if s
+            in (CategoryState.FOUND.value, CategoryState.BLOCKED.value, CategoryState.NOT_AVAILABLE.value)
         )
 
 

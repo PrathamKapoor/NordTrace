@@ -1,8 +1,9 @@
 import asyncio
+
 import pytest
-from nordtrace.core.budget import BudgetManager, RequestBudget, RuntimeBudget, CostBudget, BudgetExceededError
-from nordtrace.core.request_gateway import validate_url, SSRFError, RequestGateway
-from nordtrace.core.models import SourceRecord
+
+from nordtrace.core.budget import BudgetExceededError, BudgetManager, CostBudget, RequestBudget, RuntimeBudget
+from nordtrace.core.request_gateway import RequestGateway, SSRFError, validate_url
 
 
 # --- request budget: hard stop ---
@@ -17,12 +18,16 @@ def test_request_budget_hard_stop():
 def test_request_budget_atomic_no_races():
     b = RequestBudget(global_limit=100)
     import threading
+
     def worker():
         while b.try_acquire(1):
             pass
+
     threads = [threading.Thread(target=worker) for _ in range(8)]
-    for t in threads: t.start()
-    for t in threads: t.join()
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
     assert b.total_used == 100  # exactly the limit, no overshoot
 
 
@@ -45,9 +50,10 @@ def test_budget_manager_check_raises():
 def test_budget_manager_runtime_deadline():
     bm = BudgetManager(max_runtime_sec=0.05)
     import time as _t
+
     _t.sleep(0.1)
     assert bm.runtime.deadline_reached()
-    with pytest.raises(Exception):
+    with pytest.raises((BudgetExceededError, RuntimeError)):
         bm.check()
 
 
@@ -55,11 +61,10 @@ def test_budget_manager_runtime_deadline():
 def test_runtime_global_deadline_wins():
     rt = RuntimeBudget(total_limit_sec=0.01, per_company_soft_sec=9999)
     import time as _t
+
     _t.sleep(0.02)
     assert rt.deadline_reached()
     assert rt.time_remaining() == 0.0
-    # per-company soft deadline is irrelevant when global is hit
-    assert rt.company_time_exceeded(_t.monotonic() - 1) or True
 
 
 def test_runtime_phases():
@@ -99,20 +104,23 @@ def test_cost_estimate_formula():
 
 
 # --- SSRF guard ---
-@pytest.mark.parametrize("bad", [
-    "http://localhost/x",
-    "http://127.0.0.1/x",
-    "http://0.0.0.0/x",
-    "http://169.254.169.254/latest/meta-data/",
-    "http://metadata.google.internal/computeMetadata/v1/",
-    "http://192.168.1.1/admin",
-    "http://10.0.0.5/x",
-    "http://172.16.0.1/x",
-    "file:///etc/passwd",
-    "ftp://example.com/file",
-    "javascript:alert(1)",
-    "",
-])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "http://localhost/x",
+        "http://127.0.0.1/x",
+        "http://0.0.0.0/x",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://metadata.google.internal/computeMetadata/v1/",
+        "http://192.168.1.1/admin",
+        "http://10.0.0.5/x",
+        "http://172.16.0.1/x",
+        "file:///etc/passwd",
+        "ftp://example.com/file",
+        "javascript:alert(1)",
+        "",
+    ],
+)
 def test_ssrf_blocked(bad):
     with pytest.raises(SSRFError):
         validate_url(bad)
@@ -146,6 +154,7 @@ def test_url_allowed_domains():
 # --- gateway budget integration ---
 def test_gateway_enforces_budget_without_network():
     """Gateway raises BudgetExceededError when budget exhausted — no request is sent."""
+
     async def go():
         bm = BudgetManager(max_requests=1)
         gw = RequestGateway(bm)
@@ -153,4 +162,5 @@ def test_gateway_enforces_budget_without_network():
         with pytest.raises(BudgetExceededError):
             # external URL but budget check fires before any network I/O
             await gw.fetch("https://example.com/x")
+
     asyncio.run(go())

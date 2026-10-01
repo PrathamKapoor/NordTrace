@@ -1,9 +1,12 @@
-import pytest
 from nordtrace.core.entity import (
-    EntityResolver, PublicationFirewall, normalize_name, name_similarity,
-    extract_orgnrs, domain_of, registrable_domain,
+    EntityResolver,
+    PublicationFirewall,
+    extract_orgnrs,
+    name_similarity,
+    normalize_name,
 )
-from nordtrace.core.models import CompanyIdentity, MatchVerdict as MV
+from nordtrace.core.models import CompanyIdentity
+from nordtrace.core.models import MatchVerdict as MV
 
 T = CompanyIdentity(
     organisation_number="982463718",
@@ -14,7 +17,11 @@ T = CompanyIdentity(
 
 
 def test_exact_orgnr_verifies():
-    assert T.resolver_verdict if False else EntityResolver().evaluate(T, candidate_text="Orgnr 982463718").verdict == MV.VERIFIED.value
+    assert (
+        T.resolver_verdict
+        if False
+        else EntityResolver().evaluate(T, candidate_text="Orgnr 982463718").verdict == MV.VERIFIED.value
+    )
 
 
 def test_foreign_orgnr_in_name_field_rejects():
@@ -34,7 +41,9 @@ def test_two_similar_names_ambiguous_without_corroboration():
 
 
 def test_name_plus_domain_verifies():
-    r = EntityResolver().evaluate(T, candidate_name="Telenor Norge AS", candidate_url="https://www.telenor.no/om/")
+    r = EntityResolver().evaluate(
+        T, candidate_name="Telenor Norge AS", candidate_url="https://www.telenor.no/om/"
+    )
     assert r.verdict in (MV.VERIFIED.value, MV.LIKELY.value)
 
 
@@ -63,7 +72,9 @@ def test_domain_conflict_rejects():
 
 def test_subsidiary_same_domain_not_auto_verified():
     # TELENOR NORGE AS (different orgnr) on telenor.no subdomain — related but not verified
-    r = EntityResolver().evaluate(T, candidate_name="TELENOR NORGE AS", candidate_url="https://sub.telenor.no/")
+    r = EntityResolver().evaluate(
+        T, candidate_name="TELENOR NORGE AS", candidate_url="https://sub.telenor.no/"
+    )
     assert r.verdict != MV.VERIFIED.value
 
 

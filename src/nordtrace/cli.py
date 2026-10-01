@@ -1,12 +1,13 @@
 """NordTrace CLI — real commands wired to the research engine.
 
-  python -m nordtrace research <orgnr> [--output FILE]
-  python -m nordtrace batch <csv> [--concurrency N] [--resume RUN_ID]
-  python -m nordtrace resume <run_id>
-  python -m nordtrace benchmark [--orgnr-file FILE | --fixture]
-  python -m nordtrace validate <result-file>
-  python -m nordtrace serve [--port N]
+python -m nordtrace research <orgnr> [--output FILE]
+python -m nordtrace batch <csv> [--concurrency N] [--resume RUN_ID]
+python -m nordtrace resume <run_id>
+python -m nordtrace benchmark [--orgnr-file FILE | --fixture]
+python -m nordtrace validate <result-file>
+python -m nordtrace serve [--port N]
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +22,7 @@ import click
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.models import ResearchRun, TerminalState, utcnow
+from nordtrace.core.models import ResearchRun, utcnow
 from nordtrace.core.orgnr import validate_orgnr
 from nordtrace.core.repository import Repository
 from nordtrace.engine.pipeline import ResearchPipeline
@@ -122,10 +123,14 @@ def research(ctx, org_number: str, output: Optional[str]):
         click.echo(f"Result written to {output}")
     click.echo(f"Company: {outcome.identity.legal_name if outcome.identity else '(not found)'}")
     click.echo(f"Status: {outcome.terminal_state}")
-    click.echo(f"Verified facts: {len(outcome.facts)} | Evidence: {len(outcome.evidence)} | "
-               f"Sources: {len(outcome.sources)} | Rejected: {len(outcome.rejected)}")
-    click.echo(f"Requests: {budget.requests.total_used}/{budget.requests.global_limit} | "
-               f"Cost: ${budget.cost.total_used:.4f} | Time: {getattr(outcome, 'duration_sec', 0):.1f}s")
+    click.echo(
+        f"Verified facts: {len(outcome.facts)} | Evidence: {len(outcome.evidence)} | "
+        f"Sources: {len(outcome.sources)} | Rejected: {len(outcome.rejected)}"
+    )
+    click.echo(
+        f"Requests: {budget.requests.total_used}/{budget.requests.global_limit} | "
+        f"Cost: ${budget.cost.total_used:.4f} | Time: {getattr(outcome, 'duration_sec', 0):.1f}s"
+    )
     if outcome.summary:
         click.echo(f"\nSummary: {outcome.summary}")
 
@@ -156,8 +161,8 @@ def _read_csv(path: str) -> List[str]:
 def batch(ctx, input_file: str, concurrency: int, resume_run_id: Optional[str], output: Optional[str]):
     """Batch research from a CSV/TXT file of organisation numbers."""
     orgs = _read_csv(input_file)
-    valid = []
-    invalid = []
+    valid: list = []
+    invalid: list = []
     for o in orgs:
         check = validate_orgnr(o)
         (valid if check.valid else invalid).append(o)
@@ -177,9 +182,11 @@ def batch(ctx, input_file: str, concurrency: int, resume_run_id: Optional[str], 
     click.echo(f"Run {run.run_id}: state={run.state}")
     for state, n in sorted(counts.items()):
         click.echo(f"  {state}: {n}")
-    click.echo(f"Requests: {run.request_count}/{settings.max_requests} | "
-               f"Cost: ${run.estimated_cost_usd:.4f} | "
-               f"Time: {run.completed_at and 'done'}")
+    click.echo(
+        f"Requests: {run.request_count}/{settings.max_requests} | "
+        f"Cost: ${run.estimated_cost_usd:.4f} | "
+        f"Time: {run.completed_at and 'done'}"
+    )
     if output:
         payload = {
             "run_id": run.run_id,
@@ -219,7 +226,9 @@ def resume(ctx, run_id: str):
 
 
 @cli.command()
-@click.option("--orgnr-file", type=click.Path(exists=True), default=None, help="CSV/TXT of orgnrs to benchmark")
+@click.option(
+    "--orgnr-file", type=click.Path(exists=True), default=None, help="CSV/TXT of orgnrs to benchmark"
+)
 @click.option("--limit", type=int, default=10, help="Max companies for live benchmark")
 @click.option("--output", type=str, default="benchmark_result.json")
 @click.pass_context
@@ -252,12 +261,16 @@ def _print_benchmark(report: dict) -> None:
     click.echo(f"Ambiguous: {report.get('ambiguous')} | Failed: {report.get('failed')}")
     click.echo(f"Verified facts: {report.get('total_facts')} | Evidence: {report.get('total_evidence')}")
     click.echo(f"Rejected sources: {report.get('total_rejected')}")
-    click.echo(f"Requests: {b.get('requests_used')}/{b.get('requests_limit')} | "
-               f"Cost: ${b.get('cost_used', 0):.4f}/${b.get('cost_limit')} | "
-               f"Runtime: {b.get('runtime_sec', 0):.1f}s/{b.get('runtime_limit_sec')}s")
-    click.echo(f"Budget adherence: requests={'OK' if b.get('requests_ok') else 'EXCEEDED'}, "
-               f"cost={'OK' if b.get('cost_ok') else 'EXCEEDED'}, "
-               f"runtime={'OK' if b.get('runtime_ok') else 'EXCEEDED'}")
+    click.echo(
+        f"Requests: {b.get('requests_used')}/{b.get('requests_limit')} | "
+        f"Cost: ${b.get('cost_used', 0):.4f}/${b.get('cost_limit')} | "
+        f"Runtime: {b.get('runtime_sec', 0):.1f}s/{b.get('runtime_limit_sec')}s"
+    )
+    click.echo(
+        f"Budget adherence: requests={'OK' if b.get('requests_ok') else 'EXCEEDED'}, "
+        f"cost={'OK' if b.get('cost_ok') else 'EXCEEDED'}, "
+        f"runtime={'OK' if b.get('runtime_ok') else 'EXCEEDED'}"
+    )
     correctness = report.get("correctness", {})
     click.echo(f"Correctness: {json.dumps(correctness)}")
 

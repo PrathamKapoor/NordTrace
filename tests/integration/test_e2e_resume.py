@@ -1,7 +1,5 @@
 """End-to-end + resume + budget tests. Live calls to Brreg; skippable offline."""
-import json
-import pathlib
-import tempfile
+
 import pytest
 
 pytestmark = pytest.mark.live
@@ -9,9 +7,12 @@ pytestmark = pytest.mark.live
 
 def _brreg_up() -> bool:
     import urllib.request
+
     try:
-        req = urllib.request.Request("https://data.brreg.no/enhetsregisteret/api/enheter/982463718",
-                                     headers={"Accept": "application/json"})
+        req = urllib.request.Request(
+            "https://data.brreg.no/enhetsregisteret/api/enheter/982463718",
+            headers={"Accept": "application/json"},
+        )
         with urllib.request.urlopen(req, timeout=10) as r:
             return r.status == 200
     except Exception:
@@ -21,9 +22,9 @@ def _brreg_up() -> bool:
 @pytest.fixture()
 def engine(tmp_path):
     from nordtrace.core.budget import BudgetManager
+    from nordtrace.core.models import ResearchRun, utcnow
     from nordtrace.core.repository import Repository
     from nordtrace.engine.pipeline import ResearchPipeline
-    from nordtrace.core.models import ResearchRun, utcnow
 
     repo = Repository(tmp_path / "e2e.db")
     bm = BudgetManager(max_requests=40)
@@ -40,6 +41,7 @@ def test_e2e_full_research(engine):
     repo, bm, pipe, run = engine
 
     import asyncio
+
     outcome = asyncio.run(pipe.research_company("982463718", run.run_id))
     assert outcome.terminal_state in ("available", "not_available")
     assert outcome.identity and outcome.identity.legal_name == "TELENOR ASA"
@@ -64,9 +66,12 @@ def test_e2e_refresh_detects_changes(engine):
     repo, bm, pipe, run = engine
 
     import asyncio
-    o1 = asyncio.run(pipe.research_company("982463718", run.run_id))
+
+    asyncio.run(pipe.research_company("982463718", run.run_id))
     run2_id = run.run_id + "_refresh"
-    from nordtrace.core.models import ResearchRun as RR, utcnow as _u
+    from nordtrace.core.models import ResearchRun as RR
+    from nordtrace.core.models import utcnow as _u
+
     repo.create_run(RR(run_id=run2_id, started_at=_u().isoformat(), companies=["982463718"]))
     o2 = asyncio.run(pipe.research_company("982463718", run2_id))
     # second run should not crash and must have changes records (NEW vs prev or UNCHANGED)
@@ -82,10 +87,10 @@ def test_e2e_refresh_detects_changes(engine):
 def test_budget_attack_request_limit(engine):
     """Attempt to exceed the request limit → pipeline degrades to terminal state
     (no request bypass; gateway raises internally and pipeline catches)."""
-    from nordtrace.core.budget import BudgetExceededError
     repo, bm, pipe, run = engine
     bm.requests.global_limit = 3
     import asyncio
+
     # exhaust manually
     while bm.requests.try_acquire(1):
         pass
@@ -102,9 +107,8 @@ def test_concurrent_companies_no_race(engine):
     if not _brreg_up():
         pytest.skip("network unavailable")
     from nordtrace.core.budget import BudgetManager
-    from nordtrace.core.repository import Repository
-    from nordtrace.engine.pipeline import ResearchPipeline
     from nordtrace.core.models import ResearchRun, utcnow
+    from nordtrace.engine.pipeline import ResearchPipeline
 
     repo, _, _, _ = engine
     bm = BudgetManager(max_requests=120)
@@ -116,9 +120,11 @@ def test_concurrent_companies_no_race(engine):
 
     async def go():
         sem = asyncio.Semaphore(4)
+
         async def one():
             async with sem:
                 await pipe.research_company("982463718", run.run_id)
+
         await asyncio.gather(*[one() for _ in range(10)])
 
     asyncio.run(go())

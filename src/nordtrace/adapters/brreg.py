@@ -10,23 +10,21 @@ Every successful retrieval becomes a SourceRecord + EvidenceRecord; extracted
 data becomes Fact rows in the ledger. Nothing is fabricated: missing fields
 are simply absent, and 404s produce not_found terminal states upstream.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.entity import domain_of
 from nordtrace.core.models import (
     CompanyIdentity,
-    Coverage,
     EvidenceRecord,
     Fact,
     FactStatus,
     MatchVerdict,
     SourceRecord,
     SourceType,
-    new_id,
     utcnow,
 )
 from nordtrace.core.request_gateway import RequestGateway
@@ -77,15 +75,20 @@ class BrregAdapter:
         self.budget = budget
 
     # ------------------------------------------------------------------ entity
-    async def fetch_entity(self, org_number: str, run_id: str) -> Tuple[Optional[CompanyIdentity], Optional[SourceRecord], Optional[EvidenceRecord], str]:
+    async def fetch_entity(
+        self, org_number: str, run_id: str
+    ) -> Tuple[Optional[CompanyIdentity], Optional[SourceRecord], Optional[EvidenceRecord], str]:
         """Canonical identity. Returns (identity, source, evidence, terminal_hint).
 
         terminal_hint: 'found' | 'not_found' | 'failed' | 'blocked'
         """
         url = f"{settings.brreg_base_url}/enheter/{org_number}"
         source = await self.gateway.fetch(
-            url, stage="identity", company=org_number,
-            source_type=self.source_type, authority_tier=0,
+            url,
+            stage="identity",
+            company=org_number,
+            source_type=self.source_type,
+            authority_tier=0,
         )
         if source.access_status != "success":
             hint = {
@@ -98,7 +101,7 @@ class BrregAdapter:
                 return None, source, None, "not_found"
             return None, source, None, hint
 
-        cached = self.gateway.get_content(source.url)
+        cached = self.gateway.get_content(source.url or "")
         text = cached.text if cached else ""
         try:
             import json
@@ -120,8 +123,8 @@ class BrregAdapter:
             source_type=self.source_type,
             authority_tier=0,
             retrieved_at=source.retrieved_at,
-            evidence_text=f"Enhetsregisteret: {data.get('navn','')} (orgnr {org_number}), "
-                          f"organisasjonsform {data.get('organisasjonsform',{}).get('kode','?')}",
+            evidence_text=f"Enhetsregisteret: {data.get('navn', '')} (orgnr {org_number}), "
+            f"organisasjonsform {data.get('organisasjonsform', {}).get('kode', '?')}",
             content_hash=source.content_hash,
             entity_verdict=MatchVerdict.VERIFIED.value,
             org_number=org_number,
@@ -184,16 +187,21 @@ class BrregAdapter:
         return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path, parts.query, "")) or None
 
     # ------------------------------------------------------------------ roles
-    async def fetch_roles(self, org_number: str, run_id: str) -> Tuple[List[EvidenceRecord], List[Fact], Optional[SourceRecord]]:
+    async def fetch_roles(
+        self, org_number: str, run_id: str
+    ) -> Tuple[List[EvidenceRecord], List[Fact], Optional[SourceRecord]]:
         """Board/management roles → leadership facts."""
         url = f"{settings.brreg_base_url}/enheter/{org_number}/roller"
         source = await self.gateway.fetch(
-            url, stage="roles", company=org_number,
-            source_type=self.source_type, authority_tier=0,
+            url,
+            stage="roles",
+            company=org_number,
+            source_type=self.source_type,
+            authority_tier=0,
         )
         if source.access_status != "success":
             return [], [], source
-        cached = self.gateway.get_content(source.url)
+        cached = self.gateway.get_content(source.url or "")
         try:
             import json
 
@@ -213,11 +221,14 @@ class BrregAdapter:
                     continue
                 person = rolle.get("person") or {}
                 navn = person.get("navn") or {}
-                name = " ".join(f"{navn.get('fornavn','')} {navn.get('mellomnavn','')} {navn.get('etternavn','')}".split())
+                fn_, mn_, en_ = navn.get("fornavn", ""), navn.get("mellomnavn", ""), navn.get("etternavn", "")
+                name = " ".join(f"{fn_} {mn_} {en_}".split())
                 if not name:
                     continue
                 role_code = (rolle.get("type") or {}).get("kode", grp_code)
-                role_desc = (rolle.get("type") or {}).get("beskrivelse") or ROLE_LABELS_NO.get(role_code, role_code)
+                role_desc = (rolle.get("type") or {}).get("beskrivelse") or ROLE_LABELS_NO.get(
+                    role_code, role_code
+                )
                 slot = f"{role_code}|{name}"
                 if slot in seen_persons:
                     continue
@@ -243,7 +254,13 @@ class BrregAdapter:
                         run_id=run_id,
                         category="leadership",
                         field=f"role:{role_code}",
-                        value={"name": name, "role": role_desc, "birth_year": person.get("fodselsaar") or (person.get("fodselsdato") or "")[:4] or None},
+                        value={
+                            "name": name,
+                            "role": role_desc,
+                            "birth_year": person.get("fodselsaar")
+                            or (person.get("fodselsdato") or "")[:4]
+                            or None,
+                        },
                         normalized_value=f"{role_desc}:{name}",
                         source_id=source.source_id,
                         evidence_id=ev.evidence_id,
@@ -256,7 +273,9 @@ class BrregAdapter:
         return evidences, facts, source
 
     # ------------------------------------------------------------------ accounts
-    async def fetch_accounts(self, org_number: str, run_id: str) -> Tuple[List[EvidenceRecord], List[Fact], Optional[SourceRecord], str]:
+    async def fetch_accounts(
+        self, org_number: str, run_id: str
+    ) -> Tuple[List[EvidenceRecord], List[Fact], Optional[SourceRecord], str]:
         """Annual accounts from the public regnskapsregisteret.
 
         Returns (evidences, facts, source, status) where status is one of
@@ -264,15 +283,18 @@ class BrregAdapter:
         """
         url = f"{settings.brreg_regnskap_url}/{org_number}"
         source = await self.gateway.fetch(
-            url, stage="financials", company=org_number,
-            source_type=SourceType.REGISTRY_ACCOUNTS.value, authority_tier=0,
+            url,
+            stage="financials",
+            company=org_number,
+            source_type=SourceType.REGISTRY_ACCOUNTS.value,
+            authority_tier=0,
         )
         if source.access_status != "success":
             if source.http_status == 404:
                 return [], [], source, "not_found"
             return [], [], source, "failed"
 
-        cached = self.gateway.get_content(source.url)
+        cached = self.gateway.get_content(source.url or "")
         try:
             import json
 
@@ -305,8 +327,12 @@ class BrregAdapter:
             source_type=SourceType.REGISTRY_ACCOUNTS.value,
             authority_tier=0,
             retrieved_at=source.retrieved_at,
-            evidence_text=f"Årsregnskap {period_label or period_str} for {v.get('organisasjonsnummer', org_number)} "
-                          f"({v.get('organisasjonsform','')}), valuta {currency}, journalnr {latest.get('journalnr','?')}",
+            evidence_text=(
+                f"Årsregnskap {period_label or period_str} for "
+                f"{v.get('organisasjonsnummer', org_number)} "
+                f"({v.get('organisasjonsform', '')}), valuta {currency}, "
+                f"journalnr {latest.get('journalnr', '?')}"
+            ),
             content_hash=source.content_hash,
             entity_verdict=MatchVerdict.VERIFIED.value,
             org_number=org_number,
@@ -341,28 +367,35 @@ class BrregAdapter:
             )
 
         facts = [
-            f for f in (
+            f
+            for f in (
                 fin_fact("revenue", drift.get("driftsinntekter", {}).get("sumDriftsinntekter")),
                 fin_fact("operating_result", drift.get("driftsresultat")),
                 fin_fact("annual_result", rr.get("aarsresultat")),
                 fin_fact("total_assets", eiendeler.get("sumEiendeler")),
                 fin_fact("equity", eg.get("egenkapital", {}).get("sumEgenkapital")),
                 fin_fact("total_liabilities", eg.get("gjeldOversikt", {}).get("sumGjeld")),
-            ) if f
+            )
+            if f
         ]
         return [ev], facts, source, "found" if facts else "not_found"
 
     # ------------------------------------------------------------------ branches
-    async def fetch_underenheter(self, org_number: str, run_id: str) -> Tuple[List[EvidenceRecord], List[Fact], Optional[SourceRecord]]:
+    async def fetch_underenheter(
+        self, org_number: str, run_id: str
+    ) -> Tuple[List[EvidenceRecord], List[Fact], Optional[SourceRecord]]:
         """Branch units (underenheter) — locations facts."""
         url = f"{settings.brreg_base_url}/underenheter?overordnetEnhet={org_number}&size=20"
         source = await self.gateway.fetch(
-            url, stage="locations", company=org_number,
-            source_type=self.source_type, authority_tier=0,
+            url,
+            stage="locations",
+            company=org_number,
+            source_type=self.source_type,
+            authority_tier=0,
         )
         if source.access_status != "success":
             return [], [], source
-        cached = self.gateway.get_content(source.url)
+        cached = self.gateway.get_content(source.url or "")
         try:
             import json
 
@@ -398,8 +431,12 @@ class BrregAdapter:
                     run_id=run_id,
                     category="locations",
                     field="branch",
-                    value={"orgnr": u_orgnr, "name": u_name, "municipality": municipality,
-                           "industry": (unit.get("naeringskode1") or {}).get("beskrivelse")},
+                    value={
+                        "orgnr": u_orgnr,
+                        "name": u_name,
+                        "municipality": municipality,
+                        "industry": (unit.get("naeringskode1") or {}).get("beskrivelse"),
+                    },
                     normalized_value=f"{u_orgnr}:{municipality}",
                     source_id=source.source_id,
                     evidence_id=ev.evidence_id,

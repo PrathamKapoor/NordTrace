@@ -7,6 +7,7 @@ The check digit is (11 - (weighted_sum % 11)) % 11; a result of 10 is invalid.
 Note: a syntactically valid number is not necessarily a registered company.
 Registry lookup is a separate, authoritative check performed by the Brreg adapter.
 """
+
 from __future__ import annotations
 
 import re

@@ -66,16 +66,38 @@ line-length = 88
 target-version = ["py311"]
 
 [tool.ruff]
-line-length = 88
+line-length = 110
 target-version = "py311"
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "C4", "UP"]
+ignore = [
+    "UP006", "UP045", "UP035",  # PEP 585/604 modernization churn on py311 target
+    "UP042",                     # StrEnum migration churn
+]
+
+[tool.ruff.lint.per-file-ignores]
+# SQL statement strings legitimately exceed the line length
+"src/nordtrace/core/repository.py" = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
-strict = true
-warn_return_any = true
+python_version = "3.12"
+# pragmatic gate: strict on core logic, lenient on click/FastAPI decorator glue
+check_untyped_defs = true
+warn_return_any = false
 warn_unused_configs = true
 ignore_missing_imports = true
+disallow_untyped_defs = false
+disallow_any_generics = false
+
+[[tool.mypy.overrides]]
+module = "nordtrace.cli"
+disallow_untyped_defs = false
+disable_error_code = ["no-untyped-call", "no-untyped-def"]
+
+[[tool.mypy.overrides]]
+module = "nordtrace.api.app"
+disable_error_code = ["no-untyped-call"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

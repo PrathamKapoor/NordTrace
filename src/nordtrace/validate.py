@@ -1,4 +1,5 @@
 """Result schema validation for research/benchmark output files."""
+
 from __future__ import annotations
 
 import re

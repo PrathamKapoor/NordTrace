@@ -1,32 +1,58 @@
-import pytest
-from nordtrace.core.ledger import FactLedger, CitationValidator
 from nordtrace.core.changes import detect_changes
-from nordtrace.core.models import Fact, EvidenceRecord, SourceRecord, utcnow, FactStatus
+from nordtrace.core.ledger import FactLedger
+from nordtrace.core.models import EvidenceRecord, Fact, FactStatus, SourceRecord, utcnow
 
 
 def make_src(src_id="s1", org="982463718", status="success"):
-    return SourceRecord(source_id=src_id, url=f"https://brreg.no/{src_id}", access_status=status,
-                        source_type="registry", org_number=org, content_hash=f"h-{src_id}")
+    return SourceRecord(
+        source_id=src_id,
+        url=f"https://brreg.no/{src_id}",
+        access_status=status,
+        source_type="registry",
+        org_number=org,
+        content_hash=f"h-{src_id}",
+    )
 
 
 def make_ev(ev_id="e1", src_id="s1", org="982463718", text="evidence text"):
-    return EvidenceRecord(source_id=src_id, evidence_id=ev_id, org_number=org,
-                          evidence_text=text, entity_verdict="VERIFIED")
+    return EvidenceRecord(
+        source_id=src_id, evidence_id=ev_id, org_number=org, evidence_text=text, entity_verdict="VERIFIED"
+    )
 
 
-def make_fact(org="982463718", cat="financials", fld="revenue", val=100, src="s1", ev="e1",
-              status=None, retrieved=None, period=None, entity="VERIFIED"):
-    return Fact(org_number=org, category=cat, field=fld, value=val, normalized_value=val if not isinstance(val, str) else val,
-                currency="NOK" if cat == "financials" else None, reporting_period=period,
-                source_id=src, evidence_id=ev, entity_verdict=entity,
-                status=status or FactStatus.PUBLISHED.value,
-                retrieved_at=retrieved or utcnow().isoformat())
+def make_fact(
+    org="982463718",
+    cat="financials",
+    fld="revenue",
+    val=100,
+    src="s1",
+    ev="e1",
+    status=None,
+    retrieved=None,
+    period=None,
+    entity="VERIFIED",
+):
+    return Fact(
+        org_number=org,
+        category=cat,
+        field=fld,
+        value=val,
+        normalized_value=val if not isinstance(val, str) else val,
+        currency="NOK" if cat == "financials" else None,
+        reporting_period=period,
+        source_id=src,
+        evidence_id=ev,
+        entity_verdict=entity,
+        status=status or FactStatus.PUBLISHED.value,
+        retrieved_at=retrieved or utcnow().isoformat(),
+    )
 
 
 # --- citation validation ---
 def test_valid_citation_publishes():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     f = led.add_fact(make_fact())
     assert f.status == FactStatus.PUBLISHED.value
 
@@ -41,28 +67,32 @@ def test_missing_evidence_fails():
 
 def test_unretrieved_source_fails():
     led = FactLedger()
-    led.add_source(make_src(status="failed")); led.add_evidence(make_ev())
+    led.add_source(make_src(status="failed"))
+    led.add_evidence(make_ev())
     f = led.add_fact(make_fact())
     assert f.status == FactStatus.FAILED.value
 
 
 def test_rejected_entity_fails():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     f = led.add_fact(make_fact(entity="REJECTED"))
     assert f.status == FactStatus.FAILED.value
 
 
 def test_null_value_fails():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     f = led.add_fact(make_fact(val=None))
     assert f.status in (FactStatus.FAILED.value, FactStatus.NOT_AVAILABLE.value)
 
 
 def test_financial_missing_currency_fails():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     f = make_fact()
     f.currency = None
     f2 = led.add_fact(f)
@@ -71,7 +101,8 @@ def test_financial_missing_currency_fails():
 
 def test_evidence_from_other_source_fails():
     led = FactLedger()
-    led.add_source(make_src("s1")); led.add_source(make_src("s2"))
+    led.add_source(make_src("s1"))
+    led.add_source(make_src("s2"))
     led.add_evidence(make_ev("e1", "s2"))
     f = led.add_fact(make_fact(src="s1", ev="e1"))
     assert f.status == FactStatus.FAILED.value
@@ -80,7 +111,8 @@ def test_evidence_from_other_source_fails():
 # --- conflict detection ---
 def test_conflict_detected_same_slot_different_value():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     led.add_fact(make_fact(val=100))
     f2 = led.add_fact(make_fact(val=999))
     assert f2.status == FactStatus.CONFLICT.value
@@ -89,7 +121,8 @@ def test_conflict_detected_same_slot_different_value():
 
 def test_no_conflict_same_value():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     led.add_fact(make_fact(val=100))
     f2 = led.add_fact(make_fact(val=100))
     assert f2.status == FactStatus.PUBLISHED.value
@@ -97,7 +130,8 @@ def test_no_conflict_same_value():
 
 def test_no_conflict_different_slots():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     led.add_fact(make_fact(fld="revenue", val=100))
     f2 = led.add_fact(make_fact(fld="equity", val=999))
     assert f2.status == FactStatus.PUBLISHED.value
@@ -106,7 +140,8 @@ def test_no_conflict_different_slots():
 # --- temporal ---
 def test_temporal_view_orders_by_period():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     led.add_fact(make_fact(val="New", period="FY2025"))
     led.add_fact(make_fact(val="Old", period="FY2024"))
     view = led.temporal_view("982463718", "revenue")
@@ -115,7 +150,8 @@ def test_temporal_view_orders_by_period():
 
 def test_temporal_facts_not_merged():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     f24 = led.add_fact(make_fact(val="Old", period="FY2024"))
     f25 = led.add_fact(make_fact(val="New", period="FY2025"))
     # different periods are different slots: no conflict
@@ -126,7 +162,8 @@ def test_temporal_facts_not_merged():
 # --- source unavailable on refresh ---
 def test_mark_source_unavailable():
     led = FactLedger()
-    led.add_source(make_src()); led.add_evidence(make_ev())
+    led.add_source(make_src())
+    led.add_evidence(make_ev())
     led.add_fact(make_fact(val=100))
     n = led.mark_source_unavailable("982463718", "s1")
     assert n == 1

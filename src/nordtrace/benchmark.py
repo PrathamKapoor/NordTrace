@@ -9,16 +9,16 @@ Metrics computed from real CompanyOutcome artifacts:
   - correctness vs ground truth where available (golden fixtures);
     otherwise explicitly 'not independently verifiable'
 """
+
 from __future__ import annotations
 
-import asyncio
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.models import ResearchRun, utcnow
+from nordtrace.core.models import utcnow
 from nordtrace.core.orgnr import validate_orgnr
 from nordtrace.core.repository import Repository
 from nordtrace.engine.pipeline import ResearchPipeline
@@ -32,8 +32,9 @@ class BenchmarkHarness:
 
     async def fetch_live_companies(self, limit: int = 10) -> List[str]:
         """Fetch real orgnrs from the Brreg search endpoint (live)."""
-        from nordtrace.core.request_gateway import RequestGateway
         import json
+
+        from nordtrace.core.request_gateway import RequestGateway
 
         gw = RequestGateway(BudgetManager(max_requests=20))
         orgs: List[str] = []
@@ -43,11 +44,14 @@ class BenchmarkHarness:
                     break
                 src = await gw.fetch(
                     f"{settings.brreg_base_url}/enheter?navn={name}&size=3",
-                    stage="benchmark", source_type="registry", authority_tier=0,
+                    stage="benchmark",
+                    source_type="registry",
+                    authority_tier=0,
                 )
                 if src.access_status != "success":
                     continue
-                cached = gw.get_content(src.url)
+                cached = gw.get_content(src.url or "")
+                assert cached is not None
                 data = json.loads(cached.text)
                 for e in (data.get("_embedded") or {}).get("enheter", []):
                     org = e.get("organisasjonsnummer")
@@ -77,14 +81,16 @@ class BenchmarkHarness:
                 total_facts += len(facts)
                 total_evidence += len(evidence)
                 total_rejected += len(rejected)
-                results.append({
-                    "org_number": org,
-                    "terminal_state": state,
-                    "verified_facts": len(facts),
-                    "evidence_count": len(evidence),
-                    "sources_retrieved": sum(1 for s in sources if s.access_status == "success"),
-                    "sources_rejected": len(rejected),
-                })
+                results.append(
+                    {
+                        "org_number": org,
+                        "terminal_state": state,
+                        "verified_facts": len(facts),
+                        "evidence_count": len(evidence),
+                        "sources_retrieved": sum(1 for s in sources if s.access_status == "success"),
+                        "sources_rejected": len(rejected),
+                    }
+                )
         finally:
             await pipeline.aclose()
 
@@ -92,7 +98,9 @@ class BenchmarkHarness:
         rt = runner.budget.runtime
         cs = runner.budget.cost.snapshot()
         completed = sum(1 for r in results if r["terminal_state"] == "available")
-        entity_resolved = sum(1 for r in results if r["terminal_state"] in ("available", "not_available", "not_applicable"))
+        entity_resolved = sum(
+            1 for r in results if r["terminal_state"] in ("available", "not_available", "not_applicable")
+        )
         ambiguous = sum(1 for r in results if r["terminal_state"] == "ambiguous")
         failed = sum(1 for r in results if r["terminal_state"] == "failed")
 
@@ -121,12 +129,14 @@ class BenchmarkHarness:
             },
             "correctness": {
                 "note": "entity resolution is deterministic (registry-anchored); "
-                        "fact correctness is verifiable via evidence chains; "
-                        "no independent ground-truth scoring without a golden dataset",
+                "fact correctness is verifiable via evidence chains; "
+                "no independent ground-truth scoring without a golden dataset",
                 "verifiable": "evidence-backed facts only",
             },
         }
         return report
 
     def save_report(self, report: Dict, path: str = "benchmark_result.json") -> None:
-        Path(path).write_text(report and __import__("json").dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        import json
+
+        Path(path).write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")

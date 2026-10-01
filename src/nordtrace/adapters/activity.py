@@ -13,6 +13,7 @@ Every event carries its source URL and date from the registry itself —
 zero fabrication. "Recent activity" claims are limited to what the registry
 actually reports with dates.
 """
+
 from __future__ import annotations
 
 from typing import List, Optional, Tuple
@@ -70,20 +71,32 @@ class ActivityAdapter:
                 org_number=org,
             )
             evidences.append(ev)
-            facts.append(Fact(
-                org_number=org, run_id=run_id, category="recent_activity",
-                field=field, value=value, normalized_value=str(value)[:200],
-                source_id=source.source_id, evidence_id=ev.evidence_id,
-                retrieved_at=now, published_at=date,
-                entity_verdict=MatchVerdict.VERIFIED.value, fact_confidence=0.95,
-                status=FactStatus.PUBLISHED.value,
-            ))
+            facts.append(
+                Fact(
+                    org_number=org,
+                    run_id=run_id,
+                    category="recent_activity",
+                    field=field,
+                    value=value,
+                    normalized_value=str(value)[:200],
+                    source_id=source.source_id,
+                    evidence_id=ev.evidence_id,
+                    retrieved_at=now,
+                    published_at=date,
+                    entity_verdict=MatchVerdict.VERIFIED.value,
+                    fact_confidence=0.95,
+                    status=FactStatus.PUBLISHED.value,
+                )
+            )
 
         # Liquidation / bankruptcy are public events
         if identity.under_liquidation:
             add_event(
                 "status_event",
-                {"event": "under_liquidation", "date": registry_payload.get("registrertIMvaregisteret") and None},
+                {
+                    "event": "under_liquidation",
+                    "date": registry_payload.get("registrertIMvaregisteret") and None,
+                },
                 "Selskapet er registrert som under avvikling i Enhetsregisteret.",
                 None,
             )
@@ -116,8 +129,12 @@ class ActivityAdapter:
         if kap.get("belop") is not None:
             add_event(
                 "capital",
-                {"capital": kap.get("belop"), "currency": kap.get("valuta"),
-                 "type": kap.get("type"), "date": kap.get("innfortDato")},
+                {
+                    "capital": kap.get("belop"),
+                    "currency": kap.get("valuta"),
+                    "type": kap.get("type"),
+                    "date": kap.get("innfortDato"),
+                },
                 f"{kap.get('type')} på {kap.get('belop'):,.0f} {kap.get('valuta')} "
                 f"(innført {kap.get('innfortDato')}).".replace(",", " "),
                 kap.get("innfortDato"),

@@ -5,46 +5,41 @@ Adaptive: stops early when coverage suffices; consults budgets before every
 expensive stage; records a trace event per step; every company gets exactly
 one terminal state.
 """
+
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from nordtrace.adapters.activity import ActivityAdapter
 from nordtrace.adapters.brreg import BrregAdapter
 from nordtrace.adapters.nav_jobs import NavJobsAdapter
 from nordtrace.adapters.pdf_pipeline import PdfFinancialPipeline
 from nordtrace.adapters.website import WebsiteAdapter
-from nordtrace.core.request_gateway import RequestGateway
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.changes import detect_changes
-from nordtrace.core.config import settings
 from nordtrace.core.entity import EntityResolver, PublicationFirewall
 from nordtrace.core.ledger import FactLedger
 from nordtrace.core.llm import LLMClient
 from nordtrace.core.models import (
     ChangeRecord,
     CompanyIdentity,
-    CompanyProfile,
     Coverage,
     EvidenceRecord,
     Fact,
     FactStatus,
     MatchVerdict,
-    ResearchMetadata,
-    ResearchRun,
     SourceRecord,
-    SourceType,
     TerminalState,
     TraceEvent,
     utcnow,
 )
-from nordtrace.core.repository import Repository
-from nordtrace.core.synthesis import build_summary
 from nordtrace.core.orgnr import validate_orgnr
+from nordtrace.core.repository import Repository
+from nordtrace.core.request_gateway import RequestGateway
+from nordtrace.core.synthesis import build_summary
 
 logger = logging.getLogger("nordtrace.pipeline")
 
@@ -98,7 +93,7 @@ class ResearchPipeline:
         ledger = FactLedger()
         stages: List[str] = []
         registry_payload: Optional[dict] = None
-        financials_status = 'unknown'
+        financials_status = "unknown"
 
         try:
             # 0. validate orgnr format (registry checks registration separately)
@@ -113,20 +108,21 @@ class ResearchPipeline:
 
             # 1. canonical identity from registry
             ident, src, ev, hint = await self.brreg.fetch_entity(org_number, run_id)
-            if src:
-                ledger.add_source(src)
-            if ev:
-                ledger.add_evidence(ev)
             stages.append("identity")
-            if hint != "found" or ident is None:
+            if hint != "found" or ident is None or src is None or ev is None:
                 self._trace(run_id, org_number, "identity", f"registry lookup failed: {hint}", "error")
-                state = TerminalState.NOT_AVAILABLE.value if hint == "not_found" else (
-                    TerminalState.BLOCKED.value if hint == "blocked" else TerminalState.FAILED.value)
+                state = (
+                    TerminalState.NOT_AVAILABLE.value
+                    if hint == "not_found"
+                    else (TerminalState.BLOCKED.value if hint == "blocked" else TerminalState.FAILED.value)
+                )
                 outcome.terminal_state = state
                 outcome.sources = list(ledger.sources.values())
                 outcome.error = f"registry lookup: {hint}"
                 return outcome
             outcome.identity = ident
+            # src/ev are non-None here (guaranteed by the early return above)
+            assert src is not None and ev is not None
             # registry identity facts
             for fname, fval in (
                 ("legal_name", ident.legal_name),
@@ -143,11 +139,19 @@ class ResearchPipeline:
                 if fval in (None, "", "unknown"):
                     continue
                 f = Fact(
-                    org_number=org_number, run_id=run_id, category="identity", field=fname,
-                    value=fval, normalized_value=str(fval), source_id=src.source_id,
-                    evidence_id=ev.evidence_id, retrieved_at=utcnow().isoformat(),
-                    entity_verdict=MatchVerdict.VERIFIED.value, fact_confidence=0.99,
-                    status=FactStatus.PUBLISHED.value, published_at=utcnow().isoformat(),
+                    org_number=org_number,
+                    run_id=run_id,
+                    category="identity",
+                    field=fname,
+                    value=fval,
+                    normalized_value=str(fval),
+                    source_id=src.source_id,
+                    evidence_id=ev.evidence_id,
+                    retrieved_at=utcnow().isoformat(),
+                    entity_verdict=MatchVerdict.VERIFIED.value,
+                    fact_confidence=0.99,
+                    status=FactStatus.PUBLISHED.value,
+                    published_at=utcnow().isoformat(),
                 )
                 ledger.add_fact(f, ev, src)
             self._trace(run_id, org_number, "identity", f"registry identity resolved: {ident.legal_name}")
@@ -176,12 +180,14 @@ class ResearchPipeline:
                     ledger.add_fact(f, None, asrc)
                 stages.append("financials")
                 financials_status = astatus
-                self._trace(run_id, org_number, "financials",
-                            f"registry accounts: {astatus}, {len(afacts)} facts")
+                self._trace(
+                    run_id, org_number, "financials", f"registry accounts: {astatus}, {len(afacts)} facts"
+                )
                 # capture registry payload for activity adapter
                 if asrc and asrc.access_status == "success":
                     import json
-                    cached = self.gateway.get_content(asrc.url)
+
+                    cached = self.gateway.get_content(asrc.url or "")
                     try:
                         payload = json.loads(cached.text if cached else "")
                         registry_payload = payload[0] if isinstance(payload, list) and payload else payload
@@ -202,9 +208,13 @@ class ResearchPipeline:
                     r2["url"] = r.get("url")
                     outcome.rejected.append(r2)
                 stages.append("website")
-                self._trace(run_id, org_number, "website",
-                            f"crawl complete: {len(w_sources)} sources, {len(w_facts)} facts, "
-                            f"{len(w_rejected)} rejected")
+                self._trace(
+                    run_id,
+                    org_number,
+                    "website",
+                    f"crawl complete: {len(w_sources)} sources, {len(w_facts)} facts, "
+                    f"{len(w_rejected)} rejected",
+                )
             elif not ident.website:
                 outcome.rejected.append({"url": None, "reason": "no website registered in registry"})
 
@@ -220,8 +230,9 @@ class ResearchPipeline:
                 for r in j_rejected:
                     outcome.rejected.append(r)
                 stages.append("jobs")
-                self._trace(run_id, org_number, "jobs",
-                            f"{len(j_facts)} jobs verified, {len(j_rejected)} rejected")
+                self._trace(
+                    run_id, org_number, "jobs", f"{len(j_facts)} jobs verified, {len(j_rejected)} rejected"
+                )
 
             # 6. activity from registry signals
             if registry_payload is not None and src:
@@ -241,9 +252,13 @@ class ResearchPipeline:
                 self.repo.insert_changes(changes)
                 stages.append("changes")
                 n_changed = sum(1 for c in changes if c.change_type in ("CHANGED", "NEW"))
-                self._trace(run_id, org_number, "changes",
-                            f"change detection: {n_changed} new/changed, "
-                            f"{len(changes) - n_changed} unchanged/retracted")
+                self._trace(
+                    run_id,
+                    org_number,
+                    "changes",
+                    f"change detection: {n_changed} new/changed, "
+                    f"{len(changes) - n_changed} unchanged/retracted",
+                )
             outcome.changes = changes
 
             # 8. persist ledger + coverage (order: sources → evidence → facts)
@@ -259,7 +274,9 @@ class ResearchPipeline:
             all_facts = [e.fact for e in ledger.all_entries()]
             # only facts whose source+evidence were persisted (skips FAILED w/ dangling ev)
             persisted_ev = {e.evidence_id for e in all_ev}
-            all_facts = [f for f in all_facts if f.source_id in persisted_ids and f.evidence_id in persisted_ev]
+            all_facts = [
+                f for f in all_facts if f.source_id in persisted_ids and f.evidence_id in persisted_ev
+            ]
             if all_facts:
                 self.repo.insert_facts_bulk(all_facts)
 
@@ -275,9 +292,12 @@ class ResearchPipeline:
             outcome.summary = build_summary(ident, ledger, coverage, outcome.changes)
             outcome.unknowns = self._unknowns(coverage)
             stages.append("synthesis")
-            self._trace(run_id, org_number, "synthesis",
-                        f"profile completed: {outcome.terminal_state}, "
-                        f"{len(current_facts)} published facts")
+            self._trace(
+                run_id,
+                org_number,
+                "synthesis",
+                f"profile completed: {outcome.terminal_state}, {len(current_facts)} published facts",
+            )
 
         except Exception as e:
             logger.exception("pipeline error for %s", org_number)
@@ -292,13 +312,14 @@ class ResearchPipeline:
     # ------------------------------------------------------------------ helpers
     def _coverage_from(self, ledger: FactLedger, org_number: str, accounts_status: str) -> Coverage:
         cov = Coverage()
-        ident = None
         # identity
         if any(f.category == "identity" for f in ledger.published_facts(org_number)):
             cov.set("identity", "found")
         if any(f.category == "business_description" for f in ledger.published_facts(org_number)):
             cov.set("business_description", "found")
-        if any(f.field in ("industry_code", "industry_description") for f in ledger.published_facts(org_number)):
+        if any(
+            f.field in ("industry_code", "industry_description") for f in ledger.published_facts(org_number)
+        ):
             cov.set("industry", "found")
         fin = [f for f in ledger.published_facts(org_number) if f.category == "financials"]
         if fin:

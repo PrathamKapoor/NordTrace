@@ -6,6 +6,7 @@
   companies that already have a terminal state in this run
 - every company receives exactly one terminal state
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +18,7 @@ from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
 from nordtrace.core.models import ResearchRun, RunState, TerminalState, utcnow
 from nordtrace.core.repository import Repository
-from nordtrace.engine.pipeline import CompanyOutcome, ResearchPipeline
+from nordtrace.engine.pipeline import ResearchPipeline
 
 logger = logging.getLogger("nordtrace.runner")
 
@@ -35,8 +36,9 @@ class BatchRunner:
         )
         self.concurrency = max(1, concurrency)
 
-    async def run_batch(self, org_numbers: List[str], requested_by: str = "cli",
-                        resume_run_id: Optional[str] = None) -> ResearchRun:
+    async def run_batch(
+        self, org_numbers: List[str], requested_by: str = "cli", resume_run_id: Optional[str] = None
+    ) -> ResearchRun:
         if resume_run_id:
             run = self.repo.get_run(resume_run_id)
             if run is None:
@@ -66,8 +68,10 @@ class BatchRunner:
                     # per-company soft deadline: skip if the global deadline is imminent
                     company_started = time.monotonic()
                     outcome = await pipeline.research_company(org, run.run_id)
-                    if self.budget.runtime.company_time_exceeded(company_started) and \
-                       not self.budget.runtime.deadline_reached():
+                    if (
+                        self.budget.runtime.company_time_exceeded(company_started)
+                        and not self.budget.runtime.deadline_reached()
+                    ):
                         logger.info("company %s exceeded soft deadline; moving on", org)
                     self.repo.mark_company_state(run.run_id, org, outcome.terminal_state)
                     self._checkpoint(run)
@@ -79,7 +83,11 @@ class BatchRunner:
 
         # finalize: companies never researched (deadline) get a terminal state
         run.completed_at = utcnow().isoformat()
-        run.state = RunState.COMPLETED.value if not self.budget.runtime.deadline_reached() else RunState.INTERRUPTED.value
+        run.state = (
+            RunState.COMPLETED.value
+            if not self.budget.runtime.deadline_reached()
+            else RunState.INTERRUPTED.value
+        )
         run.request_count = self.budget.requests.total_used
         run.estimated_cost_usd = round(self.budget.cost.total_used, 6)
         for c in run.companies:

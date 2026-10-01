@@ -8,12 +8,13 @@ Every response is schema-validated (pydantic). Malformed output → rejected,
 retried within budget, else marked failed. Web content is UNTRUSTED: it is
 passed to the model as data inside a delimited block, never as instructions.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Type, TypeVar
+from typing import Optional, Type, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -125,8 +126,9 @@ class LLMClient:
                         continue
                     return LLMResult(ok=False, error="empty llm response", cost_usd=cost)
                 if schema is None:
-                    return LLMResult(ok=True, value=None, cost_usd=cost,
-                                     input_tokens=in_tok, output_tokens=out_tok)
+                    return LLMResult(
+                        ok=True, value=None, cost_usd=cost, input_tokens=in_tok, output_tokens=out_tok
+                    )
                 # extract JSON (strip markdown fences if present)
                 cleaned = text.strip()
                 if cleaned.startswith("```"):
@@ -145,8 +147,9 @@ class LLMClient:
                     if attempt <= retries:
                         continue
                     return LLMResult(ok=False, error=f"schema violation: {ve.errors()[:3]}", cost_usd=cost)
-                return LLMResult(ok=True, value=value, cost_usd=cost,
-                                 input_tokens=in_tok, output_tokens=out_tok)
+                return LLMResult(
+                    ok=True, value=value, cost_usd=cost, input_tokens=in_tok, output_tokens=out_tok
+                )
             except (httpx.TimeoutException, httpx.TransportError) as e:
                 logger.warning("llm transport error: %s", type(e).__name__)
                 if attempt <= retries:

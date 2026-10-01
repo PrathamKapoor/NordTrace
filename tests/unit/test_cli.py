@@ -1,12 +1,11 @@
 import json
-import pathlib
-import tempfile
+
 import pytest
 from click.testing import CliRunner
 
-from nordtrace.cli import cli, _read_csv, _result_json
-from nordtrace.core.models import CompanyIdentity, utcnow
+from nordtrace.cli import _read_csv, _result_json, cli
 from nordtrace.core.budget import BudgetManager
+from nordtrace.core.models import CompanyIdentity, utcnow
 
 
 @pytest.fixture()
@@ -47,11 +46,19 @@ def test_research_malformed_exits(runner):
 
 def test_validate_good_result(runner, tmp_path):
     p = tmp_path / "result.json"
-    p.write_text(json.dumps({
-        "run_id": "run_x", "organisation_number": "982463718", "status": "available",
-        "facts": [], "changes": [],
-        "research_metadata": {"request_count": 5, "estimated_cost_usd": 0.0},
-    }), encoding="utf-8")
+    p.write_text(
+        json.dumps(
+            {
+                "run_id": "run_x",
+                "organisation_number": "982463718",
+                "status": "available",
+                "facts": [],
+                "changes": [],
+                "research_metadata": {"request_count": 5, "estimated_cost_usd": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
     res = runner.invoke(cli, ["validate", str(p)])
     assert res.exit_code == 0
     assert "passed" in res.output.lower()
@@ -67,9 +74,9 @@ def test_validate_missing_fields(runner, tmp_path):
 
 def test_validate_bad_status(runner, tmp_path):
     p = tmp_path / "bad2.json"
-    p.write_text(json.dumps({
-        "run_id": "r", "organisation_number": "982463718", "status": "awesome"
-    }), encoding="utf-8")
+    p.write_text(
+        json.dumps({"run_id": "r", "organisation_number": "982463718", "status": "awesome"}), encoding="utf-8"
+    )
     res = runner.invoke(cli, ["validate", str(p)])
     assert res.exit_code == 1
     assert "status" in res.output
@@ -77,16 +84,24 @@ def test_validate_bad_status(runner, tmp_path):
 
 def test_validate_negative_metadata(runner, tmp_path):
     p = tmp_path / "bad3.json"
-    p.write_text(json.dumps({
-        "run_id": "r", "organisation_number": "982463718", "status": "available",
-        "research_metadata": {"request_count": -5},
-    }), encoding="utf-8")
+    p.write_text(
+        json.dumps(
+            {
+                "run_id": "r",
+                "organisation_number": "982463718",
+                "status": "available",
+                "research_metadata": {"request_count": -5},
+            }
+        ),
+        encoding="utf-8",
+    )
     res = runner.invoke(cli, ["validate", str(p)])
     assert res.exit_code == 1
 
 
 def test_result_json_structure():
     """_result_json produces schema-valid output."""
+
     class Outcome:
         org_number = "982463718"
         terminal_state = "available"

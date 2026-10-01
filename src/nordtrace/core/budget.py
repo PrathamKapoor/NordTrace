@@ -8,12 +8,13 @@ Hard limits:
 All outbound HTTP goes through RequestGateway, which consults these budgets.
 No component may bypass the gateway.
 """
+
 from __future__ import annotations
 
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 
 class BudgetExceededError(RuntimeError):
@@ -27,6 +28,7 @@ class DeadlineReachedError(RuntimeError):
 @dataclass
 class RequestBudget:
     """Thread-safe request counter. Enforces a hard global cap."""
+
     global_limit: int = 2000
     total_used: int = 0
     by_domain: Dict[str, int] = field(default_factory=dict)
@@ -71,7 +73,7 @@ class RequestBudget:
             if company:
                 self.by_company[company] = self.by_company.get(company, 0) + 1
 
-    def snapshot(self) -> Dict[str, object]:
+    def snapshot(self) -> Dict[str, Any]:
         with self._lock:
             return {
                 "total_used": self.total_used,
@@ -88,6 +90,7 @@ class RequestBudget:
 @dataclass
 class RuntimeBudget:
     """Global run deadline. The global deadline always wins over per-company limits."""
+
     total_limit_sec: float = 45 * 60
     per_company_soft_sec: float = 90.0
     started_at: float = field(default_factory=time.monotonic)
@@ -124,6 +127,7 @@ class RuntimeBudget:
 @dataclass
 class CostBudget:
     """External API cost tracking (LLM etc.). Prices are estimates, labelled as such."""
+
     limit: float = 10.0
     total_used: float = 0.0
     by_model: Dict[str, float] = field(default_factory=dict)
@@ -132,7 +136,9 @@ class CostBudget:
     output_tokens: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
-    def estimate(self, input_tokens: int, output_tokens: int, price_in_per_m: float, price_out_per_m: float) -> float:
+    def estimate(
+        self, input_tokens: int, output_tokens: int, price_in_per_m: float, price_out_per_m: float
+    ) -> float:
         return (input_tokens / 1_000_000) * price_in_per_m + (output_tokens / 1_000_000) * price_out_per_m
 
     def try_reserve(self, est_cost: float) -> bool:
@@ -157,7 +163,7 @@ class CostBudget:
         with self._lock:
             return (self.total_used + est_cost) <= self.limit
 
-    def snapshot(self) -> Dict[str, object]:
+    def snapshot(self) -> Dict[str, Any]:
         with self._lock:
             return {
                 "total_used": round(self.total_used, 6),
@@ -174,10 +180,17 @@ class CostBudget:
 class BudgetManager:
     """Facade bundling the three budgets for a single run."""
 
-    def __init__(self, max_requests: int = 2000, max_runtime_sec: float = 45 * 60, max_cost: float = 10.0,
-                 per_company_soft_sec: float = 90.0):
+    def __init__(
+        self,
+        max_requests: int = 2000,
+        max_runtime_sec: float = 45 * 60,
+        max_cost: float = 10.0,
+        per_company_soft_sec: float = 90.0,
+    ):
         self.requests = RequestBudget(global_limit=max_requests)
-        self.runtime = RuntimeBudget(total_limit_sec=max_runtime_sec, per_company_soft_sec=per_company_soft_sec)
+        self.runtime = RuntimeBudget(
+            total_limit_sec=max_runtime_sec, per_company_soft_sec=per_company_soft_sec
+        )
         self.cost = CostBudget(limit=max_cost)
 
     # -- gates used by the pipeline -----------------------------------------
@@ -191,7 +204,7 @@ class BudgetManager:
         if self.runtime.deadline_reached():
             raise DeadlineReachedError("runtime deadline reached")
 
-    def snapshot(self) -> Dict[str, object]:
+    def snapshot(self) -> Dict[str, Any]:
         return {
             "requests": self.requests.snapshot(),
             "runtime": {

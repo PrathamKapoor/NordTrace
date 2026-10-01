@@ -8,13 +8,13 @@ PUBLISHED only after:
   - value supported (value came from source content; non-null)
 Citation validation is deterministic. Conflicts are detected, not hidden.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from nordtrace.core.models import (
-    CompanyIdentity,
     EvidenceRecord,
     Fact,
     FactStatus,
@@ -81,8 +81,9 @@ class FactLedger:
         if ev.evidence_id and ev.evidence_id not in self.evidence:
             self.evidence[ev.evidence_id] = ev
 
-    def add_fact(self, fact: Fact, evidence: Optional[EvidenceRecord] = None,
-                 source: Optional[SourceRecord] = None) -> Fact:
+    def add_fact(
+        self, fact: Fact, evidence: Optional[EvidenceRecord] = None, source: Optional[SourceRecord] = None
+    ) -> Fact:
         """Validate citation chain, then store. Returns the fact (possibly
         with status updated to PUBLISHED or CONFLICT/FAILED)."""
         if source:
@@ -96,7 +97,9 @@ class FactLedger:
         validator = CitationValidator(self.sources, self.evidence)
         ok, reason = validator.validate(fact)
         if not ok:
-            fact.status = FactStatus.FAILED.value if fact.value is not None else FactStatus.NOT_AVAILABLE.value
+            fact.status = (
+                FactStatus.FAILED.value if fact.value is not None else FactStatus.NOT_AVAILABLE.value
+            )
             fact.conflict_note = reason
             self._entries.append(LedgerEntry(fact=fact))
             return fact
@@ -108,8 +111,13 @@ class FactLedger:
         else:
             fact.status = FactStatus.PUBLISHED.value
         fact.published_at = fact.published_at or utcnow().isoformat()
-        self._entries.append(LedgerEntry(fact=fact, evidence=self.evidence.get(fact.evidence_id),
-                                         source=self.sources.get(fact.source_id)))
+        self._entries.append(
+            LedgerEntry(
+                fact=fact,
+                evidence=self.evidence.get(fact.evidence_id),
+                source=self.sources.get(fact.source_id),
+            )
+        )
         return fact
 
     def _detect_conflict(self, fact: Fact) -> Optional[str]:
@@ -122,14 +130,19 @@ class FactLedger:
             if other.status not in (FactStatus.PUBLISHED.value, FactStatus.CONFLICT.value):
                 continue
             if _values_differ(other.normalized_value, fact.normalized_value):
-                return (f"conflicts with fact {other.fact_id} from source {other.source_id} "
-                        f"(existing={_short(other.normalized_value)}, new={_short(fact.normalized_value)})")
+                return (
+                    f"conflicts with fact {other.fact_id} from source {other.source_id} "
+                    f"(existing={_short(other.normalized_value)}, new={_short(fact.normalized_value)})"
+                )
         return None
 
     def published_facts(self, org_number: Optional[str] = None) -> List[Fact]:
-        return [e.fact for e in self._entries
-                if e.fact.status == FactStatus.PUBLISHED.value
-                and (org_number is None or e.fact.org_number == org_number)]
+        return [
+            e.fact
+            for e in self._entries
+            if e.fact.status == FactStatus.PUBLISHED.value
+            and (org_number is None or e.fact.org_number == org_number)
+        ]
 
     def all_entries(self) -> List[LedgerEntry]:
         return list(self._entries)
@@ -152,7 +165,11 @@ class FactLedger:
         n = 0
         for e in self._entries:
             f = e.fact
-            if f.org_number == org_number and f.source_id == source_id and f.status == FactStatus.PUBLISHED.value:
+            if (
+                f.org_number == org_number
+                and f.source_id == source_id
+                and f.status == FactStatus.PUBLISHED.value
+            ):
                 f.status = FactStatus.SOURCE_UNAVAILABLE.value
                 f.conflict_note = "source unavailable at refresh; not contradicted by new evidence"
                 n += 1
@@ -161,10 +178,13 @@ class FactLedger:
     def temporal_view(self, org_number: str, field_name: str) -> List[Fact]:
         """Facts for a field with temporal metadata, ordered by valid_from —
         supports 'CEO in 2024' vs 'CEO in 2025' without merging."""
-        rows = [e.fact for e in self._entries
-                if e.fact.org_number == org_number
-                and e.fact.field == field_name
-                and e.fact.status in (FactStatus.PUBLISHED.value, FactStatus.REFRESHED.value)]
+        rows = [
+            e.fact
+            for e in self._entries
+            if e.fact.org_number == org_number
+            and e.fact.field == field_name
+            and e.fact.status in (FactStatus.PUBLISHED.value, FactStatus.REFRESHED.value)
+        ]
         rows.sort(key=lambda f: (f.valid_from or f.reporting_period or "", f.retrieved_at or ""))
         return rows
 

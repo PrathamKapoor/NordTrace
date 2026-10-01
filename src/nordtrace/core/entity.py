@@ -19,28 +19,36 @@ Rules enforced:
   - a candidate whose domain belongs to a *different verified company* is REJECTED
   - when signals are weak we prefer AMBIGUOUS (treated as "unknown") over wrong-company
 """
-import re
-from typing import Dict, List, Optional
 
+import re
 from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 from nordtrace.core.models import CompanyIdentity, MatchVerdict
+
 _LEGAL_SUFFIXES = {
     # actual legal-form codes, not geographic/descriptive words
-    "as", "asa", "a s", "nuf", "ks", "da", "ans", "ba",
-    "enybf", "se", "sf", "fkf", "iks", "ktrf", "stiftelse",
+    "as",
+    "asa",
+    "a s",
+    "nuf",
+    "ks",
+    "da",
+    "ans",
+    "ba",
+    "enybf",
+    "se",
+    "sf",
+    "fkf",
+    "iks",
+    "ktrf",
+    "stiftelse",
 }
-_NON_WORD_SUFFIXES = {
-    # removed 'norge','norway','no','solutions','consulting','holding','gruppe',
-    # 'group','pb','aps','ab' — these are frequent *name* tokens; stripping them
-    # caused false identity merges (e.g. 'Telenor Norge AS' → 'telenor').
-    # Swedish 'ab'/'aps' kept OUT for the same reason; foreign-entity disambiguation
-    # is handled by orgnr contradiction checks instead.
-}
-_SUFFIX_RE = re.compile(r"\b(" + "|".join(sorted(_LEGAL_SUFFIXES, key=len, reverse=True)) + r")\b", re.IGNORECASE)
+_SUFFIX_RE = re.compile(
+    r"\b(" + "|".join(sorted(_LEGAL_SUFFIXES, key=len, reverse=True)) + r")\b", re.IGNORECASE
+)
 
-from nordtrace.core.models import CompanyIdentity, MatchVerdict
 
 # Regexes used for normalization and orgnr extraction from free text.
 _WS_RE = re.compile(r"[^0-9a-zæøåäö]+")
@@ -84,8 +92,8 @@ def extract_orgnrs(text: str, exclude: Optional[str] = None) -> List[str]:
     if not text:
         return []
     cleaned = _NON_ORGNR_NINE.sub(" ", text)
-    found = [m for m in _ORGNR_RE.findall(cleaned)]
-    return [n for n in dict.fromkeys(found) if n != exclude]
+    found = _ORGNR_RE.findall(cleaned)
+    return list(dict.fromkeys(n for n in found if n != exclude))
 
 
 def name_similarity(a: str, b: str) -> float:
@@ -158,11 +166,14 @@ class EntityResolver:
             sig.orgnr_contradiction = True
             sig.foreign_orgnr = orgnrs_in_text[0]
             return MatchResult(
-                verdict=MatchVerdict.REJECTED.value, signals=sig,
+                verdict=MatchVerdict.REJECTED.value,
+                signals=sig,
                 reason=f"candidate carries foreign organisation number {orgnrs_in_text[0]}",
                 score=-1.0,
             )
-        if candidate_orgnr == target.organisation_number or target.organisation_number in (candidate_text or ""):
+        if candidate_orgnr == target.organisation_number or target.organisation_number in (
+            candidate_text or ""
+        ):
             sig.orgnr_match = True
 
         # -- 2. Name similarity -------------------------------------------------
@@ -189,7 +200,9 @@ class EntityResolver:
 
         # -- 4. Corroboration signals -------------------------------------------
         if candidate_municipality and target.municipality:
-            sig.municipality_match = normalize_name(candidate_municipality) == normalize_name(target.municipality)
+            sig.municipality_match = normalize_name(candidate_municipality) == normalize_name(
+                target.municipality
+            )
         if candidate_industry and target.industry_code:
             sig.industry_match = str(candidate_industry).strip() == str(target.industry_code).strip()
 
@@ -199,7 +212,9 @@ class EntityResolver:
     def _verdict(self, sig: MatchSignals, target: CompanyIdentity) -> MatchResult:
         score = 0.0
         if sig.domain_conflict:
-            return MatchResult(MatchVerdict.REJECTED.value, sig, "candidate domain belongs to a different company", -1.0)
+            return MatchResult(
+                MatchVerdict.REJECTED.value, sig, "candidate domain belongs to a different company", -1.0
+            )
         if sig.orgnr_match:
             return MatchResult(MatchVerdict.VERIFIED.value, sig, "organisation number match", 1.0)
         score += sig.name_similarity * 2.0
@@ -207,16 +222,22 @@ class EntityResolver:
         score += corroboration * 0.5
 
         if sig.name_similarity >= 0.9 and corroboration >= 1:
-            return MatchResult(MatchVerdict.VERIFIED.value, sig, "strong name + corroboration", min(1.0, score / 3))
+            return MatchResult(
+                MatchVerdict.VERIFIED.value, sig, "strong name + corroboration", min(1.0, score / 3)
+            )
         if sig.name_similarity >= 0.7 and corroboration >= 1:
             return MatchResult(MatchVerdict.LIKELY.value, sig, "name match + one corroboration", score / 3)
         if sig.name_similarity >= 0.95 and corroboration == 0:
             # Same name, nothing corroborating → could be another entity with same name
             return MatchResult(MatchVerdict.AMBIGUOUS.value, sig, "name match without corroboration", 0.3)
         if 0.4 <= sig.name_similarity < 0.7 and corroboration >= 2:
-            return MatchResult(MatchVerdict.LIKELY.value, sig, "partial name + strong corroboration", score / 3)
+            return MatchResult(
+                MatchVerdict.LIKELY.value, sig, "partial name + strong corroboration", score / 3
+            )
         if sig.name_similarity < 0.35:
-            return MatchResult(MatchVerdict.REJECTED.value, sig, f"name dissimilar to {target.legal_name!r}", 0.0)
+            return MatchResult(
+                MatchVerdict.REJECTED.value, sig, f"name dissimilar to {target.legal_name!r}", 0.0
+            )
         return MatchResult(MatchVerdict.AMBIGUOUS.value, sig, "insufficient signals", 0.2)
 
 

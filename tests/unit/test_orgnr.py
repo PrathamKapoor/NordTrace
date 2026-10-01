@@ -1,6 +1,6 @@
 import pytest
-from nordtrace.core.orgnr import validate_orgnr, is_valid_orgnr, normalize_orgnr
 
+from nordtrace.core.orgnr import is_valid_orgnr, normalize_orgnr, validate_orgnr
 
 # Real registered orgnrs (verified live against Brreg 2026-09-29)
 REAL_VALID = ["982463718", "971277025", "923609016", "960514718", "958973306"]
@@ -11,27 +11,33 @@ def test_valid_registered_orgnrs(raw):
     assert validate_orgnr(raw).valid
 
 
-@pytest.mark.parametrize("raw,reason_part", [
-    ("917289121", "checksum"),        # format-valid but checksum fails
-    ("911303793", "checksum"),
-    ("12345678", "9 digits"),         # 8 digits
-    ("1234567890", "9 digits"),       # 10 digits
-    ("", "empty"),
-    ("abcdefghi", "non-digit"),
-    ("98246371a", "non-digit"),
-])
+@pytest.mark.parametrize(
+    "raw,reason_part",
+    [
+        ("917289121", "checksum"),  # format-valid but checksum fails
+        ("911303793", "checksum"),
+        ("12345678", "9 digits"),  # 8 digits
+        ("1234567890", "9 digits"),  # 10 digits
+        ("", "empty"),
+        ("abcdefghi", "non-digit"),
+        ("98246371a", "non-digit"),
+    ],
+)
 def test_invalid_orgnrs(raw, reason_part):
     r = validate_orgnr(raw)
     assert not r.valid
     assert reason_part in r.reason
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ("982 463 718", "982463718"),
-    ("982-463-718", "982463718"),
-    ("982.463.718", "982463718"),
-    (" 982463718 ", "982463718"),
-])
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("982 463 718", "982463718"),
+        ("982-463-718", "982463718"),
+        ("982.463.718", "982463718"),
+        (" 982463718 ", "982463718"),
+    ],
+)
 def test_normalization_strips_separators(raw, expected):
     assert normalize_orgnr(raw) == expected
     assert is_valid_orgnr(raw)
@@ -45,7 +51,6 @@ def test_syntactic_validity_is_not_registration():
 
 def test_check_digit_10_is_invalid():
     # Find a number whose modulus-11 check digit computes to 10
-    from nordtrace.core.orgnr import _checksum_valid
     base = "98246371"
     w = [3, 2, 7, 6, 5, 4, 3, 2]
     total = sum(int(base[i]) * w[i] for i in range(8))

@@ -13,6 +13,7 @@ Every adapter must use this gateway. It enforces:
 Design invariant: `grep -rn "httpx\\|requests\\|urllib.request" src/` must only
 show usage inside this module (and the LLM client which uses it too).
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -20,7 +21,7 @@ import logging
 import re
 import socket
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from urllib import robotparser
 from urllib.parse import urlparse
@@ -29,13 +30,19 @@ import httpx
 
 from nordtrace.core.budget import BudgetExceededError, BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.models import SourceRecord, SourceType, content_hash, new_id, utcnow
+from nordtrace.core.models import SourceRecord, SourceType, content_hash, utcnow
 
 logger = logging.getLogger("nordtrace.gateway")
 
 _PRIVATE_HOST_HINTS = {
-    "localhost", "localhost.localdomain", "ip6-localhost", "metadata.google.internal",
-    "instance-data", "169.254.169.254", "0.0.0.0", "::1",
+    "localhost",
+    "localhost.localdomain",
+    "ip6-localhost",
+    "metadata.google.internal",
+    "instance-data",
+    "169.254.169.254",
+    "0.0.0.0",
+    "::1",
 }
 
 _RETRY_STATUS = {429, 500, 502, 503, 504}
@@ -45,7 +52,7 @@ def _resolve_host(hostname: str) -> List[str]:
     """Resolve hostname to IPs for SSRF validation. Returns [] on failure."""
     try:
         infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
-        return sorted({info[4][0] for info in infos})
+        return sorted({str(info[4][0]) for info in infos})
     except (socket.gaierror, UnicodeError):
         return []
 
@@ -90,7 +97,9 @@ def validate_url(url: str, allowed_domains: Optional[List[str]] = None) -> Tuple
         host_is_numeric_ip = True
     except ValueError:
         # try IPv4 numeric variants: pure-integer decimal, 0x hex, octal-ish labels
-        if re.match(r"^\d+$", host) or re.match(r"^(0x[0-9a-f]+|0[0-7]+)(\.(0x[0-9a-f]+|0[0-7]+|\d+))*$", host, re.I):
+        if re.match(r"^\d+$", host) or re.match(
+            r"^(0x[0-9a-f]+|0[0-7]+)(\.(0x[0-9a-f]+|0[0-7]+|\d+))*$", host, re.I
+        ):
             host_is_numeric_ip = True
     if host_is_numeric_ip:
         raise SSRFError("raw/numeric IP targets are blocked")
@@ -112,6 +121,7 @@ def validate_url(url: str, allowed_domains: Optional[List[str]] = None) -> Tuple
         clean += f"?{parsed.query}"
     return clean, host
 
+
 @dataclass
 class CachedResponse:
     url: str
@@ -120,6 +130,7 @@ class CachedResponse:
     content_hash: str
     retrieved_at: float
     headers: Dict[str, str]
+    content: bytes = b""
     from_cache: bool = False
     final_url: str = ""
 
@@ -175,8 +186,9 @@ class RequestGateway:
             try:
                 # robots.txt fetch does not count against the crawl budget
                 # (it's a politeness requirement, not research data)
-                async with httpx.AsyncClient(timeout=10.0, follow_redirects=True,
-                                             headers={"User-Agent": settings.user_agent}) as c:
+                async with httpx.AsyncClient(
+                    timeout=10.0, follow_redirects=True, headers={"User-Agent": settings.user_agent}
+                ) as c:
                     r = await c.get(robots_url)
                 if r.status_code == 200:
                     rp.parse(r.text.splitlines())
@@ -211,8 +223,11 @@ class RequestGateway:
         respect_robots: bool = False,
         allowed_domains: Optional[List[str]] = None,
         retries: int = 2,
-    ) -> Optional[SourceRecord]:
+    ) -> SourceRecord:
         """Fetch a URL through all budget/security gates.
+
+        Always returns a SourceRecord (access_status=failed/blocked on error,
+        never None) — callers can rely on access_status without None-checks.
 
         Returns a SourceRecord with access_status and (on success) content hash.
         The response *text* is stored in the gateway cache, retrievable via
@@ -225,17 +240,26 @@ class RequestGateway:
         except SSRFError as e:
             logger.warning("SSRF blocked %s: %s", url, e)
             return SourceRecord(
-                url=url, domain=urlparse(url).hostname, source_type=source_type,
-                authority_tier=authority_tier, access_status="blocked",
-                error_detail=f"ssrf: {e}", org_number=company, retrieved_at=utcnow().isoformat(),
+                url=url,
+                domain=urlparse(url).hostname,
+                source_type=source_type,
+                authority_tier=authority_tier,
+                access_status="blocked",
+                error_detail=f"ssrf: {e}",
+                org_number=company,
+                retrieved_at=utcnow().isoformat(),
             )
 
         # 2. Robots check (for crawlers)
         if respect_robots and not await self._robots_allows(clean_url):
             return SourceRecord(
-                url=clean_url, domain=host, source_type=source_type,
-                authority_tier=authority_tier, access_status="robots_denied",
-                error_detail="disallowed by robots.txt", org_number=company,
+                url=clean_url,
+                domain=host,
+                source_type=source_type,
+                authority_tier=authority_tier,
+                access_status="robots_denied",
+                error_detail="disallowed by robots.txt",
+                org_number=company,
                 retrieved_at=utcnow().isoformat(),
             )
 
@@ -260,76 +284,117 @@ class RequestGateway:
                     clean_url,
                     headers={"User-Agent": settings.user_agent, "Accept": "*/*"},
                 )
-                size = int(resp.headers.get("content-length", 0) or 0)
                 limit = max_bytes or settings.max_response_bytes
                 # Stream guard: we already have full body in memory via httpx default;
                 # enforce size after read.
                 body = resp.text
                 if len(resp.content) > limit:
-                    self.budget.requests.record_outcome(False, retry=attempt > 1, domain=host, stage=stage, company=company)
+                    self.budget.requests.record_outcome(
+                        False, retry=attempt > 1, domain=host, stage=stage, company=company
+                    )
                     return SourceRecord(
-                        url=clean_url, domain=host, source_type=source_type,
-                        authority_tier=authority_tier, http_status=resp.status_code,
-                        access_status="failed", error_detail=f"response too large ({len(resp.content)} > {limit})",
-                        org_number=company, retrieved_at=utcnow().isoformat(),
+                        url=clean_url,
+                        domain=host,
+                        source_type=source_type,
+                        authority_tier=authority_tier,
+                        http_status=resp.status_code,
+                        access_status="failed",
+                        error_detail=f"response too large ({len(resp.content)} > {limit})",
+                        org_number=company,
+                        retrieved_at=utcnow().isoformat(),
                     )
                 status = resp.status_code
                 success = status == 200
-                self.budget.requests.record_outcome(success, retry=attempt > 1, domain=host, stage=stage, company=company)
+                self.budget.requests.record_outcome(
+                    success, retry=attempt > 1, domain=host, stage=stage, company=company
+                )
                 if status == 200:
                     ch = content_hash(body)
                     cached = CachedResponse(
-                        url=clean_url, status_code=status, text=body, content_hash=ch,
-                        retrieved_at=time.time(), headers=dict(resp.headers), final_url=str(resp.url),
+                        url=clean_url,
+                        status_code=status,
+                        text=body,
+                        content_hash=ch,
+                        retrieved_at=time.time(),
+                        headers=dict(resp.headers),
+                        final_url=str(resp.url),
+                        content=resp.content,
                     )
                     self._cache[clean_url] = cached
                     return SourceRecord(
-                        url=clean_url, domain=host, source_type=source_type,
-                        authority_tier=authority_tier, http_status=status,
-                        access_status="success", content_hash=ch,
-                        retrieved_at=utcnow().isoformat(), org_number=company,
+                        url=clean_url,
+                        domain=host,
+                        source_type=source_type,
+                        authority_tier=authority_tier,
+                        http_status=status,
+                        access_status="success",
+                        content_hash=ch,
+                        retrieved_at=utcnow().isoformat(),
+                        org_number=company,
                     )
                 if status in _RETRY_STATUS and attempt <= retries:
                     await _backoff(attempt)
                     last_error = f"http {status}"
                     continue
                 return SourceRecord(
-                    url=clean_url, domain=host, source_type=source_type,
-                    authority_tier=authority_tier, http_status=status,
+                    url=clean_url,
+                    domain=host,
+                    source_type=source_type,
+                    authority_tier=authority_tier,
+                    http_status=status,
                     access_status="blocked" if status in (401, 403) else "failed",
-                    error_detail=f"http {status}", org_number=company,
+                    error_detail=f"http {status}",
+                    org_number=company,
                     retrieved_at=utcnow().isoformat(),
                 )
             except (httpx.TimeoutException, httpx.TransportError) as e:
-                self.budget.requests.record_outcome(False, retry=attempt > 1, domain=host, stage=stage, company=company)
+                self.budget.requests.record_outcome(
+                    False, retry=attempt > 1, domain=host, stage=stage, company=company
+                )
                 last_error = type(e).__name__
                 if attempt <= retries:
                     await _backoff(attempt)
                     continue
                 break
             except Exception as e:  # unexpected → do not retry
-                self.budget.requests.record_outcome(False, retry=False, domain=host, stage=stage, company=company)
+                self.budget.requests.record_outcome(
+                    False, retry=False, domain=host, stage=stage, company=company
+                )
                 logger.exception("gateway error for %s", clean_url)
                 return SourceRecord(
-                    url=clean_url, domain=host, source_type=source_type,
-                    authority_tier=authority_tier, access_status="failed",
-                    error_detail=f"error: {type(e).__name__}", org_number=company,
+                    url=clean_url,
+                    domain=host,
+                    source_type=source_type,
+                    authority_tier=authority_tier,
+                    access_status="failed",
+                    error_detail=f"error: {type(e).__name__}",
+                    org_number=company,
                     retrieved_at=utcnow().isoformat(),
                 )
         return SourceRecord(
-            url=clean_url, domain=host, source_type=source_type,
-            authority_tier=authority_tier, access_status="timeout" if last_error and "Timeout" in last_error else "failed",
-            error_detail=last_error or "retries exhausted", org_number=company,
+            url=clean_url,
+            domain=host,
+            source_type=source_type,
+            authority_tier=authority_tier,
+            access_status="timeout" if last_error and "Timeout" in last_error else "failed",
+            error_detail=last_error or "retries exhausted",
+            org_number=company,
             retrieved_at=utcnow().isoformat(),
         )
 
-    def _source_from_cache(self, cached: CachedResponse, source_type: str, authority_tier: int,
-                           company: Optional[str], url: str) -> SourceRecord:
+    def _source_from_cache(
+        self, cached: CachedResponse, source_type: str, authority_tier: int, company: Optional[str], url: str
+    ) -> SourceRecord:
         rec = SourceRecord(
-            url=url, domain=urlparse(url).hostname, source_type=source_type,
-            authority_tier=authority_tier, http_status=cached.status_code,
-            content_hash=cached.content_hash, access_status="success",
-            retrieved_at=utcnow().isoformat(), org_number=company,
+            url=url,
+            domain=urlparse(url).hostname,
+            source_type=source_type,
+            authority_tier=authority_tier,
+            http_status=cached.status_code,
+            content_hash=cached.content_hash,
+            access_status="success",
+            retrieved_at=utcnow().isoformat(),
+            org_number=company,
         )
         return rec
 

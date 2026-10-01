@@ -2,24 +2,23 @@
 
 Every number displayed by the frontend comes from these endpoints.
 """
+
 from __future__ import annotations
 
-import asyncio
-import logging
 import asyncio
 import json
 import logging
 import threading
 from pathlib import Path
+from typing import Dict, List, Optional
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.models import ResearchRun, RunState, TerminalState, utcnow
+from nordtrace.core.models import Fact, ResearchRun, RunState, TerminalState, utcnow
 from nordtrace.core.orgnr import validate_orgnr
 from nordtrace.core.repository import Repository
 from nordtrace.engine.pipeline import ResearchPipeline
@@ -27,8 +26,11 @@ from nordtrace.engine.runner import BatchRunner
 
 logger = logging.getLogger("nordtrace.api")
 
-app = FastAPI(title="NordTrace", version="2.0.0",
-              description="Norwegian company intelligence agent — evidence-backed research")
+app = FastAPI(
+    title="NordTrace",
+    version="2.0.0",
+    description="Norwegian company intelligence agent — evidence-backed research",
+)
 
 _repo_lock = threading.Lock()
 _repo_instance: Optional[Repository] = None
@@ -77,7 +79,7 @@ def _run_research_blocking(orgnr: str, run_id: str) -> None:
             repo.update_run(run)
             # mark AFTER update_run so update_run doesn't clobber the fresh state
             repo.mark_company_state(run_id, orgnr, outcome.terminal_state)
-    except Exception as e:
+    except Exception:
         logger.exception("background research failed")
         run = repo.get_run(run_id)
         if run:
@@ -139,36 +141,52 @@ def _company_payload(repo: Repository, orgnr: str, run_id: Optional[str] = None)
     identity = repo.get_company(orgnr)
     if identity is None:
         raise HTTPException(status_code=404, detail=f"company {orgnr} not found")
+
     def _dedupe(facts: list) -> list:
-        seen: Dict[str, object] = {}
+        seen: Dict[str, Fact] = {}
         for f in facts:
             if f.status not in ("PUBLISHED", "CONFLICT", "SOURCE_UNAVAILABLE"):
                 continue
             k = f.fact_key()
-            if k not in seen or (f.retrieved_at or "") > (seen[k].retrieved_at or ""):
+            prev = seen.get(k)
+            if k not in seen or (f.retrieved_at or "") > ((prev.retrieved_at if prev else "") or ""):
                 seen[k] = f
         return list(seen.values())
 
     facts = _dedupe(repo.get_facts(orgnr, run_id))
     all_facts = facts
     sources = repo.get_sources(orgnr, run_id)
-    evidence = repo.evidence_for_company(orgnr, run_id)
     changes = repo.get_changes(orgnr)
     # coverage from facts
     cov: Dict[str, str] = {}
     pub = [f for f in all_facts if f.status == "PUBLISHED"]
-    for cat in ("identity", "business_description", "industry", "financials", "leadership",
-                "locations", "products_services", "jobs", "recent_activity"):
+    for cat in (
+        "identity",
+        "business_description",
+        "industry",
+        "financials",
+        "leadership",
+        "locations",
+        "products_services",
+        "jobs",
+        "recent_activity",
+    ):
         if any(f.category == cat for f in pub):
             cov[cat] = "found"
         else:
             cov[cat] = "not_found"
     rejected = [
-        {"url": s.url, "reason": s.error_detail or s.access_status, "source_id": s.source_id,
-         "access_status": s.access_status}
-        for s in sources if s.access_status in ("blocked", "failed", "timeout", "robots_denied")
+        {
+            "url": s.url,
+            "reason": s.error_detail or s.access_status,
+            "source_id": s.source_id,
+            "access_status": s.access_status,
+        }
+        for s in sources
+        if s.access_status in ("blocked", "failed", "timeout", "robots_denied")
     ]
     from nordtrace.core.synthesis import _unknown_list
+
     coverage_obj = type("C", (), {"get": staticmethod(lambda c: cov.get(c, "not_found"))})()
     unknowns = _unknown_list(coverage_obj)  # type: ignore[arg-type]
     # run metadata
@@ -188,8 +206,9 @@ def _company_payload(repo: Repository, orgnr: str, run_id: Optional[str] = None)
                 run_id = r.get("run_id")
                 break
     identity_row = repo.get_company(orgnr)
-    terminal = "available" if identity_row and len(pub) >= 3 else (
-        "not_available" if identity_row else "failed")
+    terminal = (
+        "available" if identity_row and len(pub) >= 3 else ("not_available" if identity_row else "failed")
+    )
     return {
         "run_id": run_id,
         "organisation_number": orgnr,
@@ -256,13 +275,13 @@ async def get_trace(run_id: str):
     if repo.get_run(run_id) is None:
         raise HTTPException(status_code=404, detail=f"run {run_id} not found")
     events = repo.get_trace(run_id)
-    return {"run_id": run_id,
-            "trace": [json.loads(e.model_dump_json()) for e in events]}
+    return {"run_id": run_id, "trace": [json.loads(e.model_dump_json()) for e in events]}
 
 
 @app.post("/batch")
 async def start_batch(req: BatchRequest, background: BackgroundTasks):
-    valid, invalid = [], []
+    valid: List[str] = []
+    invalid: List[str] = []
     for o in req.organisation_numbers:
         check = validate_orgnr(o.replace(" ", "").replace("-", ""))
         (valid if check.valid else invalid).append(o)
@@ -292,7 +311,8 @@ async def run_status():
     """Current run budgets (requests/runtime/cost) for the dashboard."""
     repo = get_repo()
     runs = repo.list_runs(limit=1)
-    from nordtrace.core.budget import RequestBudget, RuntimeBudget, CostBudget
+    from nordtrace.core.budget import CostBudget, RequestBudget, RuntimeBudget
+
     rb = RequestBudget(global_limit=settings.max_requests)
     rt = RuntimeBudget(total_limit_sec=settings.max_runtime_sec)
     cb = CostBudget(limit=settings.max_api_cost_usd)

@@ -5,6 +5,7 @@ Deterministic extraction only — the LLM is never allowed to invent financial
 values. If a PDF is scanned/image-based (no extractable text) we report
 extraction as failed, honestly.
 """
+
 from __future__ import annotations
 
 import io
@@ -48,6 +49,7 @@ class PdfPage:
     page_number: int
     text: str
 
+
 _NUMBER_RE = re.compile(r"(-?\d[\d\u00a0.,]*\d|\d)")
 _SPACE_GROUP_RE = re.compile(r"^(\d{1,3}( \d{3})+)$")
 
@@ -81,6 +83,7 @@ def _join_space_thousands(tokens: list) -> list:
             i += 1
     return out
 
+
 @dataclass
 class PdfResult:
     ok: bool
@@ -107,8 +110,9 @@ def extract_pdf_pages(pdf_bytes: bytes) -> PdfResult:
             total_chars += len(text.strip())
             pages.append(PdfPage(page_number=i, text=text))
         if total_chars < 50:
-            return PdfResult(ok=False, pages=pages, is_scanned=True,
-                             error="no extractable text (likely scanned/image PDF)")
+            return PdfResult(
+                ok=False, pages=pages, is_scanned=True, error="no extractable text (likely scanned/image PDF)"
+            )
         return PdfResult(ok=True, pages=pages)
     except Exception as e:
         return PdfResult(ok=False, error=f"pdf parse error: {type(e).__name__}")
@@ -122,13 +126,13 @@ def _parse_number(raw: str) -> Optional[float]:
     s = raw.replace("\u00a0", " ").strip().rstrip(".,;")
     if not s:
         return None
-    if re.match(r"^-?\d{1,3}(\s\d{3})+$", s):            # 1 234 567
+    if re.match(r"^-?\d{1,3}(\s\d{3})+$", s):  # 1 234 567
         s = s.replace(" ", "")
-    elif re.match(r"^-?\d{1,3}(\.\d{3})+$", s):          # 1.234.567
+    elif re.match(r"^-?\d{1,3}(\.\d{3})+$", s):  # 1.234.567
         s = s.replace(".", "")
-    elif re.match(r"^-?\d{1,3}(,\d{3})+(\.\d+)?$", s):   # 47,687.4 -> 47687.4
+    elif re.match(r"^-?\d{1,3}(,\d{3})+(\.\d+)?$", s):  # 47,687.4 -> 47687.4
         s = s.replace(",", "")
-    elif re.match(r"^-?\d+,\d{1,2}$", s):                # 1,2 (decimal comma)
+    elif re.match(r"^-?\d+,\d{1,2}$", s):  # 1,2 (decimal comma)
         s = s.replace(",", ".")
     s = s.replace(" ", "")
     try:
@@ -155,12 +159,14 @@ def extract_financial_lines(pages: List[PdfPage]) -> List[Dict]:
                         value = _parse_number(cand)
                         if value is not None and value != 0:
                             break
-                    out.append({
-                        "field": field,
-                        "line": line_s[:200],
-                        "page": page.page_number,
-                        "value": value,
-                    })
+                    out.append(
+                        {
+                            "field": field,
+                            "line": line_s[:200],
+                            "page": page.page_number,
+                            "value": value,
+                        }
+                    )
                     break
     return out
 
@@ -179,8 +185,11 @@ class PdfFinancialPipeline:
         """Returns (evidences, facts, source, status). Status:
         found / not_found / failed / blocked."""
         src = await self.gateway.fetch(
-            pdf_url, stage="pdf", company=identity.organisation_number,
-            source_type=SourceType.COMPANY_DOCUMENT.value, authority_tier=1,
+            pdf_url,
+            stage="pdf",
+            company=identity.organisation_number,
+            source_type=SourceType.COMPANY_DOCUMENT.value,
+            authority_tier=1,
             max_bytes=settings.max_pdf_bytes,
         )
         if src.access_status != "success":
@@ -188,7 +197,7 @@ class PdfFinancialPipeline:
             return [], [], src, status
 
         # content-type verification
-        cached = self.gateway.get_content(src.url)
+        cached = self.gateway.get_content(src.url or "")
         ctype = (cached.headers.get("content-type") or "").lower() if cached else ""
         pdf_bytes = cached.content if cached else b""
         if "pdf" not in ctype and not pdf_bytes.startswith(b"%PDF"):
@@ -198,12 +207,16 @@ class PdfFinancialPipeline:
         if not result.ok:
             # honest failure: scanned or malformed PDF
             ev = EvidenceRecord(
-                source_id=src.source_id, url=src.url,
+                source_id=src.source_id,
+                url=src.url,
                 source_title="Annual report (PDF, unreadable)",
-                source_type=SourceType.COMPANY_DOCUMENT.value, authority_tier=1,
-                retrieved_at=src.retrieved_at, evidence_text=result.error,
+                source_type=SourceType.COMPANY_DOCUMENT.value,
+                authority_tier=1,
+                retrieved_at=src.retrieved_at,
+                evidence_text=result.error,
                 content_hash=content_hash(pdf_bytes[:100000].hex() or src.content_hash or ""),
-                entity_verdict=MatchVerdict.AMBIGUOUS.value, org_number=identity.organisation_number,
+                entity_verdict=MatchVerdict.AMBIGUOUS.value,
+                org_number=identity.organisation_number,
             )
             return [ev], [], src, "failed"
 
@@ -213,12 +226,15 @@ class PdfFinancialPipeline:
         name_in_doc = normalize_name(identity.legal_name) in normalize_name(full_text)
         if not (orgnr_in_doc or name_in_doc):
             ev = EvidenceRecord(
-                source_id=src.source_id, url=src.url,
+                source_id=src.source_id,
+                url=src.url,
                 source_title="Annual report (PDF, entity mismatch)",
-                source_type=SourceType.COMPANY_DOCUMENT.value, authority_tier=1,
+                source_type=SourceType.COMPANY_DOCUMENT.value,
+                authority_tier=1,
                 retrieved_at=src.retrieved_at,
                 evidence_text="Document does not mention the target company name or orgnr.",
-                content_hash=src.content_hash, entity_verdict=MatchVerdict.REJECTED.value,
+                content_hash=src.content_hash,
+                entity_verdict=MatchVerdict.REJECTED.value,
                 org_number=identity.organisation_number,
             )
             return [ev], [], src, "not_found"
@@ -230,41 +246,53 @@ class PdfFinancialPipeline:
 
         # fiscal year from document (prefer explicit)
         fy = None
-        for l in lines:
-            if l["field"] == "fiscal_year":
-                m = re.search(r"(19|20)\d{2}", l["line"])
+        for ln_item in lines:
+            if ln_item["field"] == "fiscal_year":
+                m = re.search(r"(19|20)\d{2}", ln_item["line"])
                 if m:
                     fy = f"FY{m.group(0)}"
                     break
 
         seen_fields: Dict[str, Dict] = {}
-        for l in lines:
-            if l["field"] == "fiscal_year" or l["value"] is None:
+        for ln_item in lines:
+            if ln_item["field"] == "fiscal_year" or ln_item["value"] is None:
                 continue
-            k = l["field"]
+            k = ln_item["field"]
             if k not in seen_fields:  # first occurrence wins (statement order)
-                seen_fields[k] = l
-        for field, l in seen_fields.items():
+                seen_fields[k] = ln_item
+        for field, ln_item in seen_fields.items():
             ev = EvidenceRecord(
-                source_id=src.source_id, url=src.url,
-                source_title=f"Annual report (PDF), p.{l['page']}",
-                source_type=SourceType.COMPANY_DOCUMENT.value, authority_tier=1,
+                source_id=src.source_id,
+                url=src.url,
+                source_title=f"Annual report (PDF), p.{ln_item['page']}",
+                source_type=SourceType.COMPANY_DOCUMENT.value,
+                authority_tier=1,
                 retrieved_at=src.retrieved_at,
-                evidence_text=l["line"],
-                page_or_section=f"page {l['page']}",
+                evidence_text=ln_item["line"],
+                page_or_section=f"page {ln_item['page']}",
                 content_hash=src.content_hash,
                 entity_verdict=MatchVerdict.LIKELY.value,
                 org_number=identity.organisation_number,
                 entity_match_details={"orgnr_in_doc": orgnr_in_doc, "name_in_doc": name_in_doc},
             )
             evidences.append(ev)
-            facts.append(Fact(
-                org_number=identity.organisation_number, run_id=run_id,
-                category="financials", field=field, value=l["value"],
-                normalized_value=l["value"], currency="NOK",
-                reporting_period=fy, source_id=src.source_id, evidence_id=ev.evidence_id,
-                retrieved_at=now, entity_verdict=MatchVerdict.LIKELY.value,
-                fact_confidence=0.75, status=FactStatus.PUBLISHED.value,
-            ))
+            facts.append(
+                Fact(
+                    org_number=identity.organisation_number,
+                    run_id=run_id,
+                    category="financials",
+                    field=field,
+                    value=ln_item["value"],
+                    normalized_value=ln_item["value"],
+                    currency="NOK",
+                    reporting_period=fy,
+                    source_id=src.source_id,
+                    evidence_id=ev.evidence_id,
+                    retrieved_at=now,
+                    entity_verdict=MatchVerdict.LIKELY.value,
+                    fact_confidence=0.75,
+                    status=FactStatus.PUBLISHED.value,
+                )
+            )
         status = "found" if facts else "not_found"
         return evidences, facts, src, status

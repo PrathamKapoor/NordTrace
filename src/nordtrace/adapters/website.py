@@ -7,6 +7,7 @@ verification of each page → facts (description, contact, locations, careers).
 Security: robots respected, SSRF-guarded via gateway, page-count and size
 limits, crawled content treated as UNTRUSTED DATA (never instructions).
 """
+
 from __future__ import annotations
 
 import re
@@ -48,7 +49,8 @@ _PRIORITY_PATHS = [
 _JUNK_RE = re.compile(
     r"/(privacy|cookies?|gdpr|terms|legal|imprint|wp-admin|wp-content|wp-includes|"
     r"feed|xmlrpc|login|cart|checkout|category|tag|author|page/\d+)"
-    r"|\.((css|js|jpg|jpeg|png|gif|svg|webp|ico|woff2?|ttf|mp4|zip)(\?.*)?)$", re.IGNORECASE
+    r"|\.((css|js|jpg|jpeg|png|gif|svg|webp|ico|woff2?|ttf|mp4|zip)(\?.*)?)$",
+    re.IGNORECASE,
 )
 
 
@@ -72,6 +74,7 @@ def classify_url(url: str) -> Tuple[str, int]:
             if any(seg.startswith(k) and len(seg) <= len(k) + 12 for k in keywords):
                 return ptype, prio
     return "OTHER", 20
+
 
 @dataclass
 class CrawledPage:
@@ -108,7 +111,7 @@ class WebsiteAdapter:
         internal, pdfs = [], []
         reg = registrable_domain(domain)
         for a in soup.find_all("a", href=True):
-            href = a["href"].strip()
+            href = str(a["href"]).strip()
             if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
                 continue
             full = urljoin(base_url, href)
@@ -133,7 +136,9 @@ class WebsiteAdapter:
         if core:
             base = "-".join(core[:2]).replace(" ", "-")
             for tld in ("no", "com"):
-                cands.append({"url": f"https://www.{base}.{tld}", "reason": f"name-derived .{tld}", "confidence": 0.3})
+                cands.append(
+                    {"url": f"https://www.{base}.{tld}", "reason": f"name-derived .{tld}", "confidence": 0.3}
+                )
         seen = set()
         out = []
         for c in cands:
@@ -179,22 +184,32 @@ class WebsiteAdapter:
             if self.budget.requests.remaining() < 6:
                 break
             src = await self.gateway.fetch(
-                cand["url"], stage="website_discovery", company=identity.organisation_number,
-                source_type=self.source_type, authority_tier=self.authority_tier,
+                cand["url"],
+                stage="website_discovery",
+                company=identity.organisation_number,
+                source_type=self.source_type,
+                authority_tier=self.authority_tier,
             )
             sources.append(src)
             if src.access_status != "success":
-                rejected.append({"url": cand["url"], "reason": f"fetch failed ({src.access_status}: {src.error_detail})"})
+                rejected.append(
+                    {"url": cand["url"], "reason": f"fetch failed ({src.access_status}: {src.error_detail})"}
+                )
                 continue
-            text = self._soup_text(BeautifulSoup(self.gateway.get_content(src.url).text, "lxml"))
+            assert src.url is not None  # access_status=success implies a URL
+            home_cached2 = self.gateway.get_content(src.url)
+            assert home_cached2 is not None  # just fetched successfully
+            text = self._soup_text(BeautifulSoup(home_cached2.text, "lxml"))
             ok, why = self.verify_site_homepage(identity, text, src.url)
             if ok:
                 home_url, home_text = src.url, text
-                self.resolver.register_verified_domain(registrable_domain(src.url), identity.organisation_number)
+                self.resolver.register_verified_domain(
+                    registrable_domain(src.url), identity.organisation_number
+                )
                 break
             rejected.append({"url": cand["url"], "reason": f"identity not confirmed: {why}"})
 
-        if not home_url:
+        if not home_url or home_text is None:
             cov["business_description"] = "not_available"
             return evidences, facts, sources, rejected, cov
 
@@ -214,18 +229,29 @@ class WebsiteAdapter:
             entity_match_details={"homepage": home_url},
         )
         evidences.append(ev_home)
-        desc = _meta_description(BeautifulSoup(self.gateway.get_content(home_url).text, "lxml")) or home_text[:400]
-        facts.append(Fact(
-            org_number=identity.organisation_number, run_id=run_id, category="business_description",
-            field="description", value=desc[:1200], normalized_value=desc[:300],
-            source_id=ev_home.source_id, evidence_id=ev_home.evidence_id,
-            retrieved_at=now, entity_verdict=MatchVerdict.LIKELY.value,
-            fact_confidence=0.8, status=FactStatus.PUBLISHED.value,
-        ))
+        home_cached = self.gateway.get_content(home_url)
+        assert home_cached is not None  # successfully fetched above
+        desc = _meta_description(BeautifulSoup(home_cached.text, "lxml")) or home_text[:400]
+        facts.append(
+            Fact(
+                org_number=identity.organisation_number,
+                run_id=run_id,
+                category="business_description",
+                field="description",
+                value=desc[:1200],
+                normalized_value=desc[:300],
+                source_id=ev_home.source_id,
+                evidence_id=ev_home.evidence_id,
+                retrieved_at=now,
+                entity_verdict=MatchVerdict.LIKELY.value,
+                fact_confidence=0.8,
+                status=FactStatus.PUBLISHED.value,
+            )
+        )
         cov["business_description"] = "found"
 
         # ---- 2. focused crawl from homepage links ------------------------
-        soup = BeautifulSoup(self.gateway.get_content(home_url).text, "lxml")
+        soup = BeautifulSoup(home_cached.text, "lxml")
         links, pdf_links = self._extract_links(soup, home_url, urlsplit(home_url).hostname or "")
         scored: Dict[str, int] = {}
         for link in links:
@@ -243,8 +269,11 @@ class WebsiteAdapter:
             if link == home_url:
                 continue
             src = await self.gateway.fetch(
-                link, stage="website_crawl", company=identity.organisation_number,
-                source_type=self.source_type, authority_tier=self.authority_tier,
+                link,
+                stage="website_crawl",
+                company=identity.organisation_number,
+                source_type=self.source_type,
+                authority_tier=self.authority_tier,
                 respect_robots=True,
                 allowed_domains=[registrable_domain(urlsplit(home_url).hostname or "")],
             )
@@ -252,7 +281,10 @@ class WebsiteAdapter:
             if src.access_status != "success":
                 continue
             crawled_pages += 1
-            page_text = self._soup_text(BeautifulSoup(self.gateway.get_content(src.url).text, "lxml"))
+            assert src.url is not None  # success implies URL
+            page_cached = self.gateway.get_content(src.url)
+            assert page_cached is not None  # fetched successfully
+            page_text = self._soup_text(BeautifulSoup(page_cached.text, "lxml"))
             ptype, _ = classify_url(link)
             # Pages under the verified company domain: domain corroboration is strong.
             # Still run the resolver to catch explicit foreign-orgnr contradictions.
@@ -264,11 +296,15 @@ class WebsiteAdapter:
                 match = MatchResult("LIKELY", match.signals, "same verified company domain", 0.5)
 
             ev = EvidenceRecord(
-                source_id=src.source_id, url=src.url,
+                source_id=src.source_id,
+                url=src.url,
                 source_title=f"Official website ({ptype.lower()})",
-                source_type=self.source_type, authority_tier=self.authority_tier,
-                retrieved_at=now, evidence_text=page_text[:600],
-                content_hash=src.content_hash, entity_verdict=match.verdict,
+                source_type=self.source_type,
+                authority_tier=self.authority_tier,
+                retrieved_at=now,
+                evidence_text=page_text[:600],
+                content_hash=src.content_hash,
+                entity_verdict=match.verdict,
                 org_number=identity.organisation_number,
                 entity_match_details={"page_type": ptype},
             )
@@ -277,80 +313,130 @@ class WebsiteAdapter:
             if ptype == "CONTACT":
                 contact = _extract_contact(page_text, link)
                 if contact:
-                    facts.append(Fact(
-                        org_number=identity.organisation_number, run_id=run_id,
-                        category="locations", field="contact",
-                        value=contact, normalized_value=str(contact)[:200],
-                        source_id=src.source_id, evidence_id=ev.evidence_id,
-                        retrieved_at=now, entity_verdict=match.verdict,
-                        fact_confidence=0.85, status=FactStatus.PUBLISHED.value,
-                    ))
+                    facts.append(
+                        Fact(
+                            org_number=identity.organisation_number,
+                            run_id=run_id,
+                            category="locations",
+                            field="contact",
+                            value=contact,
+                            normalized_value=str(contact)[:200],
+                            source_id=src.source_id,
+                            evidence_id=ev.evidence_id,
+                            retrieved_at=now,
+                            entity_verdict=match.verdict,
+                            fact_confidence=0.85,
+                            status=FactStatus.PUBLISHED.value,
+                        )
+                    )
                     cov["locations"] = "found"
             elif ptype == "CAREERS":
                 cov["jobs"] = cov.get("jobs") or "found"
-                facts.append(Fact(
-                    org_number=identity.organisation_number, run_id=run_id,
-                    category="jobs", field="careers_page",
-                    value={"url": link, "summary": page_text[:300]},
-                    normalized_value=link, source_id=src.source_id,
-                    evidence_id=ev.evidence_id, retrieved_at=now,
-                    entity_verdict=match.verdict, fact_confidence=0.8,
-                    status=FactStatus.PUBLISHED.value,
-                ))
+                facts.append(
+                    Fact(
+                        org_number=identity.organisation_number,
+                        run_id=run_id,
+                        category="jobs",
+                        field="careers_page",
+                        value={"url": link, "summary": page_text[:300]},
+                        normalized_value=link,
+                        source_id=src.source_id,
+                        evidence_id=ev.evidence_id,
+                        retrieved_at=now,
+                        entity_verdict=match.verdict,
+                        fact_confidence=0.8,
+                        status=FactStatus.PUBLISHED.value,
+                    )
+                )
             elif ptype in ("PRODUCT", "SERVICE"):
                 cov["products_services"] = "found"
-                facts.append(Fact(
-                    org_number=identity.organisation_number, run_id=run_id,
-                    category="products_services", field="offering",
-                    value={"url": link, "title": _page_title(BeautifulSoup(self.gateway.get_content(src.url).text, "lxml")), "summary": page_text[:400]},
-                    normalized_value=link, source_id=src.source_id,
-                    evidence_id=ev.evidence_id, retrieved_at=now,
-                    entity_verdict=match.verdict, fact_confidence=0.85,
-                    status=FactStatus.PUBLISHED.value,
-                ))
+                facts.append(
+                    Fact(
+                        org_number=identity.organisation_number,
+                        run_id=run_id,
+                        category="products_services",
+                        field="offering",
+                        value={
+                            "url": link,
+                            "title": _page_title(BeautifulSoup(page_cached.text, "lxml")),
+                            "summary": page_text[:400],
+                        },
+                        normalized_value=link,
+                        source_id=src.source_id,
+                        evidence_id=ev.evidence_id,
+                        retrieved_at=now,
+                        entity_verdict=match.verdict,
+                        fact_confidence=0.85,
+                        status=FactStatus.PUBLISHED.value,
+                    )
+                )
             elif ptype == "NEWS":
                 cov["recent_activity"] = cov.get("recent_activity") or "found"
-                facts.append(Fact(
-                    org_number=identity.organisation_number, run_id=run_id,
-                    category="recent_activity", field="news_page",
-                    value={"url": link, "summary": page_text[:300]},
-                    normalized_value=link, source_id=src.source_id,
-                    evidence_id=ev.evidence_id, retrieved_at=now,
-                    entity_verdict=match.verdict, fact_confidence=0.7,
-                    status=FactStatus.PUBLISHED.value,
-                ))
+                facts.append(
+                    Fact(
+                        org_number=identity.organisation_number,
+                        run_id=run_id,
+                        category="recent_activity",
+                        field="news_page",
+                        value={"url": link, "summary": page_text[:300]},
+                        normalized_value=link,
+                        source_id=src.source_id,
+                        evidence_id=ev.evidence_id,
+                        retrieved_at=now,
+                        entity_verdict=match.verdict,
+                        fact_confidence=0.7,
+                        status=FactStatus.PUBLISHED.value,
+                    )
+                )
             elif ptype == "LEADERSHIP":
                 people = _extract_names(page_text)
                 if people:
                     cov["leadership"] = "found"
                     for pname, prole in people[:6]:
                         evp = EvidenceRecord(
-                            source_id=src.source_id, url=src.url,
+                            source_id=src.source_id,
+                            url=src.url,
                             source_title="Official website (leadership)",
-                            source_type=self.source_type, authority_tier=self.authority_tier,
-                            retrieved_at=now, evidence_text=f"{pname} — {prole}",
-                            content_hash=src.content_hash, entity_verdict=match.verdict,
+                            source_type=self.source_type,
+                            authority_tier=self.authority_tier,
+                            retrieved_at=now,
+                            evidence_text=f"{pname} — {prole}",
+                            content_hash=src.content_hash,
+                            entity_verdict=match.verdict,
                             org_number=identity.organisation_number,
                             entity_match_details={"page_type": "LEADERSHIP"},
                         )
                         evidences.append(evp)
-                        facts.append(Fact(
-                            org_number=identity.organisation_number, run_id=run_id,
-                            category="leadership", field="role:web",
-                            value={"name": pname, "role": prole},
-                            normalized_value=f"{prole}:{pname}",
-                            source_id=src.source_id, evidence_id=evp.evidence_id,
-                            retrieved_at=now, entity_verdict=match.verdict,
-                            fact_confidence=0.8, status=FactStatus.PUBLISHED.value,
-                        ))
+                        facts.append(
+                            Fact(
+                                org_number=identity.organisation_number,
+                                run_id=run_id,
+                                category="leadership",
+                                field="role:web",
+                                value={"name": pname, "role": prole},
+                                normalized_value=f"{prole}:{pname}",
+                                source_id=src.source_id,
+                                evidence_id=evp.evidence_id,
+                                retrieved_at=now,
+                                entity_verdict=match.verdict,
+                                fact_confidence=0.8,
+                                status=FactStatus.PUBLISHED.value,
+                            )
+                        )
 
         # PDF discovery note (documents themselves go through the PDF pipeline)
         for pdf_url in pdf_links:
-            sources.append(SourceRecord(
-                url=pdf_url, source_type=SourceType.COMPANY_DOCUMENT.value,
-                authority_tier=1, access_status="success", org_number=identity.organisation_number,
-                retrieved_at=now, title="discovered PDF",
-            ))
+            sources.append(
+                SourceRecord(
+                    url=pdf_url,
+                    source_type=SourceType.COMPANY_DOCUMENT.value,
+                    authority_tier=1,
+                    access_status="success",
+                    org_number=identity.organisation_number,
+                    retrieved_at=now,
+                    title="discovered PDF",
+                )
+            )
 
         return evidences, facts, sources, rejected, cov
 
@@ -358,7 +444,7 @@ class WebsiteAdapter:
 def _meta_description(soup: BeautifulSoup) -> Optional[str]:
     meta = soup.find("meta", attrs={"name": "description"}) or soup.find("meta", property="og:description")
     if meta and meta.get("content"):
-        return re.sub(r"\s+", " ", meta["content"]).strip()[:600]
+        return re.sub(r"\s+", " ", str(meta["content"])).strip()[:600]
     return None
 
 
@@ -368,7 +454,9 @@ def _page_title(soup: BeautifulSoup) -> Optional[str]:
 
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_PHONE_RE = re.compile(r"(?:\+47[\s-]?)?\d{2}[\s-]?\d{2}[\s-]?\d{2}[\s-]?\d{2}(?:[\s-]?\d{2})?|(?:\+47[\s-]?)?\d{3}[\s-]?\d{2}[\s-]?\d{3}")
+_PHONE_RE = re.compile(
+    r"(?:\+47[\s-]?)?\d{2}[\s-]?\d{2}[\s-]?\d{2}[\s-]?\d{2}(?:[\s-]?\d{2})?|(?:\+47[\s-]?)?\d{3}[\s-]?\d{2}[\s-]?\d{3}"
+)
 _ADDR_RE = re.compile(r"\b[A-ZÆØÅ][\wæøå-]+(?:veien|gata|gaten|street|road|vei|allé|all)\s*\d+[A-Za-z]?\b")
 
 
@@ -382,7 +470,14 @@ def _extract_contact(text: str, url: str) -> Optional[Dict]:
 
 
 _ROLE_PATTERNS = [
-    (re.compile(r"(konserndirektør|administrerende direktør|adm\. dir\.|CEO)\s*[:\-]?\s*([A-ZÆØÅ][\wæøå.\- ]{2,50})", re.I), "CEO"),
+    (
+        re.compile(
+            r"(konserndirektør|administrerende direktør|adm\. dir\.|CEO)"
+            r"\s*[:\-]?\s*([A-ZÆØÅ][\wæøå.\- ]{2,50})",
+            re.I,
+        ),
+        "CEO",
+    ),
     (re.compile(r"(daglig leder)\s*[:\-]?\s*([A-ZÆØÅ][\wæøå.\- ]{2,50})", re.I), "daglig leder"),
     (re.compile(r"(styreleder|chair)\s*[:\-]?\s*([A-ZÆØÅ][\wæøå.\- ]{2,50})", re.I), "styreleder"),
     (re.compile(r"(CFO|finansdirektør)\s*[:\-]?\s*([A-ZÆØÅ][\wæøå.\- ]{2,50})", re.I), "CFO"),

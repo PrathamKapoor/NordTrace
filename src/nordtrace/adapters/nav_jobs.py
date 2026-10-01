@@ -6,6 +6,7 @@ Entity verification: employer names from NAV carry NO orgnr, so postings are
 matched against the canonical identity via the resolver (name + municipality
 corroboration). Same-name-different-company postings are rejected, never merged.
 """
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
@@ -13,7 +14,7 @@ from urllib.parse import quote
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.entity import EntityResolver, normalize_name
+from nordtrace.core.entity import EntityResolver
 from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
@@ -60,7 +61,7 @@ class NavJobsAdapter:
         if src.access_status != "success":
             return evidences, facts, src, rejected
 
-        cached = self.gateway.get_content(src.url)
+        cached = self.gateway.get_content(src.url or "")
         try:
             import json
 
@@ -80,15 +81,20 @@ class NavJobsAdapter:
                 continue
             # deterministic entity check: employer name must match target
             sim = self.resolver.evaluate(
-                identity, candidate_name=employer, candidate_text=f"{employer} {title}",
+                identity,
+                candidate_name=employer,
+                candidate_text=f"{employer} {title}",
             )
             if sim.verdict not in (MatchVerdict.VERIFIED.value, MatchVerdict.LIKELY.value):
-                rejected.append({"employer": employer, "title": title,
-                                 "reason": f"employer not verified: {sim.reason}"})
+                rejected.append(
+                    {"employer": employer, "title": title, "reason": f"employer not verified: {sim.reason}"}
+                )
                 continue
 
             locs = ad.get("locationList") or []
-            municipality = (locs[0].get("municipal") if locs else None) or (locs[0].get("city") if locs else None)
+            municipality = (locs[0].get("municipal") if locs else None) or (
+                locs[0].get("city") if locs else None
+            )
             props = ad.get("properties") or {}
             deadline = props.get("applicationdue")
             ad_url = _BOARD_URL.format(uuid=hit.get("_id", ""))
@@ -102,35 +108,37 @@ class NavJobsAdapter:
                 retrieved_at=now,
                 published_at=(ad.get("published") or "")[:10] or None,
                 evidence_text=f"{employer} søker {title} i {municipality or 'ukjent sted'}. "
-                              f"Publisert {(ad.get('published') or '')[:10]}; søknadsfrist {deadline or 'ukjent'}.",
+                f"Publisert {(ad.get('published') or '')[:10]}; søknadsfrist {deadline or 'ukjent'}.",
                 content_hash=src.content_hash,
                 entity_verdict=sim.verdict,
                 org_number=identity.organisation_number,
                 entity_match_details={"employer": employer, "match": sim.reason},
             )
             evidences.append(ev)
-            facts.append(Fact(
-                org_number=identity.organisation_number,
-                run_id=run_id,
-                category="jobs",
-                field="job_posting",
-                value={
-                    "title": title,
-                    "employer": employer,
-                    "location": municipality,
-                    "published": (ad.get("published") or "")[:10] or None,
-                    "deadline": deadline,
-                    "source": ad.get("source") or ad.get("medium"),
-                    "url": ad_url,
-                },
-                normalized_value=f"{title}|{municipality}|{(ad.get('published') or '')[:10]}",
-                source_id=src.source_id,
-                evidence_id=ev.evidence_id,
-                retrieved_at=now,
-                published_at=(ad.get("published") or "")[:10] or None,
-                entity_verdict=sim.verdict,
-                fact_confidence=0.9 if sim.verdict == MatchVerdict.VERIFIED.value else 0.7,
-                status=FactStatus.PUBLISHED.value,
-            ))
+            facts.append(
+                Fact(
+                    org_number=identity.organisation_number,
+                    run_id=run_id,
+                    category="jobs",
+                    field="job_posting",
+                    value={
+                        "title": title,
+                        "employer": employer,
+                        "location": municipality,
+                        "published": (ad.get("published") or "")[:10] or None,
+                        "deadline": deadline,
+                        "source": ad.get("source") or ad.get("medium"),
+                        "url": ad_url,
+                    },
+                    normalized_value=f"{title}|{municipality}|{(ad.get('published') or '')[:10]}",
+                    source_id=src.source_id,
+                    evidence_id=ev.evidence_id,
+                    retrieved_at=now,
+                    published_at=(ad.get("published") or "")[:10] or None,
+                    entity_verdict=sim.verdict,
+                    fact_confidence=0.9 if sim.verdict == MatchVerdict.VERIFIED.value else 0.7,
+                    status=FactStatus.PUBLISHED.value,
+                )
+            )
             published_count += 1
         return evidences, facts, src, rejected
