@@ -96,6 +96,7 @@ class BrregAdapter:
                 "timeout": "failed",
                 "blocked": "blocked",
                 "robots_denied": "blocked",
+                "rate_limited": "blocked",  # circuit OPEN: temporarily unavailable
             }.get(source.access_status, "failed")
             if source.http_status == 404:
                 return None, source, None, "not_found"

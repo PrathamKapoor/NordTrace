@@ -71,7 +71,7 @@ class DomainState:
         if self.consecutive_failures >= self.policy.breaker_threshold:
             # exponential cooldown: each repeated OPEN doubles the wait (capped)
             if self.circuit_open:
-                self._cooldown_mult = min(self._cooldown_mult * 2, 16)
+                self._cooldown_mult = min(self._cooldown_mult * 2, 4)
             else:
                 self._cooldown_mult = 1
             self.circuit_open = True

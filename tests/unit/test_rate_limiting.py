@@ -182,8 +182,9 @@ def test_pipeline_survives_rate_limited_source(tmp_path, monkeypatch):
 
 
 def test_exponential_cooldown_doubles():
-    """Repeated OPENs double the cooldown (capped at 16x) — protects against
-    IP-level blocks without wasting budget on half-open retries."""
+    """Repeated OPENs double the cooldown (capped at 4x) — protects against
+    IP-level blocks without wasting budget on half-open retries, while still
+    recovering within a single 100-company run."""
     state = DomainState(policy=SourcePolicy(breaker_threshold=2, breaker_cooldown=10))
     state.record_failure(rate_limited=True)
     state.record_failure(rate_limited=True)
@@ -194,7 +195,7 @@ def test_exponential_cooldown_doubles():
     assert state._cooldown_mult == 4
     for _ in range(3):
         state.record_failure(rate_limited=True)
-    assert state._cooldown_mult == 16  # capped
+    assert state._cooldown_mult == 4  # capped (recovers within a run)
 
 
 def test_exponential_cooldown_blocks_longer():
