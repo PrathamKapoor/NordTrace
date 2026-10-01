@@ -97,7 +97,7 @@ Extrapolated 100-company run: ~900 requests, ~6 min, $0.00 — within all budget
 | Extreme deadline (1s) | **PASS** | Live test: all terminal states, DB consistent, clean exit |
 | LLM path | **PASS (mock) / NOT RUN (live)** | Mock provider: valid/invalid/retry/cost-guard tested (8 tests). Live LLM requires `LLM_API_KEY` — no key in this environment |
 | Scanned-PDF OCR fallback | **KNOWN LIMITATION** | Text-based PDFs verified (real 42-page report); scanned PDFs honestly reported as extraction-failed; no OCR dependency added (documented decision: too heavy for competition environment) |
-| validate-db command | **PASS** | `python -m nordtrace.cli validate-db` → integrity checks incl. contamination |
+| validate-db command | **PASS** | `python -m nordtrace.cli validate-db` → integrity checks incl. contamination; fresh DB passes fully (verified); the development DB flags legacy duplicate rows written before the slot-design fix (historical data, not a current-code bug) |
 
 ## 6b. Not tested / not executed
 
