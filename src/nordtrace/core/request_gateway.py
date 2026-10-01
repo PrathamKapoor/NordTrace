@@ -16,6 +16,7 @@ show usage inside this module (and the LLM client which uses it too).
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import logging
 import re
@@ -31,6 +32,7 @@ import httpx
 from nordtrace.core.budget import BudgetExceededError, BudgetManager
 from nordtrace.core.config import settings
 from nordtrace.core.models import SourceRecord, SourceType, content_hash, utcnow
+from nordtrace.core.rate_limiter import RateLimited, RateLimiter
 
 logger = logging.getLogger("nordtrace.gateway")
 
@@ -148,9 +150,12 @@ class RobotsCacheEntry:
 class RequestGateway:
     """Central HTTP client with budget + security enforcement."""
 
-    def __init__(self, budget: BudgetManager, cache_ttl_sec: float = 3600.0):
+    def __init__(
+        self, budget: BudgetManager, cache_ttl_sec: float = 3600.0, rate_limiter: Optional[RateLimiter] = None
+    ):
         self.budget = budget
         self.cache_ttl = cache_ttl_sec
+        self.rate_limiter = rate_limiter or RateLimiter()
         self._cache: Dict[str, CachedResponse] = {}
         self._robots: Dict[str, RobotsCacheEntry] = {}
         self._client: Optional[httpx.AsyncClient] = None
@@ -271,7 +276,22 @@ class RequestGateway:
             rec = self._source_from_cache(cached, source_type, authority_tier, company, clean_url)
             return rec
 
-        # 4. Budget acquisition (hard stop) — 1 slot per attempt, retries too
+        # 4. Per-domain rate limiting + circuit breaker
+        try:
+            token = await self.rate_limiter.acquire(host)
+        except RateLimited as e:
+            return SourceRecord(
+                url=clean_url,
+                domain=host,
+                source_type=source_type,
+                authority_tier=authority_tier,
+                access_status="rate_limited",
+                error_detail=str(e),
+                org_number=company,
+                retrieved_at=utcnow().isoformat(),
+            )
+
+        # 5. Budget acquisition (hard stop) — 1 slot per attempt, retries too
         attempt = 0
         last_error: Optional[str] = None
         client = await self._get_client()
@@ -308,6 +328,10 @@ class RequestGateway:
                 self.budget.requests.record_outcome(
                     success, retry=attempt > 1, domain=host, stage=stage, company=company
                 )
+                if success:
+                    token.record_success()
+                else:
+                    token.record_failure(rate_limited=status == 429)
                 if status == 200:
                     ch = content_hash(body)
                     cached = CachedResponse(
@@ -333,7 +357,15 @@ class RequestGateway:
                         org_number=company,
                     )
                 if status in _RETRY_STATUS and attempt <= retries:
-                    await _backoff(attempt)
+                    # respect Retry-After if the source provides it
+                    retry_after = resp.headers.get("retry-after")
+                    if retry_after:
+                        try:
+                            await asyncio.sleep(min(float(retry_after), 10.0))
+                        except ValueError:
+                            await _backoff(attempt)
+                    else:
+                        await _backoff(attempt)
                     last_error = f"http {status}"
                     continue
                 return SourceRecord(
@@ -342,7 +374,9 @@ class RequestGateway:
                     source_type=source_type,
                     authority_tier=authority_tier,
                     http_status=status,
-                    access_status="blocked" if status in (401, 403) else "failed",
+                    access_status=(
+                        "rate_limited" if status == 429 else "blocked" if status in (401, 403) else "failed"
+                    ),
                     error_detail=f"http {status}",
                     org_number=company,
                     retrieved_at=utcnow().isoformat(),
@@ -351,6 +385,7 @@ class RequestGateway:
                 self.budget.requests.record_outcome(
                     False, retry=attempt > 1, domain=host, stage=stage, company=company
                 )
+                token.record_failure(rate_limited=False)
                 last_error = type(e).__name__
                 if attempt <= retries:
                     await _backoff(attempt)
