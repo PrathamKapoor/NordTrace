@@ -107,6 +107,9 @@ python -m nordtrace.cli benchmark --limit 10
 # Validate a result file
 python -m nordtrace.cli validate result.json
 
+# Check database integrity (FKs, duplicates, orphans, contamination)
+python -m nordtrace.cli validate-db
+
 # REST API + dashboard
 python -m nordtrace.cli serve          # http://127.0.0.1:8000/dashboard
 ```
@@ -145,18 +148,33 @@ Example output (abridged, real):
 
 | Suite | Command | Result |
 |---|---|---|
-| Unit tests (194 tests) | `pytest tests/unit` | **181 passed** |
-| Live registry integration | `pytest tests/integration -m live` | **5 passed** (full E2E, refresh, budget attack, concurrency, resume) |
-| Live CLI research | `python -m nordtrace.cli research 982463718` | **available**, 21–23 facts, 13 requests, $0.00, ~20s |
-| 10-company benchmark | `python -m nordtrace.cli benchmark --limit 10` | 10/10 completed, 10/10 entity resolved, 161 facts, 88 requests, 22.7s |
-| 15-company batch | harness, concurrency 4 | 13/15 available, 15/15 entity resolved, 222 facts, 140 requests, 50.7s |
-| Resume test | interrupt + resume batch | completed companies skipped, states preserved |
-| Refresh test | same company ×2 | 23 unchanged facts detected between runs |
+| Unit tests (217 tests) | `pytest tests/unit` | **204 passed** |
+| Live integration (9 tests) | `pytest tests/integration -m live` | **9 passed** (E2E, refresh, budget attack, concurrency, resume, contamination, 100-sim, resume@37, 1s deadline) |
+| Lint | `ruff check src/ tests/` | **0 errors** |
+| Type check | `mypy src/nordtrace` | **0 errors in 29 source files** |
+| Docker build | `docker build -t nordtrace .` | **built** (image `nordtrace:latest`) |
+| Docker run | `docker run --rm nordtrace python -m nordtrace.cli research 982463718` | **available**, 23 facts, 13 requests, $0.00, 20.4s |
+| Docker API | container health + dashboard | **200 OK** (`/health`, `/`, `/dashboard`) |
+| Live CLI research | `python -m nordtrace.cli research 982463718` | **available**, 23 facts, 13 requests, $0.00, ~20s |
 | Frontend flow | browser automation | research → identity → facts → evidence drawer → trace, all real data |
 
-**100-company benchmark: NOT RUN** (would take ~6 min at measured throughput and
-~900 requests; registry rate limits make it feasible but it was not executed in
-this environment — run `python -m nordtrace.cli benchmark --limit 100` to reproduce).
+### 100-company live benchmark (executed)
+
+| Metric | Result |
+|---|---|
+| Companies attempted | 100 |
+| `available` | 88 |
+| `not_available` | 12 (no registry website / no accounts — honest, not fabricated) |
+| Entity resolution | **100/100** |
+| Verified facts | 1,179 |
+| Evidence records | 643 |
+| Rejected sources | 246 |
+| Requests | **924 / 2,000** |
+| Runtime | **280s / 2,700s** |
+| Cost | **$0.0000 / $10.00** (deterministic extraction; LLM disabled without key) |
+| NAV during run | IP-level 429 block → circuit breaker opened, jobs degraded gracefully |
+
+See `docs/BENCHMARK_ANALYSIS.md` for coverage by category and source bottlenecks.
 
 ---
 

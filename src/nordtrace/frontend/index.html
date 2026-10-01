@@ -126,6 +126,7 @@ progress { width: 100%; height: 6px; }
     <!-- Sources -->
     <section>
       <h2>Sources</h2>
+      <div id="degradedNote" class="error-box" style="display:none; border-color: var(--warn); color: var(--warn); background: rgba(210,153,34,.08);"></div>
       <table id="sourcesTable">
         <thead><tr><th>Source</th><th>Type</th><th>Tier</th><th>Status</th><th>Retrieved</th></tr></thead>
         <tbody></tbody>
@@ -355,12 +356,22 @@ function shortVal(v) {
 function renderSources(d) {
   const tb = document.querySelector("#sourcesTable tbody");
   const sources = (d.sources || []).filter(s => s.access_status === "success");
+  // degraded-source explanation: rate-limited sources are reported honestly
+  const rateLimited = (d.sources || []).filter(s => s.access_status === "rate_limited");
+  const degradedNote = document.getElementById("degradedNote");
+  if (rateLimited.length && degradedNote) {
+    const domains = [...new Set(rateLimited.map(s => s.domain))].join(", ");
+    degradedNote.textContent = `${domains} was temporarily rate-limited during this run. Other research sources were completed successfully.`;
+    degradedNote.style.display = "block";
+  } else if (degradedNote) {
+    degradedNote.style.display = "none";
+  }
   tb.innerHTML = sources.map(s => `
     <tr>
       <td>${s.url ? `<a class="a" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.url.slice(0, 70))}</a>` : na(null)}</td>
       <td>${esc(s.source_type)}</td>
       <td>${esc(s.authority_tier)}</td>
-      <td><span class="badge ${s.access_status === "success" ? "b-verified" : "b-rejected"}">${esc(s.access_status)}</span></td>
+      <td><span class="badge ${s.access_status === "success" ? "b-verified" : s.access_status === "rate_limited" ? "b-ambiguous" : "b-rejected"}">${esc(s.access_status)}</span></td>
       <td class="mono">${esc((s.retrieved_at || "").slice(0, 16).replace("T", " "))}</td>
     </tr>`).join("") || '<tr><td colspan="5" class="na">No sources retrieved.</td></tr>';
   const rtb = document.querySelector("#rejectedTable tbody");

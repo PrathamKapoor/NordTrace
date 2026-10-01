@@ -46,6 +46,9 @@ def get_repo() -> Repository:
         return _repo_instance
 
 
+_DEGRADED_STATUSES = ("blocked", "failed", "timeout", "robots_denied", "rate_limited")
+
+
 class ResearchRequest(BaseModel):
     organisation_number: str
     refresh: bool = Field(default=False, description="Force a new research run even if cached")
@@ -178,12 +181,13 @@ def _company_payload(repo: Repository, orgnr: str, run_id: Optional[str] = None)
     rejected = [
         {
             "url": s.url,
+            "domain": s.domain,
             "reason": s.error_detail or s.access_status,
             "source_id": s.source_id,
             "access_status": s.access_status,
         }
         for s in sources
-        if s.access_status in ("blocked", "failed", "timeout", "robots_denied")
+        if s.access_status in _DEGRADED_STATUSES
     ]
     from nordtrace.core.synthesis import _unknown_list
 
@@ -262,7 +266,7 @@ async def get_sources(orgnr: str):
     if repo.get_company(orgnr) is None:
         raise HTTPException(status_code=404, detail=f"company {orgnr} not found")
     sources = repo.get_sources(orgnr)
-    rejected = [s for s in sources if s.access_status in ("blocked", "failed", "timeout", "robots_denied")]
+    rejected = [s for s in sources if s.access_status in _DEGRADED_STATUSES]
     return {
         "sources": [json.loads(s.model_dump_json()) for s in sources],
         "rejected_sources": [json.loads(s.model_dump_json()) for s in rejected],

@@ -14,9 +14,9 @@ Every claim below corresponds to a command that was actually run on 2026-10-01.
 
 | Command | Result |
 |---|---|
-| `python -m pytest tests/unit -q` | **181 passed**, 1 warning (anyio deprecation, not ours), 47–55s |
-| `python -m pytest tests/integration -q -m live` | **5 passed**, 72–74s (live network to Brreg + NAV) |
-| Total | **186 passed** |
+| `python -m pytest tests/unit -q` | **204 passed**, 1 warning (anyio deprecation, not ours), ~65s |
+| `python -m pytest tests/integration -q -m live` | **9 passed**, ~248s (live network to Brreg + NAV + simulated 100-company) |
+| Total | **213 passed** |
 
 Unit suite coverage:
 - orgnr validation: 18 tests (valid registered, checksum failures, separators, digit counts)
@@ -80,18 +80,30 @@ Extrapolated 100-company run: ~900 requests, ~6 min, $0.00 — within all budget
 - **Concurrency**: 10 parallel researches, counter exact, FK-consistent DB
 - **Failure recovery**: NAV 429s handled (retry/backoff); Brreg 404 → not_found; malformed PDF → honest failure
 
-## 6. Not tested / not executed
+## 6. Status classification (PASS / NOT RUN / BLOCKED / KNOWN LIMITATION)
 
-- **100-company benchmark: NOT RUN.** Registry rate limits (NAV 429s observed at
-  15 companies) make it feasible but it was not executed in this environment.
-  Reproduce: `python -m nordtrace.cli benchmark --limit 100`.
-- **Lint/type-check: NOT RUN as a gate** (tools not installed here).
-- **LLM path: NOT RUN live** (no API key configured). Deterministic fallback
-  verified; schema-validation logic unit-tested; live LLM calls require `LLM_API_KEY`.
-- **Docker build: NOT RUN** (Docker not available locally; Dockerfile +
-  docker-compose provided, documented as untested locally).
-- **Scanned-PDF OCR fallback: NOT IMPLEMENTED** (text-based PDFs verified;
-  scanned PDFs honestly reported as extraction-failed).
+| Item | Status | Evidence |
+|---|---|---|
+| 100-company live benchmark | **PASS** (executed) | 88/100 available, 100/100 entity resolved, 1,179 facts, 924/2,000 requests, 280s/2,700s, $0.00 — `docs/BENCHMARK_ANALYSIS.md` |
+| Lint gate | **PASS** | `ruff check src/ tests/` → 0 errors (880 → 0) |
+| Type-check gate | **PASS** | `mypy src/nordtrace` → 0 errors in 29 source files |
+| Docker build | **PASS** | `docker build -t nordtrace .` → image built (sha256:cea06cab…) |
+| Docker run | **PASS** | CLI research inside container: TELENOR ASA, 23 facts, 13 requests, $0.00, 20.4s; `/health` + `/dashboard` → 200 OK |
+| Source rate limiting | **PASS** | Generic per-domain limiter + circuit breaker (Retry-After, exponential cooldown); 15 tests; API exposes rate_limited sources with domain for degraded-state UX |
+| NAV 429 handling | **PASS (degradation)** | IP-level 429 block during 100-company run → circuit OPEN, jobs degraded, 88/100 companies completed |
+| Cross-company contamination | **PASS** | Live test: A facts ⊂ A, B facts ⊂ B, zero cross-source; integrity check: 0 |
+| 100-company simulated concurrency | **PASS** | Live test: mixed success/429/timeout/malformed failures → all terminal, no bypass, no deadlock, no duplicates |
+| Resume under failure (@37) | **PASS** | Live test: 1–37 not redundantly researched, 38–100 continue, DB consistent |
+| Extreme deadline (1s) | **PASS** | Live test: all terminal states, DB consistent, clean exit |
+| LLM path | **PASS (mock) / NOT RUN (live)** | Mock provider: valid/invalid/retry/cost-guard tested (8 tests). Live LLM requires `LLM_API_KEY` — no key in this environment |
+| Scanned-PDF OCR fallback | **KNOWN LIMITATION** | Text-based PDFs verified (real 42-page report); scanned PDFs honestly reported as extraction-failed; no OCR dependency added (documented decision: too heavy for competition environment) |
+| validate-db command | **PASS** | `python -m nordtrace.cli validate-db` → integrity checks incl. contamination |
+
+## 6b. Not tested / not executed
+
+- **Live LLM integration: NOT RUN** (no `LLM_API_KEY` configured). Mock provider
+  fully tested; live calls require a key.
+- **Scanned-PDF OCR: NOT IMPLEMENTED** (honest failure instead; decision documented).
 
 ## 7. Known limitations
 
