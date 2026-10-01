@@ -166,7 +166,7 @@ def test_llm_cost_guard_blocks_when_exhausted():
     bm = BudgetManager(max_cost=0.001)
     cb = bm.cost
     cb.record("m", 1000, 1000, 0.0004)  # first call: total 0.0004 < 0.001
-    assert bm.cost.can_afford(0.0005)   # 0.0004 + 0.0005 = 0.0009 ≤ 0.001
+    assert bm.cost.can_afford(0.0005)  # 0.0004 + 0.0005 = 0.0009 ≤ 0.001
     cb.record("m", 1000, 1000, 0.0004)  # total 0.0008
     cb.record("m", 1000, 1000, 0.0004)  # total 0.0012 > 0.001
     # cost guard: next request would exceed → must not call

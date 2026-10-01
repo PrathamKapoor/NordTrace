@@ -253,7 +253,7 @@ class BrregAdapter:
                         org_number=org_number,
                         run_id=run_id,
                         category="leadership",
-                        field=f"role:{role_code}",
+                        field=f"role:{role_code}:{name}",  # person-distinguished slot
                         value={
                             "name": name,
                             "role": role_desc,

@@ -727,6 +727,53 @@ class Repository:
             explanation=r["explanation"],
         )
 
+    def integrity_check(self) -> Dict[str, object]:
+        """Database integrity: FKs, duplicates, orphans. For validate-db."""
+        issues: Dict[str, object] = {}
+        # foreign key violations
+        fk = self.conn.execute("PRAGMA foreign_key_check").fetchall()
+        issues["foreign_key_violations"] = len(fk)
+        # duplicate facts within the SAME run (same org + slot) — history across
+        # runs is legitimate; within one run a slot must appear once
+        dup_facts = self.conn.execute(
+            """
+            SELECT org_number, category, field, COALESCE(reporting_period,'') as period, run_id, COUNT(*) as n
+            FROM facts GROUP BY org_number, category, field, period, run_id HAVING n > 1
+            """
+        ).fetchall()
+        issues["duplicate_fact_slots_same_run"] = len(dup_facts)
+        # duplicate source rows within the same run (same url) — retries share one
+        # source_id; duplicates here indicate a request-tracking bug
+        dup_src = self.conn.execute(
+            "SELECT url, run_id, COUNT(DISTINCT source_id) as n FROM sources WHERE url IS NOT NULL GROUP BY url, run_id HAVING n > 1"
+        ).fetchall()
+        issues["duplicate_source_urls_same_run"] = len(dup_src)
+        # orphaned evidence (evidence whose source is missing)
+        orphan_ev = self.conn.execute(
+            "SELECT COUNT(*) FROM evidence e LEFT JOIN sources s ON s.source_id = e.source_id WHERE s.source_id IS NULL"
+        ).fetchone()[0]
+        issues["orphaned_evidence"] = orphan_ev
+        # orphaned facts (fact whose source or evidence missing)
+        orphan_f = self.conn.execute(
+            "SELECT COUNT(*) FROM facts f LEFT JOIN sources s ON s.source_id = f.source_id WHERE s.source_id IS NULL"
+        ).fetchone()[0]
+        orphan_f2 = self.conn.execute(
+            "SELECT COUNT(*) FROM facts f LEFT JOIN evidence e ON e.evidence_id = f.evidence_id WHERE e.evidence_id IS NULL"
+        ).fetchone()[0]
+        issues["orphaned_facts"] = orphan_f + orphan_f2
+        # cross-company contamination: facts whose evidence org differs
+        cross = self.conn.execute(
+            "SELECT COUNT(*) FROM facts f JOIN evidence e ON e.evidence_id = f.evidence_id WHERE f.org_number != e.org_number"
+        ).fetchone()[0]
+        issues["cross_company_contamination"] = cross
+        # invalid company references
+        invalid_company = self.conn.execute(
+            "SELECT COUNT(*) FROM facts f LEFT JOIN companies c ON c.org_number = f.org_number WHERE c.org_number IS NULL"
+        ).fetchone()[0]
+        issues["invalid_company_refs"] = invalid_company
+        issues["ok"] = not any(v for k, v in issues.items() if k != "ok")
+        return issues
+
     def close(self) -> None:
         conn = getattr(self._local, "conn", None)
         if conn is not None:

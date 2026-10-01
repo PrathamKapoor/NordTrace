@@ -291,6 +291,26 @@ def validate(ctx, result_file: str):
     click.echo("Validation passed.")
 
 
+@cli.command("validate-db")
+@click.pass_context
+def validate_db(ctx):
+    """Check database integrity (FKs, duplicates, orphans, contamination)."""
+    repo = _repo()
+    try:
+        issues = repo.integrity_check()
+    finally:
+        repo.close()
+    ok = issues.pop("ok")
+    for k, v in issues.items():
+        mark = "OK" if v == 0 else "FAIL"
+        click.echo(f"  {k}: {v} [{mark}]")
+    if ok:
+        click.echo("Database integrity: PASS")
+    else:
+        click.echo("Database integrity: FAIL", err=True)
+        sys.exit(1)
+
+
 @cli.command()
 @click.option("--port", type=int, default=8000)
 @click.option("--host", type=str, default="127.0.0.1")
