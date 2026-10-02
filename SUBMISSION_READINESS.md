@@ -1,7 +1,7 @@
 # Submission Readiness Scorecard
 
 **Date:** 2026-10-02
-**Commit:** `c29db8c`+ (main) — every status below is backed by an actual command/result.
+**Commit:** `136d7ce` (main) — every status below is backed by an actual command/result.
 
 | Requirement | Status | Evidence |
 |---|---|---|
@@ -16,7 +16,7 @@
 | Refresh | **PASS** | Live: same company ×2 → 23 unchanged facts detected; history preserved |
 | Resume | **PASS** | Live: interrupt at 37 → resume skips completed, 38–100 continue, DB consistent |
 | Batch | **PASS** | 100-company live run (concurrency 4); 10/15-company runs |
-| Request budget | **PASS** | 924/2,000 in 100-company run; hard stop tested; atomic counter; single gateway (no bypass) |
+| Request budget | **PASS** | 1,506/2,000 in final 100-company v4 run; hard stop tested; atomic counter; single gateway (no bypass) |
 | Runtime budget | **PASS** | 280s/2,700s; global deadline wins; 1-second deadline test passes |
 | Cost budget | **PASS** | $0.0000/$10.00 (deterministic extraction; LLM disabled without key); cost guard tested |
 | API | **PASS** | All endpoints backed by SQLite; background research; 422/404 validation; fact dedupe; TestClient-verified |
@@ -28,6 +28,15 @@
 | 100-company benchmark | **PASS** | Executed ×3: v4 final — 88/100 available, 100/100 entity resolved, 1,420 facts (+241 vs baseline), 1,506/2,000 requests, 469.8s, $0.00; v3 regression (92 FAILED) found and fixed |
 | LLM (live) | **NOT RUN** | No `LLM_API_KEY` in environment; mock provider fully tested (8 tests) |
 | Scanned-PDF OCR | **KNOWN LIMITATION** | Honest extraction-failure; no OCR dependency added (documented decision) |
+
+## 1,000-profile submission status
+
+**No 1,000-profile requirement or artifact exists in this repository.**
+Investigated 2026-10-02 (searched: README, submission docs, benchmark docs,
+challenge documentation, data scripts, configuration): the documented
+constraints are ~100 companies per evaluation run. The repository proves a
+**100-company live benchmark** (see above). A 1,000-profile submission
+artifact is **not present and is not claimed**.
 
 ## Remaining risks (honest)
 

@@ -1,7 +1,7 @@
 # NordTrace — Verification Report
 
 **Date:** 2026-10-01
-**Repository commit:** `71a6d458a60cd9db3609dec7ac18265d3beb5d79` (main)
+**Repository commit:** `136d7ce94d6eb3cf05d4b0494735fa39bf547103` (`136d7ce`, main)
 **Author:** `PrathamKapoor <prathamkapoor027@gmail.com>`
 **Python:** 3.13.14 (Windows, win32)
 **Environment:** Windows 11, AMD Ryzen 7 7435HS, local network with internet access
@@ -38,11 +38,18 @@ Live integration suite (5):
 
 ## 2. Lint / type-check
 
-Not run as a gate (no project lint config enforced in this environment; ruff/mypy
-listed in pyproject optional-deps but not installed). Code is hand-formatted to
-a consistent style. **Not verified via tooling — stated honestly.**
+| Command | Result |
+|---|---|
+| `ruff check src/ tests/` | **0 errors** (880 initial → 0; SQL strings per-file-ignored, UP modernization churn documented in pyproject) |
+| `mypy src/nordtrace --ignore-missing-imports --python-version 3.12` | **0 errors in 29 source files** (pragmatic gate; nullable handling fixed) |
+
+(HISTORICAL — an earlier interim state documented "not run as a gate" before
+ruff/mypy were installed and run; superseded by the final verification above.)
 
 ## 3. Live-source verification (actual runs)
+
+(HISTORICAL — interim verification runs 2026-10-01; superseded by final v4
+benchmark in §4. Retained for traceability.)
 
 | Check | Result |
 |---|---|

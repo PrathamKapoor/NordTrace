@@ -231,8 +231,14 @@ See `LIMITATIONS.md`. Key points:
 
 ## Git / Authorship
 
+Submission candidate: `136d7ce` (main).
+
 All commits: `PrathamKapoor <prathamkapoor027@gmail.com>`. No AI/model
 collaborator attribution in repository history.
+
+Decision log: `DECISIONS.md` · Execution flow: `FLOW.md` · Session changes:
+`MODEL_CHANGES.md` · Verification: `VERIFICATION_REPORT.md` · Readiness:
+`SUBMISSION_READINESS.md`.
 
 ## License
 
