@@ -240,6 +240,23 @@ Decision log: `DECISIONS.md` · Execution flow: `FLOW.md` · Session changes:
 `MODEL_CHANGES.md` · Verification: `VERIFICATION_REPORT.md` · Readiness:
 `SUBMISSION_READINESS.md`.
 
+### Engineering transparency
+
+- **Deterministic core** — every extracted fact comes from deterministic code
+  (registry JSON paths, PDF key-line regexes, segment-based page
+  classification); no LLM in the critical path ($0.00 in every measured run).
+- **Evidence-first publication** — a fact is published only after five
+  citation checks (source retrieved, evidence present, entity VERIFIED/LIKELY,
+  org match); rejections are logged and visible.
+- **Adaptive research** — coverage assessment after core stages; targeted
+  top-ups only for missing high-value categories, budget/time-gated.
+- **Decision log** — 20 documented engineering decisions with rationale,
+  alternatives, and evidence (`DECISIONS.md`).
+- **Execution flow** — function-level call chains, data lifecycle, failure
+  flow, and implemented decision logic (`FLOW.md`).
+- **Reproducible benchmark** — companies fetched live at runtime; no
+  hard-coded orgnrs; fresh database per run (`BENCHMARK.md`).
+
 ## License
 
 MIT
