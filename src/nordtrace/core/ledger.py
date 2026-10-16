@@ -11,7 +11,9 @@ Citation validation is deterministic. Conflicts are detected, not hidden.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Tuple
 
 from nordtrace.core.models import (
@@ -56,6 +58,12 @@ class CitationValidator:
             return False, "evidence belongs to different source"
         if not ev.evidence_text:
             return False, "evidence text empty"
+        if ev.entity_verdict != fact.entity_verdict:
+            return False, "claim and evidence identity verdicts disagree"
+        if src.org_number and src.org_number != fact.org_number:
+            return False, "source belongs to different company"
+        if ev.content_hash and src.content_hash != ev.content_hash:
+            return False, "source and evidence hashes disagree"
         # 5. cross-company contamination: evidence must belong to the same company
         if ev.org_number and ev.org_number != fact.org_number:
             return False, f"evidence belongs to different company ({ev.org_number})"
@@ -63,9 +71,43 @@ class CitationValidator:
         if fact.value is None:
             return False, "fact value is None"
         # financial facts must carry currency + period
-        if fact.category == "financials" and fact.currency is None:
-            return False, "financial fact missing currency"
+        if fact.category == "financials":
+            if not fact.currency:
+                return False, "financial fact missing currency"
+            if not fact.reporting_period:
+                return False, "financial fact missing reporting period"
+            if not re.search(r"\b" + re.escape(fact.currency) + r"\b", ev.evidence_text):
+                return False, "financial currency absent from evidence"
+            year = re.search(r"(?:19|20)[0-9]{2}", fact.reporting_period)
+            if not year or year[0] not in ev.evidence_text:
+                return False, "financial reporting year absent from evidence"
+            if not _quoted_number(fact.value, ev.evidence_text):
+                return False, "financial value absent from evidence"
         return True, "ok"
+
+
+def _quoted_number(value, text: str) -> bool:
+    """Necessary numeric support check; does not establish table/column semantics.
+
+    Until snapshot-backed locators and table scope are implemented, this is a
+    conservative extra rejection gate, not a complete evidence verifier.
+    """
+    if isinstance(value, bool):
+        return False
+    try:
+        expected = Decimal(str(value))
+    except InvalidOperation:
+        return False
+    if not expected.is_finite():
+        return False
+    digits = r"(?:[0-9]{1,3}(?:[ \u00a0][0-9]{3})+|[0-9]+)(?:[.,][0-9]+)?"
+    tokens = re.findall(r"(?<![\w.,(])(?:\(" + digits + r"\)|[-+]?" + digits + r")(?![\w.,)])", text)
+    for token in tokens:
+        cleaned = token.replace(" ", "").replace("\u00a0", "").replace(",", ".")
+        number = -Decimal(cleaned[1:-1]) if cleaned.startswith("(") else Decimal(cleaned)
+        if number == expected:
+            return True
+    return False
 
 
 class FactLedger:

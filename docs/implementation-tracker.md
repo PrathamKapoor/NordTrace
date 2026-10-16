@@ -78,7 +78,7 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 
 | ID | Hypothesis to recheck | Owner component | Required verification | Status | Evidence / disposition |
 |---|---|---|---|---|---|
-| F01 | Value support / rejected evidence | core/ledger.py | unsupported financial and verdict fixtures | not_started | Not yet reproduced in this checkout |
+| F01 | Value support / rejected evidence | core/ledger.py | unsupported financial and verdict fixtures | implemented_unverified | Original exploit and verdict disagreement reproduced/fixed; 10 safety regressions pass. Exact snapshot/locator/predicate support still unfinished; filing-only financial candidates withheld |
 | F02 | Homepage contradictory orgnr | core/entity.py; adapters/website.py | contradictory homepage fixture | verified | Contradiction bypass reproduced; test_identity_boundaries checks name/target-ID overrides and footer-preserving crawl; complex scopes separately tracked |
 | F03 | PDF table, period, scale and scope | adapters/pdf_pipeline.py | financial fixture matrix | not_started | Not yet reproduced in this checkout |
 | F04 | Redirect safety and accounting | core/request_gateway.py | private redirect transport instrumentation | verified | Instrumented private redirect sends only initial operation; safe hops match actual transport counts; loop/limit tests pass; live network separately unverified |

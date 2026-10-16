@@ -532,6 +532,16 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
 # Current decisions — 2026-10-16
 
+## D-027 — Reject verdict disagreement and unsupported financial snippets
+
+- Date/status: 2026-10-16, accepted as an additional rejection gate; complete evidence validation remains unfinished.
+- Problem/evidence: the original F01 exploit published invented revenue from a filing notice even with rejected evidence. Five targeted tests initially failed; additional regressions caught false zero support from grouped digits and lost negative-parenthesis signs.
+- Decision/implementation: CitationValidator requires matching fact/evidence identity verdicts, same-company source attachment and consistent supplied hashes. Financial claims need currency and reporting period represented in the snippet and an exact finite Decimal-equivalent numeric token. Grouped thousands and negative parentheses preserve meaning; arbitrary value substrings cannot support a different number.
+- Application: every new ledger publication. Existing financial filing-only evidence now fails because it contains no value. Fixtures that previously used empty/generic support or identity disagreement now contain explicit support; temporal tests use role strings rather than nonnumeric financial values.
+- Alternatives: accepting a fact merely because its source/evidence IDs exist recreates the reproduced defect. Confidence cannot override rejection. No historical result is rewritten.
+- Tradeoffs/limits: this is necessary but **not sufficient** support validation. It does not resolve accounting columns, exact predicate scope, retained snapshots or unsupported non-financial assertions. Current Brreg filing snippets and incomplete PDF evidence may withhold legitimate candidates; producer/locator repairs are the next dependency. No financial accuracy or coverage gain is claimed. Release remains blocked on C/G requirements.
+- Verification: 10 publication-safety regressions and 55 adjacent ledger/category/adversarial checks passed; Ruff/mypy pass. Revisit only by replacing this preliminary gate with stronger snapshot/locator validation, not by weakening it. Supersedes existence-only financial support behavior in D-006.
+
 ## D-026 — Explicit transport hops, bounded bodies and origin-preserving DNS pinning
 
 - Date/status: 2026-10-16, accepted.

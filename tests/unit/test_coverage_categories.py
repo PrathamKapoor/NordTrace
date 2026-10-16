@@ -13,7 +13,7 @@ from nordtrace.core.models import (
 )
 
 
-def make_ledger_with(org="982463718"):
+def make_ledger_with(org="982463718", text="text", verdict="LIKELY"):
     led = FactLedger()
     src = SourceRecord(
         source_id="s",
@@ -25,7 +25,7 @@ def make_ledger_with(org="982463718"):
         content_hash="h",
     )
     ev = EvidenceRecord(
-        source_id="s", evidence_id="e", org_number=org, evidence_text="text", entity_verdict="LIKELY"
+        source_id="s", evidence_id="e", org_number=org, evidence_text=text, entity_verdict=verdict
     )
     led.add_source(src)
     led.add_evidence(ev)
@@ -131,7 +131,7 @@ def test_unrelated_employer_job_rejected():
 
 # --- Financials: HTML + PDF + multi-period + unavailable ---
 def test_financial_html_fact_published():
-    led, src, ev = make_ledger_with()
+    led, src, ev = make_ledger_with(text="Revenue 1000 NOK FY2025", verdict="VERIFIED")
     f = led.add_fact(
         Fact(
             org_number="982463718",
@@ -149,8 +149,13 @@ def test_financial_html_fact_published():
 
 
 def test_financial_multiple_periods_separate_slots():
-    led, src, ev = make_ledger_with()
+    led, src, ev = make_ledger_with(verdict="VERIFIED")
     for i, fy in enumerate(["FY2023", "FY2024", "FY2025"]):
+        support = EvidenceRecord(
+            source_id="s", evidence_id=f"e_{fy}", org_number="982463718", entity_verdict="VERIFIED",
+            evidence_text=f"Revenue {1000 + i} NOK {fy}",
+        )
+        led.add_evidence(support)
         f = led.add_fact(
             Fact(
                 org_number="982463718",
@@ -160,7 +165,7 @@ def test_financial_multiple_periods_separate_slots():
                 currency="NOK",
                 reporting_period=fy,
                 source_id="s",
-                evidence_id="e",
+                evidence_id=support.evidence_id,
                 entity_verdict="VERIFIED",
             )
         )
@@ -193,7 +198,7 @@ def test_financial_currency_required():
 
 # --- Activity: recent/old/none/unrelated ---
 def test_activity_recent_event_published():
-    led, src, ev = make_ledger_with()
+    led, src, ev = make_ledger_with(verdict="VERIFIED")
     f = led.add_fact(
         Fact(
             org_number="982463718",
@@ -211,7 +216,7 @@ def test_activity_recent_event_published():
 
 
 def test_activity_old_event_has_date():
-    led, src, ev = make_ledger_with()
+    led, src, ev = make_ledger_with(verdict="VERIFIED")
     f = led.add_fact(
         Fact(
             org_number="982463718",

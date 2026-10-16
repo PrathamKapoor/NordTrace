@@ -14,7 +14,7 @@ def make_src(src_id="s1", org="982463718", status="success"):
     )
 
 
-def make_ev(ev_id="e1", src_id="s1", org="982463718", text="evidence text"):
+def make_ev(ev_id="e1", src_id="s1", org="982463718", text="Revenue 100 and equity 999 NOK FY2024"):
     return EvidenceRecord(
         source_id=src_id, evidence_id=ev_id, org_number=org, evidence_text=text, entity_verdict="VERIFIED"
     )
@@ -29,7 +29,7 @@ def make_fact(
     ev="e1",
     status=None,
     retrieved=None,
-    period=None,
+    period="FY2024",
     entity="VERIFIED",
 ):
     return Fact(
@@ -142,9 +142,9 @@ def test_temporal_view_orders_by_period():
     led = FactLedger()
     led.add_source(make_src())
     led.add_evidence(make_ev())
-    led.add_fact(make_fact(val="New", period="FY2025"))
-    led.add_fact(make_fact(val="Old", period="FY2024"))
-    view = led.temporal_view("982463718", "revenue")
+    led.add_fact(make_fact(cat="leadership", fld="role:CEO", val="New", period="FY2025"))
+    led.add_fact(make_fact(cat="leadership", fld="role:CEO", val="Old", period="FY2024"))
+    view = led.temporal_view("982463718", "role:CEO")
     assert [f.normalized_value for f in view] == ["Old", "New"]  # sorted by period
 
 
@@ -152,8 +152,8 @@ def test_temporal_facts_not_merged():
     led = FactLedger()
     led.add_source(make_src())
     led.add_evidence(make_ev())
-    f24 = led.add_fact(make_fact(val="Old", period="FY2024"))
-    f25 = led.add_fact(make_fact(val="New", period="FY2025"))
+    f24 = led.add_fact(make_fact(cat="leadership", fld="role:CEO", val="Old", period="FY2024"))
+    f25 = led.add_fact(make_fact(cat="leadership", fld="role:CEO", val="New", period="FY2025"))
     # different periods are different slots: no conflict
     assert f24.status == FactStatus.PUBLISHED.value
     assert f25.status == FactStatus.PUBLISHED.value
