@@ -1,3 +1,7 @@
+# Architecture update — 2026-10-17
+
+New completed research uses immutable version-1.1 CompanyProfile envelopes persisted in company_results; run_inputs preserves supplied occurrences and company_claims leases avoid duplicate runner ownership. SQLite migrations are backed up and versioned through schema 2. CLI/API/batch read the same canonical result; legacy requested history without an envelope returns 409. Transport now validates/counts each hop and robots operation, bounds streaming and separates original TLS-origin pools. See FLOW.md's current implementation record for call chains and explicit unfinished snapshot/financial/refresh/deadline work. The earlier architecture description remains historical context.
+
 # Architecture — NordTrace
 
 ## Overview

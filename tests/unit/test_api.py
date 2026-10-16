@@ -170,6 +170,8 @@ def test_research_unknown_orgnr_404(client, monkeypatch):
     assert states.get("999999999") == "not_available"
     assert rr.json()["result"]["status"] == "not_available"
     assert rr.json()["result"]["company"] is None
+    assert rr.json()["result"]["errors"][0]["code"] == "entity_not_found"
+    assert rr.json()["result"]["sources"][0]["http_status"] == 404
 
 
 def test_unknown_run_404(client):

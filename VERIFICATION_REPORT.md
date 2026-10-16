@@ -1,3 +1,7 @@
+# Current verification — 2026-10-17
+
+The results below are historical. Current measured commands and limitations are recorded in docs/verification.md; unfinished release requirements are in docs/implementation-tracker.md. Historical Docker/live/coverage PASS statements must not be substituted for current acceptance.
+
 # NordTrace — Verification Report
 
 **Date:** 2026-10-01

@@ -140,8 +140,11 @@ class ResearchPipeline:
                     else (TerminalState.BLOCKED.value if hint == "blocked" else TerminalState.FAILED.value)
                 )
                 outcome.terminal_state = state
-                outcome.sources = list(ledger.sources.values())
+                outcome.sources = [src] if src else []
                 outcome.error = f"registry lookup: {hint}"
+                outcome.error_code = {
+                    "not_found": "entity_not_found", "blocked": "registry_blocked",
+                }.get(hint, "registry_failed")
                 return outcome
             outcome.identity = ident
             # src/ev are non-None here (guaranteed by the early return above)

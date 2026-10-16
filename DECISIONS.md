@@ -532,6 +532,16 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
 # Current decisions — 2026-10-16
 
+## D-030 — Preserve unavailable-entity diagnostics and test error cardinality
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: a registry 404 produced a not_available envelope but labelled its error research_failed and discarded the attempted source. Targeted API assertions failed. Scale must include invalid inputs without pretending they are researched companies.
+- Decision/implementation: pipeline identity failure retains its actual SourceRecord and distinguishes entity_not_found, registry_blocked and registry_failed. Add real runner/repository/export contract checks for 100/1,000 distinct invalid inputs with zero transport/API allowance.
+- Application: no-identity canonical envelopes and synthetic invalid-input validation. These are separate from official supplied-batch acceptance/live smoke testing.
+- Alternatives: dropping failed source metadata obstructs inspection; calling a 404 a program failure conflates availability and execution. Synthetic inputs cannot substitute for eligible live companies.
+- Tradeoffs/limits: input/schema/duplicate organizer compatibility and incomplete source-family states remain unresolved. Error cardinality does not measure research coverage or source accuracy.
+- Verification: strengthened 404 API assertions failed before repair, then 26 API/result-contract checks passed; two scale scenarios passed in 14.34s. Clean noneditable installation at e64c0ee passed 286 offline checks and installed-wheel dashboard/evaluator-adapter checks. Revisit when official schemas/budgets/batches arrive.
+
 ## D-028 — Runtime-relative storage and failure-aware acquisition
 
 - Date/status: 2026-10-17, accepted.

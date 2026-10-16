@@ -241,7 +241,7 @@ See `LIMITATIONS.md`. Key points:
 
 ## Git / Authorship
 
-Submission candidate: `136d7ce` (main).
+Historical submission candidate (2026-10-02): `136d7ce`. This is not the current repair release. No new submission is authorized or claimed; use `git rev-parse HEAD` for the exact local checkout and consult docs/implementation-tracker.md for remaining gates.
 
 All commits: `PrathamKapoor <prathamkapoor027@gmail.com>`. No AI/model
 collaborator attribution in repository history.

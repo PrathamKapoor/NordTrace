@@ -1,3 +1,7 @@
+# Current readiness — 2026-10-17
+
+**Not release-ready.** The scorecard below is historical and is superseded by docs/implementation-tracker.md and docs/verification.md. Current offline/install repairs do not establish complete evidence retention, financial support, safe refresh, restored shared budgets or representative live coverage. No current official score, submission, hosted CI run or deployment is claimed.
+
 # Submission Readiness Scorecard
 
 **Date:** 2026-10-02
