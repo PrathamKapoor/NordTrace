@@ -58,6 +58,7 @@ def _load_real_pdf():
     return REAL_PDF
 
 
+@pytest.mark.live
 def test_pdf_parse_real_report():
     try:
         pdf = _load_real_pdf()
@@ -69,6 +70,7 @@ def test_pdf_parse_real_report():
     assert not res.is_scanned
 
 
+@pytest.mark.live
 def test_pdf_financial_lines_with_page_numbers():
     try:
         pdf = _load_real_pdf()

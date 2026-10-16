@@ -9,7 +9,10 @@ from nordtrace.core.models import CompanyIdentity, utcnow
 
 
 @pytest.fixture()
-def runner():
+def runner(tmp_path, monkeypatch):
+    from nordtrace.core.repository import Repository
+
+    monkeypatch.setattr("nordtrace.cli._repo", lambda: Repository(tmp_path / "cli.db"))
     return CliRunner()
 
 

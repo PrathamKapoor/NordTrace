@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from nordtrace.core.orgnr import validate_orgnr
 
@@ -314,7 +314,15 @@ class ResearchMetadata(BaseModel):
     llm_calls: int = 0
 
 
+class ResearchError(BaseModel):
+    code: str
+    message: str
+    stage: Optional[str] = None
+    retryable: bool = False
+
+
 class CompanyProfile(BaseModel):
+    schema_version: str = "1.1"
     run_id: str
     organisation_number: str
     status: str = TerminalState.NOT_AVAILABLE.value
@@ -324,8 +332,36 @@ class CompanyProfile(BaseModel):
     summary: Optional[str] = None
     unknowns: List[str] = Field(default_factory=list)
     sources: List[SourceRecord] = Field(default_factory=list)
+    evidence: List[EvidenceRecord] = Field(default_factory=list)
+    errors: List[ResearchError] = Field(default_factory=list)
+    refresh_metadata: Dict[str, Any] = Field(default_factory=dict)
     rejected_sources: List[Dict[str, Any]] = Field(default_factory=list)
     coverage: Dict[str, str] = Field(default_factory=dict)
     research_metadata: ResearchMetadata = Field(default_factory=ResearchMetadata)
     last_researched_at: Optional[str] = None
     previous_run_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_envelope(self) -> CompanyProfile:
+        if self.schema_version != "1.1":
+            raise ValueError("unsupported result schema_version")
+        if self.status not in {state.value for state in TerminalState}:
+            raise ValueError("invalid terminal status")
+        if self.company and self.company.organisation_number != self.organisation_number:
+            raise ValueError("identity belongs to another company")
+        sources = {source.source_id: source for source in self.sources}
+        evidence = {item.evidence_id: item for item in self.evidence}
+        if len(sources) != len(self.sources) or len(evidence) != len(self.evidence):
+            raise ValueError("duplicate source or evidence IDs")
+        for fact in self.facts:
+            source = sources.get(fact.source_id)
+            support = evidence.get(fact.evidence_id)
+            if fact.org_number != self.organisation_number:
+                raise ValueError("claim belongs to another company")
+            if source is None or support is None or support.source_id != fact.source_id:
+                raise ValueError("claim has dangling source/evidence reference")
+            if source.org_number and source.org_number != self.organisation_number:
+                raise ValueError("source belongs to another company")
+            if support.org_number and support.org_number != self.organisation_number:
+                raise ValueError("evidence belongs to another company")
+        return self

@@ -18,10 +18,10 @@ from pydantic import BaseModel, Field
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
+from nordtrace.core.contracts import map_inputs
 from nordtrace.core.models import Fact, ResearchRun, RunState, TerminalState, utcnow
 from nordtrace.core.orgnr import validate_orgnr
 from nordtrace.core.repository import Repository
-from nordtrace.engine.pipeline import ResearchPipeline
 from nordtrace.engine.runner import BatchRunner
 
 logger = logging.getLogger("nordtrace.api")
@@ -68,20 +68,11 @@ def _run_research_blocking(orgnr: str, run_id: str) -> None:
         max_cost=settings.max_api_cost_usd,
         per_company_soft_sec=settings.per_company_soft_deadline_sec,
     )
-    pipeline = ResearchPipeline(repo, budget)
+    runner = BatchRunner(repo, budget)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        outcome = loop.run_until_complete(pipeline.research_company(orgnr, run_id))
-        run = repo.get_run(run_id)
-        if run:
-            run.completed_at = utcnow().isoformat()
-            run.state = RunState.COMPLETED.value
-            run.request_count = budget.requests.total_used
-            run.estimated_cost_usd = round(budget.cost.total_used, 6)
-            repo.update_run(run)
-            # mark AFTER update_run so update_run doesn't clobber the fresh state
-            repo.mark_company_state(run_id, orgnr, outcome.terminal_state)
+        loop.run_until_complete(runner.run_batch([orgnr], requested_by="api", resume_run_id=run_id))
     except Exception:
         logger.exception("background research failed")
         run = repo.get_run(run_id)
@@ -91,7 +82,6 @@ def _run_research_blocking(orgnr: str, run_id: str) -> None:
             repo.update_run(run)
             repo.mark_company_state(run_id, orgnr, TerminalState.FAILED.value)
     finally:
-        loop.run_until_complete(pipeline.aclose())
         loop.close()
 
 
@@ -106,6 +96,7 @@ async def start_research(req: ResearchRequest, background: BackgroundTasks):
     check = validate_orgnr(orgnr)
     if not check.valid:
         raise HTTPException(status_code=422, detail=f"invalid organisation number: {check.reason}")
+    orgnr = check.value
     repo = get_repo()
     run = ResearchRun(started_at=utcnow().isoformat(), companies=[orgnr], requested_by="api")
     repo.create_run(run)
@@ -119,7 +110,7 @@ async def get_research(run_id: str):
     run = repo.get_run(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"run {run_id} not found")
-    out = {
+    out: dict = {
         "run_id": run.run_id,
         "started_at": run.started_at,
         "completed_at": run.completed_at,
@@ -129,18 +120,24 @@ async def get_research(run_id: str):
         "companies": run.companies,
         "company_states": run.company_states,
     }
-    # attach full results for single-company runs (only when the company persisted)
+    out["results"] = [result.model_dump(mode="json") for result in repo.get_results(run_id)]
+    # Failed/unregistered inputs have complete results even without a company row.
     if len(run.companies) == 1:
         org = run.companies[0]
-        if repo.get_company(org) is not None:
-            try:
-                out["result"] = _company_payload(repo, org, run_id)
-            except HTTPException:
-                pass
+        result = repo.get_result(run_id, org)
+        if result:
+            out["result"] = result.model_dump(mode="json")
     return out
 
 
 def _company_payload(repo: Repository, orgnr: str, run_id: Optional[str] = None) -> dict:
+    result = repo.get_result(run_id, orgnr) if run_id else repo.latest_result(orgnr)
+    if result:
+        return result.model_dump(mode="json")
+    if run_id:
+        # Existing databases do not contain historical identities/summaries.
+        # Refuse to manufacture a frozen view from today's company row.
+        raise HTTPException(status_code=409, detail="historical envelope unavailable for legacy run")
     identity = repo.get_company(orgnr)
     if identity is None:
         raise HTTPException(status_code=404, detail=f"company {orgnr} not found")
@@ -214,6 +211,7 @@ def _company_payload(repo: Repository, orgnr: str, run_id: Optional[str] = None)
         "available" if identity_row and len(pub) >= 3 else ("not_available" if identity_row else "failed")
     )
     return {
+        "schema_version": "legacy-unfrozen",
         "run_id": run_id,
         "organisation_number": orgnr,
         "status": terminal,
@@ -284,30 +282,30 @@ async def get_trace(run_id: str):
 
 @app.post("/batch")
 async def start_batch(req: BatchRequest, background: BackgroundTasks):
-    valid: List[str] = []
-    invalid: List[str] = []
-    for o in req.organisation_numbers:
-        check = validate_orgnr(o.replace(" ", "").replace("-", ""))
-        (valid if check.valid else invalid).append(o)
-    if not valid:
-        raise HTTPException(status_code=422, detail="no valid organisation numbers")
+    if not req.organisation_numbers:
+        raise HTTPException(status_code=422, detail="empty batch")
+    inputs = map_inputs(req.organisation_numbers)
+    companies = list(dict.fromkeys(item.result_key for item in inputs))
     repo = get_repo()
-    run = ResearchRun(started_at=utcnow().isoformat(), companies=valid, requested_by="api")
+    run = ResearchRun(started_at=utcnow().isoformat(), companies=companies, requested_by="api")
     repo.create_run(run)
+    repo.save_run_inputs(run.run_id, [item.model_dump() for item in inputs])
 
     def run_batch_blocking():
         runner = BatchRunner(repo, concurrency=req.concurrency)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(runner.run_batch(valid, requested_by="api"))
+            loop.run_until_complete(runner.run_batch(
+                req.organisation_numbers, requested_by="api", resume_run_id=run.run_id
+            ))
         except Exception:
             logger.exception("batch failed")
         finally:
             loop.close()
 
     background.add_task(run_batch_blocking)
-    return {"run_id": run.run_id, "requested": len(valid), "invalid_skipped": invalid, "status": "started"}
+    return {"run_id": run.run_id, "requested": len(inputs), "invalid_skipped": [], "status": "started"}
 
 
 @app.get("/run-status")

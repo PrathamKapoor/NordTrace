@@ -22,10 +22,8 @@ import click
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.models import ResearchRun, utcnow
-from nordtrace.core.orgnr import validate_orgnr
+from nordtrace.core.contracts import batch_payload, build_result, write_json_atomic
 from nordtrace.core.repository import Repository
-from nordtrace.engine.pipeline import ResearchPipeline
 from nordtrace.engine.runner import BatchRunner
 
 
@@ -34,36 +32,7 @@ def _repo() -> Repository:
 
 
 def _result_json(outcome, run_id: str, budget: BudgetManager, started_at: str) -> dict:
-    from nordtrace.core.models import CompanyProfile, ResearchMetadata
-
-    meta = ResearchMetadata(
-        started_at=started_at,
-        completed_at=utcnow().isoformat(),
-        duration_sec=getattr(outcome, "duration_sec", None),
-        request_count=budget.requests.total_used,
-        request_budget=budget.requests.global_limit,
-        estimated_cost_usd=round(budget.cost.total_used, 6),
-        cost_budget_usd=budget.cost.limit,
-        time_remaining_sec=round(budget.runtime.time_remaining(), 1),
-        stages_executed=outcome.stages,
-        llm_calls=budget.cost.calls,
-    )
-    profile = CompanyProfile(
-        run_id=run_id,
-        organisation_number=outcome.org_number,
-        status=outcome.terminal_state,
-        company=outcome.identity,
-        facts=outcome.facts,
-        changes=outcome.changes,
-        summary=outcome.summary,
-        unknowns=outcome.unknowns,
-        sources=outcome.sources,
-        rejected_sources=outcome.rejected,
-        coverage=outcome.coverage,
-        research_metadata=meta,
-        last_researched_at=utcnow().isoformat(),
-    )
-    return json.loads(profile.model_dump_json())
+    return build_result(outcome, run_id, budget, started_at).model_dump(mode="json")
 
 
 @click.group()
@@ -81,58 +50,34 @@ def cli(ctx, debug: bool):
 @click.pass_context
 def research(ctx, org_number: str, output: Optional[str]):
     """Research a single Norwegian company by organisation number."""
-    started_at = utcnow().isoformat()
-    check = validate_orgnr(org_number)
-    if not check.valid:
-        click.echo(f"Invalid organisation number: {check.reason}", err=True)
-        sys.exit(2)
     repo = _repo()
-    budget = BudgetManager(
-        max_requests=settings.max_requests,
-        max_runtime_sec=settings.max_runtime_sec,
-        max_cost=settings.max_api_cost_usd,
-        per_company_soft_sec=settings.per_company_soft_deadline_sec,
-    )
-    run = ResearchRun(started_at=started_at, companies=[check.value])
-    repo.create_run(run)
-    pipeline = ResearchPipeline(repo, budget)
-
-    async def go():
-        try:
-            return await pipeline.research_company(check.value, run.run_id)
-        finally:
-            await pipeline.aclose()
-
+    runner = BatchRunner(repo)
     try:
-        outcome = asyncio.run(go())
+        run = asyncio.run(runner.run_batch([org_number]))
+        result = repo.get_results(run.run_id)[0]
     finally:
         repo.close()
-    run.completed_at = utcnow().isoformat()
-    run.state = "completed"
-    run.request_count = budget.requests.total_used
-    run.estimated_cost_usd = round(budget.cost.total_used, 6)
-    repo2 = _repo()
-    repo2.mark_company_state(run.run_id, check.value, outcome.terminal_state)
-    repo2.update_run(run)
-    repo2.close()
-
-    payload = _result_json(outcome, run.run_id, budget, started_at)
-    text = json.dumps(payload, indent=2, ensure_ascii=False)
     if output:
-        Path(output).write_text(text, encoding="utf-8")
+        write_json_atomic(output, result.model_dump(mode="json"))
         click.echo(f"Result written to {output}")
-    click.echo(f"Company: {outcome.identity.legal_name if outcome.identity else '(not found)'}")
-    click.echo(f"Status: {outcome.terminal_state}")
+    click.echo(f"Company: {result.company.legal_name if result.company else '(not found)'}")
+    click.echo(f"Status: {result.status}")
     click.echo(
-        f"Verified facts: {len(outcome.facts)} | Evidence: {len(outcome.evidence)} | "
-        f"Sources: {len(outcome.sources)} | Rejected: {len(outcome.rejected)}"
+        f"Published facts: {len(result.facts)} | Evidence: {len(result.evidence)} | "
+        f"Sources: {len(result.sources)}"
     )
     click.echo(
-        f"Requests: {budget.requests.total_used}/{budget.requests.global_limit} | "
-        f"Cost: ${budget.cost.total_used:.4f} | Time: {getattr(outcome, 'duration_sec', 0):.1f}s"
+        f"Requests: {run.request_count}/{runner.budget.requests.global_limit} | "
+        f"Cost: ${run.estimated_cost_usd:.4f}"
     )
-    if outcome.summary:
-        click.echo(f"\nSummary: {outcome.summary}")
+    if result.summary:
+        click.echo(f"\nSummary: {result.summary}")
+    for error in result.errors:
+        click.echo(f"{error.code}: {error.message}", err=True)
+    if result.status == "failed":
+        ctx.exit(1)
+    if any(error.code == "invalid_organisation_number" for error in result.errors):
+        ctx.exit(2)
 
 
 def _read_csv(path: str) -> List[str]:
@@ -161,19 +106,16 @@ def _read_csv(path: str) -> List[str]:
 def batch(ctx, input_file: str, concurrency: int, resume_run_id: Optional[str], output: Optional[str]):
     """Batch research from a CSV/TXT file of organisation numbers."""
     orgs = _read_csv(input_file)
-    valid: list = []
-    invalid: list = []
-    for o in orgs:
-        check = validate_orgnr(o)
-        (valid if check.valid else invalid).append(o)
-    click.echo(f"{len(orgs)} inputs: {len(valid)} valid, {len(invalid)} invalid (skipped)")
-    if not valid:
+    click.echo(f"{len(orgs)} inputs")
+    if not orgs:
         click.echo("Nothing to research.", err=True)
         sys.exit(2)
     repo = _repo()
     runner = BatchRunner(repo, concurrency=concurrency)
     try:
-        run = asyncio.run(runner.run_batch(valid, resume_run_id=resume_run_id))
+        run = asyncio.run(runner.run_batch(orgs, resume_run_id=resume_run_id))
+        results = repo.get_results(run.run_id)
+        payload = batch_payload(run, results, repo.get_run_inputs(run.run_id))
     finally:
         repo.close()
     counts: dict = {}
@@ -188,17 +130,12 @@ def batch(ctx, input_file: str, concurrency: int, resume_run_id: Optional[str], 
         f"Time: {run.completed_at and 'done'}"
     )
     if output:
-        payload = {
-            "run_id": run.run_id,
-            "started_at": run.started_at,
-            "completed_at": run.completed_at,
-            "state": run.state,
-            "company_states": run.company_states,
-            "request_count": run.request_count,
-            "estimated_cost_usd": run.estimated_cost_usd,
-        }
-        Path(output).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        click.echo(f"Run summary written to {output}")
+        write_json_atomic(output, payload)
+        click.echo(f"Complete results written to {output}")
+    if any(result.status == "failed" for result in results):
+        ctx.exit(1)
+    if any(error.code == "invalid_organisation_number" for result in results for error in result.errors):
+        ctx.exit(2)
 
 
 @cli.command()

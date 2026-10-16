@@ -1,3 +1,19 @@
+# Current implementation record — 2026-10-16
+
+This record supersedes conflicting interface/persistence descriptions below. The earlier detailed audit remains historical context; snapshot acquisition, hard transport deadlines and safe refresh are still tracked as unfinished in `docs/implementation-tracker.md`.
+
+Single research now calls `cli.research → BatchRunner.run_batch → ResearchPipeline.research_company → _research_company → build_result → Repository.save_result`. Input mapping normalizes valid IDs, preserves invalid input strings and deduplicates work by result key. The pipeline executes the existing adapters and ledger; its wrapper serializes the actual terminal outcome and synthesis. Invalid, unregistered and failed outcomes can be stored without a company identity row. A result contains explicit source/evidence records and machine-readable errors; snapshot/locator validity is a separate unfinished publication requirement.
+
+`Repository.save_result` validates and inserts the envelope and updates the run's terminal checkpoint in one SQLite transaction. Completed envelopes are immutable: identical retries are accepted; differing payloads for the same run/company raise an error. Repeated pipeline calls return the retained outcome. Migration version 1 adds company_results/run_inputs; version 2 adds company_claims leases. Prior tables are preserved. Existing older databases are first backed up through SQLite's backup API to a uniquely named sibling `.pre-vN-*.bak`; opening a current database does not back it up again. No historical envelope is invented for old rows. Run updates and error finalizers reconcile states against committed envelopes, including concurrent publication from other connections.
+
+Batch follows the same pipeline, catches a company's execution exception as an explicit failed outcome, and continues unrelated companies. Ordered `run_inputs` preserves duplicate and invalid occurrences; one envelope is produced per unique normalized company or distinct invalid input. This duplicate policy is a local adapter convention pending organizer confirmation. CLI export validates cardinality and uses a flushed temporary sibling file plus atomic replacement. SQLite checkpoints are incremental; streaming JSONL export and an external completion manifest remain unfinished.
+
+Resume schedules only `pending` companies from the existing run; it refuses new companies. An atomic SQLite lease prevents concurrent runners from owning the same company task; competing runners wait for the published result. Leases expire after the remaining run allowance plus 60 seconds; crash recovery, budget restoration and hard cancellation/finalization remain unfinished. The old run-state count is never a substitute for a missing immutable envelope.
+
+API research returns the persisted canonical result even when identity lookup failed. API batch runs the same run ID it returns, retaining invalid inputs. `_company_payload` returns the immutable requested or latest envelope, including synthesis. Requested historical views without an envelope return 409. Current legacy rows remain readable under `schema_version=legacy-unfrozen`; they cannot claim frozen history.
+
+Verification: `tests/unit/test_result_contract.py` covers dropped invalid inputs, actual resume calls, isolated failures, frozen identity/summary, no-identity persistence, API run-ID tracking, legacy backup preservation and dangling references. `tests/unit/test_api.py` uses a real gateway with a 404 transport fixture. Real PDF tests are live-marked and default pytest execution excludes live tests. Example: `python -m nordtrace.cli batch companies.csv --output data/results.json`; invalid inputs remain in the output and cause exit 2, research failures cause exit 1, and non-error availability outcomes return 0.
+
 # Execution Flow — NordTrace
 
 The ACTUAL end-to-end execution flow, documented from the code (not assumed).

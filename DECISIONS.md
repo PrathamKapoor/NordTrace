@@ -530,3 +530,24 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Evidence/tests:** benchmark artifacts (cost_used: 0.0 across v2/v3/v4);
 8 LLM-mock tests; cost-guard tests.
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
+# Current decisions — 2026-10-16
+
+## D-021 — Immutable canonical research outcomes
+
+- Date/status: 2026-10-16, accepted.
+- Problem/evidence: F05/F06/F19/F20 reproduced: invalid inputs disappeared, resume invoked finished companies, summary was lost and historical identity was reconstructed from mutable company rows. Five targeted regressions failed before implementation.
+- Decision: serialize actual outcomes through `core.contracts.build_result` into version 1.1 CompanyProfile; persist full envelopes with source/evidence records and explicit errors. All newly completed CLI/API/batch results use those envelopes. Keep a separate ordered input mapping, deduplicating normalized company work. Exact organizer acceptance and duplicate semantics remain unverified.
+- Implementation/application: `engine/pipeline.py`, `engine/runner.py`, `core/contracts.py`, `core/models.py`, `core/repository.py`, `cli.py`, `api/app.py`. Applies to every new completed research. Existing current data is explicitly legacy-unfrozen; historical requests without immutable envelopes return 409.
+- Alternatives: reconstructing profiles on demand loses historical identity, coverage and synthesis; replacing the full stack is unnecessary. Do not silently reinterpret legacy history.
+- Tradeoffs/limits: complete JSON envelopes duplicate some relational data. Published fact references are checked, but retained snapshots, exact support and refresh completeness still require subsequent repairs. Invalid inputs receive not_applicable plus an explicit error, and CLI exit 2; failed execution receives exit 1. Missing/blocked/ambiguous business information alone is not a program failure.
+- Verification: `tests/unit/test_result_contract.py`, existing CLI/API tests; 33 passed in the targeted boundary run. Revisit when organizer input/output/duplicate schema is supplied. Supersedes conflicting interface reconstruction behavior in D-017.
+
+## D-022 — Backed-up additive SQLite outcome migration
+
+- Date/status: 2026-10-16, accepted.
+- Problem/evidence: baseline schema has no version or complete-outcome store; company FKs prevent no-identity failure records. Existing user databases must survive upgrades.
+- Decision: version 1 adds company_results and run_inputs; version 2 adds atomic company task leases. These reference runs rather than companies. Back up older existing databases with SQLite's backup API before DDL. Preserve all previous rows. Publish an envelope and terminal checkpoint atomically; completed payloads are immutable. Run updates reconcile against canonical publication so stale process checkpoints cannot erase committed outcomes.
+- Implementation/application: Repository initialization and save_result/get_result/get_results/latest_result, for file-backed SQLite databases. Backups are uniquely named siblings; future schema versions are rejected.
+- Alternatives: destructive resets violate preservation; JSON-only replacement loses existing ledger history; retroactive result reconstruction would invent historical observations.
+- Tradeoffs/failure modes: backup disk space and write permission are required; failures abort migration. Legacy rows have no trustworthy complete envelopes. Leases prevent duplicate simultaneous runner ownership; expiry/crash recovery and shared budget accounting need further deadline work. Atomic adapter/ledger writes remain unfinished; this decision covers atomic canonical publication and checkpoint consistency.
+- Verification: migration fixture verifies preserved identity/snapshot rows, version-0 backup contents and no repeated backup; immutability regression rejects altered history. Revisit before the next schema version. Extends D-015 rather than replacing SQLite.

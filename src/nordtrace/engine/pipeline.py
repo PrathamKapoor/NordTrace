@@ -20,6 +20,7 @@ from nordtrace.adapters.pdf_pipeline import PdfFinancialPipeline
 from nordtrace.adapters.website import WebsiteAdapter
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.changes import detect_changes
+from nordtrace.core.contracts import build_result
 from nordtrace.core.entity import EntityResolver, PublicationFirewall
 from nordtrace.core.ledger import FactLedger
 from nordtrace.core.llm import LLMClient
@@ -60,6 +61,7 @@ class CompanyOutcome:
     coverage: Dict[str, str] = field(default_factory=dict)
     stages: List[str] = field(default_factory=list)
     error: Optional[str] = None
+    error_code: Optional[str] = None
 
 
 class ResearchPipeline:
@@ -89,6 +91,25 @@ class ResearchPipeline:
 
     # ------------------------------------------------------------------ main
     async def research_company(self, org_number: str, run_id: str) -> CompanyOutcome:
+        previous = self.repo.get_result(run_id, org_number)
+        if previous:
+            return CompanyOutcome(
+                org_number=org_number, terminal_state=previous.status, identity=previous.company,
+                facts=previous.facts, evidence=previous.evidence, sources=previous.sources,
+                rejected=previous.rejected_sources, changes=previous.changes, summary=previous.summary,
+                unknowns=previous.unknowns, coverage=previous.coverage,
+                stages=previous.research_metadata.stages_executed,
+                error=previous.errors[0].message if previous.errors else None,
+                error_code=previous.errors[0].code if previous.errors else None,
+            )
+        outcome = await self._research_company(org_number, run_id)
+        run = self.repo.get_run(run_id)
+        self.repo.save_result(build_result(
+            outcome, run_id, self.budget, run.started_at if run and run.started_at else utcnow().isoformat()
+        ))
+        return outcome
+
+    async def _research_company(self, org_number: str, run_id: str) -> CompanyOutcome:
         started = time.monotonic()
         outcome = CompanyOutcome(org_number=org_number, terminal_state=TerminalState.FAILED.value)
         ledger = FactLedger()
@@ -102,6 +123,7 @@ class ResearchPipeline:
             if not check.valid:
                 outcome.terminal_state = TerminalState.NOT_APPLICABLE.value
                 outcome.error = f"invalid organisation number: {check.reason}"
+                outcome.error_code = "invalid_organisation_number"
                 self._trace(run_id, org_number, "validation", f"rejected: {check.reason}", "error")
                 return outcome
             stages.append("validation")

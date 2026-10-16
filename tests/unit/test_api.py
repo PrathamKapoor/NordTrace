@@ -14,9 +14,10 @@ from nordtrace.core.repository import Repository
 
 
 @pytest.fixture()
-def client(tmp_path):
-    settings.database_path = str(tmp_path / "api.db")
+def client(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "database_path", str(tmp_path / "api.db"))
     repo = Repository(settings.database_path)
+    monkeypatch.setattr("nordtrace.api.app._repo_instance", repo)
     # seed run row first (FK target)
     from nordtrace.core.models import ResearchRun
 
@@ -88,6 +89,7 @@ def client(tmp_path):
         repo.insert_fact(f)
     with TestClient(app) as c:
         yield c
+    repo.close()
 
 
 def test_root(client):
@@ -142,22 +144,32 @@ def test_research_invalid_orgnr_422(client):
     assert "invalid" in r.json()["detail"]
 
 
-def test_research_unknown_orgnr_404(client):
-    """Valid checksum, unregistered → run completes with terminal state, company 404."""
+def test_research_unknown_orgnr_404(client, monkeypatch):
+    """404 transport fixture → actual pipeline persists the unavailable envelope."""
+    import httpx
+
+    from nordtrace.core.request_gateway import RequestGateway
+
+    monkeypatch.setattr("nordtrace.core.request_gateway._resolve_host", lambda host: ["8.8.8.8"])
+
+    async def mock_client(self):
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                transport=httpx.MockTransport(lambda request: httpx.Response(404))
+            )
+        return self._client
+
+    monkeypatch.setattr(RequestGateway, "_get_client", mock_client)
     r = client.post("/research", json={"organisation_number": "999999999"})
     assert r.status_code == 200
     run_id = r.json()["run_id"]
-    import time
-
-    for _ in range(120):
-        rr = client.get(f"/research/{run_id}")
-        if rr.json().get("state") in ("completed", "failed"):
-            break
-        time.sleep(0.5)
+    rr = client.get(f"/research/{run_id}")
     assert rr.json().get("state") == "completed"
     # unregistered company → not_found terminal state
     states = rr.json()["company_states"]
-    assert states.get("999999999") in ("not_available", "failed")
+    assert states.get("999999999") == "not_available"
+    assert rr.json()["result"]["status"] == "not_available"
+    assert rr.json()["result"]["company"] is None
 
 
 def test_unknown_run_404(client):

@@ -11,6 +11,16 @@ _ORGNR_RE = re.compile(r"^\d{9}$")
 
 
 def validate_result(data: Dict[str, Any]) -> List[str]:
+    if data.get("schema_version") == "1.1":
+        from pydantic import ValidationError
+
+        from nordtrace.core.models import CompanyProfile
+
+        try:
+            CompanyProfile.model_validate(data)
+        except ValidationError as error:
+            return [str(error)]
+        return []
     errors: List[str] = []
     for k in _REQUIRED_TOP:
         if k not in data:

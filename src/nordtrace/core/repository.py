@@ -18,12 +18,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from nordtrace.core.models import (
     ChangeRecord,
     CompanyIdentity,
+    CompanyProfile,
     EvidenceRecord,
     Fact,
     FactStatus,
@@ -185,8 +187,132 @@ class Repository:
     def _init_db(self) -> None:
         with self._lock:
             conn = self.conn
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if version > 2:
+                raise ValueError(f"database schema {version} is newer than supported version 2")
+            if version < 2 and conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='runs'"
+            ).fetchone():
+                # SQLite backup includes committed WAL data; never overwrite a previous backup.
+                backup_path = self.db_path.with_name(
+                    self.db_path.name + f".pre-v{version + 1}-{time.time_ns()}.bak"
+                )
+                with sqlite3.connect(str(backup_path)) as backup:
+                    conn.backup(backup)
             conn.executescript(_SCHEMA)
+            if version == 0:
+                conn.executescript("""
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE IF NOT EXISTS company_results (
+                        run_id TEXT NOT NULL REFERENCES runs(run_id),
+                        result_key TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        PRIMARY KEY (run_id, result_key)
+                    );
+                    CREATE TABLE IF NOT EXISTS run_inputs (
+                        run_id TEXT PRIMARY KEY REFERENCES runs(run_id),
+                        inputs_json TEXT NOT NULL
+                    );
+                    PRAGMA user_version=1;
+                    COMMIT;
+                """)
+            if version < 2:
+                conn.executescript("""
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE IF NOT EXISTS company_claims (
+                        run_id TEXT NOT NULL REFERENCES runs(run_id),
+                        result_key TEXT NOT NULL,
+                        owner TEXT NOT NULL,
+                        lease_until REAL NOT NULL,
+                        PRIMARY KEY (run_id, result_key)
+                    );
+                    PRAGMA user_version=2;
+                    COMMIT;
+                """)
             conn.commit()
+
+    def try_claim_company(self, run_id: str, key: str, owner: str, lease_seconds: float) -> bool:
+        """SQLite lease prevents two workers/processes from owning the same task."""
+        now = time.time()
+        with self._lock, self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
+            if self.conn.execute(
+                "SELECT 1 FROM company_results WHERE run_id=? AND result_key=?", (run_id, key)
+            ).fetchone():
+                return False
+            cursor = self.conn.execute(
+                "INSERT INTO company_claims VALUES (?,?,?,?) "
+                "ON CONFLICT(run_id,result_key) DO UPDATE SET owner=excluded.owner, lease_until=excluded.lease_until "
+                "WHERE company_claims.lease_until<=?",
+                (run_id, key, owner, now + lease_seconds, now),
+            )
+            return cursor.rowcount == 1
+
+    def release_company(self, run_id: str, key: str, owner: str) -> None:
+        with self._lock, self.conn:
+            self.conn.execute(
+                "DELETE FROM company_claims WHERE run_id=? AND result_key=? AND owner=?", (run_id, key, owner)
+            )
+
+    def save_result(self, result: CompanyProfile) -> None:
+        """Atomically publish an immutable envelope and its terminal checkpoint.
+
+        No company FK: invalid, blocked and unregistered inputs remain inspectable.
+        Existing pre-contract rows are retained without invented historical envelopes.
+        """
+        result = CompanyProfile.model_validate(result.model_dump())
+        payload = json.dumps(result.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
+        with self._lock, self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
+            existing = self.conn.execute(
+                "SELECT payload_json FROM company_results WHERE run_id=? AND result_key=?",
+                (result.run_id, result.organisation_number),
+            ).fetchone()
+            if existing and existing[0] != payload:
+                raise ValueError("completed research results are immutable")
+            self.conn.execute(
+                "INSERT OR IGNORE INTO company_results VALUES (?,?,?)",
+                (result.run_id, result.organisation_number, payload),
+            )
+            row = self.conn.execute(
+                "SELECT company_states_json FROM runs WHERE run_id=?", (result.run_id,)
+            ).fetchone()
+            states = json.loads(row[0])
+            states[result.organisation_number] = result.status
+            self.conn.execute(
+                "UPDATE runs SET company_states_json=? WHERE run_id=?", (json.dumps(states), result.run_id)
+            )
+
+    def get_result(self, run_id: str, result_key: str) -> Optional[CompanyProfile]:
+        row = self.conn.execute(
+            "SELECT payload_json FROM company_results WHERE run_id=? AND result_key=?", (run_id, result_key)
+        ).fetchone()
+        return CompanyProfile.model_validate_json(row[0]) if row else None
+
+    def get_results(self, run_id: str) -> List[CompanyProfile]:
+        run = self.get_run(run_id)
+        if run is None:
+            return []
+        rows = self.conn.execute(
+            "SELECT result_key, payload_json FROM company_results WHERE run_id=?", (run_id,)
+        ).fetchall()
+        by_key = {row[0]: CompanyProfile.model_validate_json(row[1]) for row in rows}
+        return [by_key[key] for key in run.companies if key in by_key]
+
+    def latest_result(self, result_key: str) -> Optional[CompanyProfile]:
+        row = self.conn.execute(
+            "SELECT payload_json FROM company_results WHERE result_key=? ORDER BY rowid DESC LIMIT 1",
+            (result_key,),
+        ).fetchone()
+        return CompanyProfile.model_validate_json(row[0]) if row else None
+
+    def save_run_inputs(self, run_id: str, inputs: List[dict]) -> None:
+        with self._lock, self.conn:
+            self.conn.execute("INSERT INTO run_inputs VALUES (?,?)", (run_id, json.dumps(inputs)))
+
+    def get_run_inputs(self, run_id: str) -> List[dict]:
+        row = self.conn.execute("SELECT inputs_json FROM run_inputs WHERE run_id=?", (run_id,)).fetchone()
+        return json.loads(row[0]) if row else []
 
     # ------------------------------------------------------------ runs
     def create_run(self, run: ResearchRun, budget_json: Optional[str] = None) -> None:
@@ -207,7 +333,20 @@ class Repository:
             self.conn.commit()
 
     def update_run(self, run: ResearchRun) -> None:
-        with self._lock:
+        with self._lock, self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
+            row = self.conn.execute(
+                "SELECT company_states_json FROM runs WHERE run_id=?", (run.run_id,)
+            ).fetchone()
+            states = json.loads(row[0]) if row else {}
+            states.update(run.company_states)
+            # Publication is authoritative, including when a different process
+            # committed after this caller read the run checkpoint.
+            for result in self.conn.execute(
+                "SELECT result_key,payload_json FROM company_results WHERE run_id=?", (run.run_id,)
+            ):
+                states[result[0]] = json.loads(result[1])["status"]
+            run.company_states = states
             self.conn.execute(
                 "UPDATE runs SET completed_at=?, state=?, request_count=?, estimated_cost_usd=?, companies_json=?, company_states_json=? WHERE run_id=?",
                 (
@@ -216,7 +355,7 @@ class Repository:
                     run.request_count,
                     run.estimated_cost_usd,
                     json.dumps(run.companies),
-                    json.dumps(run.company_states),
+                    json.dumps(states),
                     run.run_id,
                 ),
             )
@@ -263,14 +402,18 @@ class Repository:
         return json.loads(row["company_states_json"]).get(org_number)
 
     def mark_company_state(self, run_id: str, org_number: str, state: str) -> None:
-        with self._lock:
+        with self._lock, self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
             row = self.conn.execute(
                 "SELECT company_states_json FROM runs WHERE run_id=?", (run_id,)
             ).fetchone()
             if not row:
                 return
             states = json.loads(row["company_states_json"])
-            states[org_number] = state
+            result = self.conn.execute(
+                "SELECT payload_json FROM company_results WHERE run_id=? AND result_key=?", (run_id, org_number)
+            ).fetchone()
+            states[org_number] = json.loads(result[0])["status"] if result else state
             self.conn.execute(
                 "UPDATE runs SET company_states_json=? WHERE run_id=?", (json.dumps(states), run_id)
             )

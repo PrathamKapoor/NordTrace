@@ -22,6 +22,14 @@ Settings read a root .env with case-insensitive names, but DATA_DIR and database
 
 ## Result classification
 
+Review regressions: repeated calls and concurrent resumes initially exposed immutable-payload/checkpoint conflicts; a two-connection stale run update could erase a published checkpoint. Targeted tests failed before fixes. Final targeted command (result-contract, CLI and API files) returned **37 passed**, one upstream warning, in 3.35s; Ruff passed and mypy passed for 30 source files. A broader unit run excluding the known rate-spacing defect returned 236 passed, 4 deselected in 23.13s before the last added stale-checkpoint test.
+
+The existing simulated 100-company integration passed. The resume-at-37 test defines but does not wire its simulated pipeline and attempted live acquisition; it was stopped and has no valid simulated result. Its fixture needs repair.
+
+Test isolation correction: the old CLI fixture initially let six newly persisted invalid test runs enter `data/nordtrace.db`. The fixture now uses a temporary database. The six exact run IDs were compared with the pre-migration backup, checked to contain only the two invalid fixture inputs and no sources, then removed transactionally after a second SQLite backup. Foreign-key checking passed. Both backups and an exact cleanup manifest are retained under ignored data/. Existing history was preserved; no database reset/restoration was used.
+
+Canonical-outcome correction: five targeted regressions failed against the starting code; after implementation `.\.venv\Scripts\python.exe -m pytest tests/unit/test_result_contract.py tests/unit/test_cli.py tests/unit/test_api.py -q` returned **33 passed**, one upstream Starlette deprecation warning, in 2.95s. Acquisition in the API missing-company test is an instrumentable httpx 404 fixture, not a live registry check. Migration preservation is tested on a generated legacy database, not on the user's real databases. Exact snapshot/locator validation, complete publication transactions and budget-restoring resume are outstanding.
+
 Baseline commands in the fresh declared-dependency environment:
 
 | Command | Actual result | Classification |

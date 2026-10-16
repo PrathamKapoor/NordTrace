@@ -81,8 +81,8 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | F02 | Homepage contradictory orgnr | core/entity.py; adapters/website.py | contradictory homepage fixture | not_started | Not yet reproduced in this checkout |
 | F03 | PDF table, period, scale and scope | adapters/pdf_pipeline.py | financial fixture matrix | not_started | Not yet reproduced in this checkout |
 | F04 | Redirect safety and accounting | core/request_gateway.py | private redirect transport instrumentation | not_started | Not yet reproduced in this checkout |
-| F05 | Complete batch envelopes | cli.py; engine/runner.py | input/output cardinality contract tests | not_started | Not yet reproduced in this checkout |
-| F06 | Resume schedules completed companies | engine/runner.py | spy actual research calls | not_started | Not yet reproduced in this checkout |
+| F05 | Complete batch envelopes | cli.py; engine/runner.py | input/output cardinality contract tests | implemented_unverified | Reproduced dropped invalid inputs; complete results/input mapping now exported; contract tests pass. Interrupted/scale/export manifest checks outstanding |
+| F06 | Resume schedules completed companies | engine/runner.py | spy actual research calls | verified | test_result_contract.py::test_resume_only_invokes_unfinished_companies failed before repair, passes afterward; budget restoration tracked separately |
 | F07 | Outage causes retraction | core/changes.py | source outage and recovery fixtures | not_started | Not yet reproduced in this checkout |
 | F08 | Replay duplicates logical claims | core/models.py; core/repository.py | snapshot replay / stable item tests | not_started | Not yet reproduced in this checkout |
 | F09 | Research does not retain snapshots | engine/pipeline.py; core/repository.py | production snapshot hash resolution | not_started | Not yet reproduced in this checkout |
@@ -95,8 +95,8 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | F16 | Unavailable accounts skip fallback | engine/pipeline.py | fallback state decision matrix | not_started | Not yet reproduced in this checkout |
 | F17 | Adaptive option has no effect | adapters/website.py | new-work crawl instrumentation | not_started | Not yet reproduced in this checkout |
 | F18 | Optional model has no callers | core/llm.py; core/synthesis.py | no-key, optional-caller, injection tests | not_started | Not yet reproduced in this checkout |
-| F19 | API omits persisted summary | api/app.py; core/repository.py | CLI/API/batch canonical equivalence | not_started | Not yet reproduced in this checkout |
-| F20 | Historical API reads present identity | api/app.py; core/repository.py | frozen run after later research | not_started | Not yet reproduced in this checkout |
+| F19 | API omits persisted summary | api/app.py; core/repository.py | CLI/API/batch canonical equivalence | verified | build_result persists synthesis; test_canonical_history_retains_summary_identity_and_failure_without_company checks the API payload |
+| F20 | Historical API reads present identity | api/app.py; core/repository.py | frozen run after later research | verified | Immutable historical envelopes tested after changed identity/summary; legacy historical envelopes explicitly unavailable |
 | F21 | Evidence drawer lacks spans | api/app.py; frontend/index.html | supporting snippet/locator endpoint and UI | not_started | Not yet reproduced in this checkout |
 | F22 | Activity cites wrong registry payload | engine/pipeline.py; adapters/activity.py | entity versus accounts attribution | not_started | Not yet reproduced in this checkout |
 | F23 | News index treated as dated event | adapters/website.py; adapters/activity.py | dated individual events / unknown dates | not_started | Not yet reproduced in this checkout |
@@ -113,4 +113,3 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | Docker daemon | blocked | `docker info --format '{{.ServerVersion}}'`: named pipe dockerDesktopLinuxEngine absent (2026-10-16) | Windows Python 3.12 isolated checks |
 | Official schema/batch/budget/snapshot | blocked | Retrieved v2 contract describes organizer-supplied formats/resources but provides no JSON Schema or actual input assets | Explicit compatibility adapter and synthetic scale checks; acceptance unverified |
 | Live credentials / paid APIs | blocked | No authorization to use personal credentials or incur charges | Deterministic and transport-mocked paths; primary public docs |
-
