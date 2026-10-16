@@ -6,6 +6,12 @@ env/
 
 # Cache
 /cache/
+/data/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 *.db
 
 # Python
