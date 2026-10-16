@@ -22,6 +22,8 @@ Settings read a root .env with case-insensitive names, but DATA_DIR and database
 
 ## Result classification
 
+Rate/simulation correction: `.\.venv\Scripts\python.exe -m pytest tests/unit/test_rate_limiting.py -q` returned 16 passed in 17.80s. `.\.venv\Scripts\python.exe -m pytest tests/integration/test_contamination_scale.py -m 'not live' -q` returned 3 passed, 1 deselected in 2.93s after explicitly wiring the fake pipelines. These supersede the earlier stopped resume test; neither proves slow-request cancellation or real coverage.
+
 Review regressions: repeated calls and concurrent resumes initially exposed immutable-payload/checkpoint conflicts; a two-connection stale run update could erase a published checkpoint. Targeted tests failed before fixes. Final targeted command (result-contract, CLI and API files) returned **37 passed**, one upstream warning, in 3.35s; Ruff passed and mypy passed for 30 source files. A broader unit run excluding the known rate-spacing defect returned 236 passed, 4 deselected in 23.13s before the last added stale-checkpoint test.
 
 The existing simulated 100-company integration passed. The resume-at-37 test defines but does not wire its simulated pipeline and attempted live acquisition; it was stopped and has no valid simulated result. Its fixture needs repair.

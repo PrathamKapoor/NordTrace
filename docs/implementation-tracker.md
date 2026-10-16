@@ -15,7 +15,7 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | 3 | Current contract/version/schema/ambiguities; no official score or submission | docs/evaluator-contract.md | retrieve four primary sources | in_progress | Contract v2 effective 2026-08-26 retrieved 2026-10-16; no JSON schema or numeric budgets published |
 | 4 | Recheck audited architecture; retain sound stack | src/nordtrace | tracked inventory and HEAD | verified | Actual checkout exactly audited HEAD; Python/Click/FastAPI/SQLite retained |
 | 5.1–5.2 | Inventory dependencies, runtime, DB, Docker/CI, existing docs/history | docs/verification.md | read files/schema/settings/documents | in_progress | Python 3.12 chosen; Docker CLI present; daemon unavailable |
-| 5.3–5.6 | Isolated baseline install/checks; classify failures; current tracker/metrics | docs/verification.md | declared editable dev installation; pytest/lint/type | in_progress | Fresh .venv created; installation running |
+| 5.3–5.6 | Isolated baseline install/checks; classify failures; current tracker/metrics | docs/verification.md | declared editable dev installation; pytest/lint/type | verified | Fresh Python 3.12.5 installation; baseline 227 passed/1 rate failure; lint/type/pip-check passed. Live unit leakage corrected and rate defect reproduced/fixed; see verification.md |
 | A.input | Versioned run input; supplied batches/snapshot; duplicate policy and input mapping | core/contracts.py; runner | contract inputs and duplicates | not_started |  |
 | A.output | One serializer; terminal states/reasons; identity/claims/evidence/coverage/errors | core/contracts.py; repository | schema, failed/no-identity persistence | not_started |  |
 | A.export | Incremental atomic export/completion manifest; isolation of failures; exit codes | cli.py; runner | invalid/missing/interrupted/cardinality tests | not_started |  |
@@ -72,6 +72,7 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | X03 | Unpinned install / absent hosted CI evidence | lock/.github | fresh locked install; local CI commands (hosted unverified) | not_started |  |
 | X04 | Env example not consumed; DATA_DIR disconnected | config.py; .env.example | isolated settings tests | not_started |  |
 | X05 | Brand-biased benchmark / uncounted discovery budget / misleading metrics | benchmark.py | universe sample and shared instrumentation | not_started |  |
+| X06 | Early timer wakeup bypasses spacing; synthetic runner fixtures invoke real networking | rate_limiter.py; integration tests | early-wakeup regression and wired fake pipelines | verified | 16 limiter tests and three explicitly offline integration scenarios pass; no slow-source cancellation claim |
 
 ## Audit defect register
 

@@ -72,6 +72,32 @@ def test_min_interval_spacing():
     assert elapsed >= 0.1  # min interval enforced between consecutive requests
 
 
+def test_spacing_rechecks_monotonic_deadline_after_early_timer_wakeup(monkeypatch):
+    from types import SimpleNamespace
+
+    from nordtrace.core import rate_limiter
+
+    clock = {"now": 100.0, "sleeps": 0}
+    monkeypatch.setattr(rate_limiter, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+
+    async def early_sleep(delay):
+        clock["sleeps"] += 1
+        clock["now"] += delay * 0.4 if clock["sleeps"] == 1 else delay
+
+    monkeypatch.setattr(rate_limiter.asyncio, "sleep", early_sleep)
+
+    async def execute():
+        limiter = RateLimiter(default_policy=SourcePolicy(min_interval=0.1))
+        first = await limiter.acquire("example.no")
+        first.record_success()
+        second = await limiter.acquire("example.no")
+        second.record_success()
+
+    asyncio.run(execute())
+    assert clock["now"] >= 100.1
+    assert clock["sleeps"] == 2
+
+
 def test_concurrency_limit_per_domain():
     async def go():
         rl = RateLimiter(default_policy=SourcePolicy(max_concurrent=1, min_interval=0.0))

@@ -1,5 +1,7 @@
 # Current implementation record — 2026-10-16
 
+RateLimiter.acquire now rechecks the monotonic spacing deadline after every timer wakeup. The runner's synthetic 100-company/deadline/resume fixtures explicitly supply their fake pipeline and run offline; the at-37 scenario finalizes deadline-exhausted companies and proves no repeat work, not crash recovery. Tests: `test_spacing_rechecks_monotonic_deadline_after_early_timer_wakeup` and the three non-live checks in `test_contamination_scale.py`.
+
 This record supersedes conflicting interface/persistence descriptions below. The earlier detailed audit remains historical context; snapshot acquisition, hard transport deadlines and safe refresh are still tracked as unfinished in `docs/implementation-tracker.md`.
 
 Single research now calls `cli.research → BatchRunner.run_batch → ResearchPipeline.research_company → _research_company → build_result → Repository.save_result`. Input mapping normalizes valid IDs, preserves invalid input strings and deduplicates work by result key. The pipeline executes the existing adapters and ledger; its wrapper serializes the actual terminal outcome and synthesis. Invalid, unregistered and failed outcomes can be stored without a company identity row. A result contains explicit source/evidence records and machine-readable errors; snapshot/locator validity is a separate unfinished publication requirement.

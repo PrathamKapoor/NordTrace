@@ -127,8 +127,9 @@ class RateLimiter:
             async with state._lock:
                 now = time.monotonic()
                 wait = state._last_start + state.policy.min_interval - now
-                if wait > 0:
+                while wait > 0:
                     await asyncio.sleep(wait)
+                    wait = state._last_start + state.policy.min_interval - time.monotonic()
                 state._last_start = time.monotonic()
         except BaseException:
             state.semaphore.release()

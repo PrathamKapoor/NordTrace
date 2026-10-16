@@ -532,6 +532,16 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
 # Current decisions — 2026-10-16
 
+## D-023 — Recheck rate-spacing deadlines and isolate synthetic execution
+
+- Date/status: 2026-10-16, accepted.
+- Problem/evidence: fresh baseline spacing measured 0.094 seconds despite a 0.1-second minimum. A deterministic early-wakeup fixture returned at 0.04 seconds. Existing resume/deadline tests constructed simulated pipelines without wiring them into BatchRunner, allowing live requests.
+- Decision/implementation: RateLimiter.acquire recomputes the monotonic wait after every wakeup until the minimum interval actually elapses. Integration fixtures explicitly patch the runner pipeline; only actual external acquisition remains live-marked.
+- Application: every rate-limited request and synthetic runner test. The deadline-finalized-at-37 test asserts zero repeated research; it does not claim unfinished task recovery. The one-second fixture verifies checkpoints, not cancellation of a slow source.
+- Alternatives: loosening the timing assertion would hide the rate-policy violation; relabeling accidental live tests would retain misleading simulation claims.
+- Tradeoffs/limits: early timers can cause another short wait. Absolute run cancellation and shared budget restoration remain separate work. Synthetic success is not live verification.
+- Verification: 16 rate-limiter tests passed, including the failing-before-fix early-wakeup case; three corrected offline integration scenarios passed. Revisit if the limiter clock or scheduling primitive changes. Supplements D-003.
+
 ## D-021 — Immutable canonical research outcomes
 
 - Date/status: 2026-10-16, accepted.

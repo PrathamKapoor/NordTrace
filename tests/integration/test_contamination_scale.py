@@ -6,9 +6,8 @@ import pytest
 
 from nordtrace.core.models import ResearchRun, utcnow
 
-pytestmark = pytest.mark.live
 
-
+@pytest.mark.live
 def test_cross_company_contamination(tmp_path):
     """Research A and B concurrently; verify A facts ⊂ A, B facts ⊂ B.
     Zero A-source → B-fact and B-source → A-fact."""
@@ -253,9 +252,11 @@ def test_100_companies_simulated_all_terminal(tmp_path):
     assert bm.requests.total_used <= 2000
 
 
-def test_resume_under_failure_at_company_37(tmp_path):
-    """100-company run stopped at 37 → resume: 1-37 not redundantly researched,
-    38-100 continue, accounting correct, DB consistent."""
+def test_resume_under_failure_at_company_37(tmp_path, monkeypatch):
+    """A deadline-finalized batch is terminal; resume must not repeat completed work.
+
+    This is a synthetic orchestration check, not interruption recovery or live coverage.
+    """
     from nordtrace.core.budget import BudgetManager
     from nordtrace.engine.runner import BatchRunner
 
@@ -280,6 +281,8 @@ def test_resume_under_failure_at_company_37(tmp_path):
             research_counts["n"] += 1
             research_counts["by_org"][org] = research_counts["by_org"].get(org, 0) + 1
             return await real_research(self, org, run_id)
+
+    monkeypatch.setattr("nordtrace.engine.runner.ResearchPipeline", CountingPipeline)
 
     async def go_interrupt():
         bm2 = BudgetManager(max_requests=2000)
@@ -308,7 +311,8 @@ def test_resume_under_failure_at_company_37(tmp_path):
     asyncio.run(go_resume())
     # 1-37 not redundantly researched
     rerun = sum(1 for org, n in research_counts["by_org"].items() if n > 1)
-    assert rerun <= 5  # at most a few reruns (concurrency race at interrupt boundary)
+    assert rerun == 0
+    assert research_counts["n"] == 37
     # all 100 companies now have terminal states
     final = repo.get_run(run1.run_id)
     assert len(final.company_states) == 100
@@ -318,12 +322,16 @@ def test_resume_under_failure_at_company_37(tmp_path):
     assert issues["foreign_key_violations"] == 0
 
 
-def test_extreme_deadline_1sec(tmp_path):
-    """deadline = 1 second → tasks cancel, DB consistent, terminal states, clean exit."""
+def test_extreme_deadline_1sec(tmp_path, monkeypatch):
+    """One-second synthetic scenario returns complete terminal checkpoints.
+
+    Does not prove cancellation of slow acquisition; that requires a separate fixture.
+    """
     from nordtrace.core.budget import BudgetManager
     from nordtrace.engine.runner import BatchRunner
 
     repo, _, SimPipeline = _simulated_batch_100(tmp_path)
+    monkeypatch.setattr("nordtrace.engine.runner.ResearchPipeline", SimPipeline)
     from nordtrace.core.orgnr import _checksum_valid
 
     orgs = []
