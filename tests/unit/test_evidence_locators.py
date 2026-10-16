@@ -46,7 +46,8 @@ def test_registry_claim_cannot_publish_from_an_invented_snippet(tmp_path, defect
     )
     value = "INVENTED AS" if defect == "wrong_value" else "TARGET AS"
     fact = Fact(
-        org_number=ORG, category="identity", field="legal_name", value=value, normalized_value=value,
+        org_number=ORG, subject_scope="legal_entity", category="identity",
+         field="legal_name", value=value, normalized_value=value,
         source_id=source.source_id, evidence_id=ev.evidence_id, entity_verdict="VERIFIED",
         retrieved_at=source.retrieved_at,
     )
@@ -75,7 +76,8 @@ def test_exact_registry_field_and_zero_are_supported(tmp_path):
             locator={"kind": "json_pointer", "pointer": pointer, "raw_value": value},
         )
         fact = Fact(
-            org_number=ORG, category="identity", field=field, value=value, normalized_value=value,
+            org_number=ORG, subject_scope="legal_entity", category="identity",
+         field=field, value=value, normalized_value=value,
             source_id=source.source_id, evidence_id=ev.evidence_id, entity_verdict="VERIFIED",
             retrieved_at=source.retrieved_at,
         )
@@ -118,7 +120,8 @@ def test_employee_predicate_rejects_non_count_values_in_identity_and_claim(tmp_p
         locator={"kind": "json_pointer", "pointer": "/antallAnsatte", "raw_value": raw},
     )
     fact = Fact(
-        org_number=ORG, category="identity", field="employee_count", value=raw, normalized_value=raw,
+        org_number=ORG, subject_scope="legal_entity", category="identity",
+         field="employee_count", value=raw, normalized_value=raw,
         source_id=source.source_id, evidence_id=ev.evidence_id, entity_verdict="VERIFIED",
         retrieved_at=source.retrieved_at,
     )
@@ -139,7 +142,8 @@ def test_observation_metadata_cannot_upgrade_the_capture(tmp_path, change):
         locator={"kind": "json_pointer", "pointer": "/navn", "raw_value": "TARGET AS"},
     )
     fact = Fact(
-        org_number=ORG, category="identity", field="legal_name", value="TARGET AS",
+        org_number=ORG, subject_scope="legal_entity", category="identity",
+         field="legal_name", value="TARGET AS",
         normalized_value="TARGET AS",
         source_id=source.source_id, evidence_id=ev.evidence_id, entity_verdict="VERIFIED",
         retrieved_at=source.retrieved_at,
@@ -242,12 +246,15 @@ def test_schema3_upgrade_preserves_captures_and_adds_nullable_locators(tmp_path)
     source = captured(repo, {"organisasjonsnummer": ORG, "navn": "TARGET AS"})
     repo.conn.execute("ALTER TABLE evidence DROP COLUMN locator_json")
     repo.conn.execute("ALTER TABLE sources DROP COLUMN source_json")
+    repo.conn.execute("ALTER TABLE facts DROP COLUMN item_key")
+    repo.conn.execute("ALTER TABLE facts DROP COLUMN subject_scope")
+    repo.conn.execute("ALTER TABLE changes DROP COLUMN change_json")
     repo.conn.execute("PRAGMA user_version=3")
     repo.conn.commit()
     repo.close()
     upgraded = Repository(path)
     assert upgraded.read_capture(source.source_id)[0] == source
-    assert upgraded.conn.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert upgraded.conn.execute("PRAGMA user_version").fetchone()[0] == 5
     assert upgraded.conn.execute("PRAGMA foreign_key_check").fetchall() == []
     upgraded.close()
     backups = list(tmp_path.glob("upgrade3.db.pre-v4-*.bak"))
@@ -256,3 +263,25 @@ def test_schema3_upgrade_preserves_captures_and_adds_nullable_locators(tmp_path)
         assert backup.execute("PRAGMA user_version").fetchone()[0] == 3
     Repository(path).close()
     assert len(list(tmp_path.glob("upgrade3.db.pre-v4-*.bak"))) == 1
+
+
+@pytest.mark.parametrize(
+    "scope,item", [("group", None), ("unknown", None), ("legal_entity", "invented-item")]
+)
+def test_scalar_registry_identity_cannot_be_relabelled_as_group_or_collection(tmp_path, scope, item):
+    repo = Repository(tmp_path / "scope.db")
+    source = captured(repo, {"organisasjonsnummer": ORG, "navn": "TARGET AS"})
+    evidence = EvidenceRecord(
+        source_id=source.source_id, content_hash=source.content_hash, org_number=ORG,
+        source_type="registry", authority_tier=0, retrieved_at=source.retrieved_at,
+        entity_verdict="VERIFIED", evidence_text='"TARGET AS"',
+        locator={"kind": "json_pointer", "pointer": "/navn", "raw_value": "TARGET AS"},
+    )
+    fact = Fact(
+        org_number=ORG, category="identity", field="legal_name", value="TARGET AS",
+        normalized_value="TARGET AS", subject_scope=scope, item_key=item,
+        source_id=source.source_id, evidence_id=evidence.evidence_id, entity_verdict="VERIFIED",
+        retrieved_at=source.retrieved_at,
+    )
+    assert FactLedger(repository=repo).add_fact(fact, evidence, source).status == "FAILED"
+    repo.close()

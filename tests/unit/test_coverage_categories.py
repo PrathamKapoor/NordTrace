@@ -170,8 +170,10 @@ def test_financial_multiple_periods_separate_slots():
             )
         )
         assert f.status == FactStatus.PUBLISHED.value  # separate slots, no conflict
-    slots = {f.fact_key() for f in led.published_facts("982463718")}
-    assert len([s for s in slots if s.startswith("financials|revenue|")]) == 3
+    revenues = [
+        f for f in led.published_facts("982463718") if f.category == "financials" and f.field == "revenue"
+    ]
+    assert len({f.fact_key() for f in revenues}) == 3
 
 
 def test_financial_unavailable_is_honest():

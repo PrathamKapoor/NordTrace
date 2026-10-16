@@ -122,6 +122,8 @@ def verify_snapshot_support(
     subject = validate_orgnr(document.get("organisasjonsnummer", "")) if isinstance(document, dict) else None
     if subject is None or not subject.valid or subject.value != fact.org_number:
         raise ValueError("snapshot subject differs from claim subject")
+    if fact.subject_scope != "legal_entity" or fact.item_key is not None:
+        raise ValueError("registry identity requires scalar legal-entity scope")
     rule = IDENTITY_PATHS.get(fact.field)
     if rule is None or locator.pointer not in rule[0] or locator.normalization != rule[1]:
         raise ValueError("locator does not support this claim predicate")

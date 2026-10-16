@@ -189,9 +189,9 @@ class Repository:
         with self._lock:
             conn = self.conn
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version > 4:
-                raise ValueError(f"database schema {version} is newer than supported version 4")
-            if version < 4 and conn.execute(
+            if version > 5:
+                raise ValueError(f"database schema {version} is newer than supported version 5")
+            if version < 5 and conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='runs'"
             ).fetchone():
                 # SQLite backup includes committed WAL data; never overwrite a previous backup.
@@ -252,6 +252,15 @@ class Repository:
                     ALTER TABLE evidence ADD COLUMN locator_json TEXT;
                     ALTER TABLE sources ADD COLUMN source_json TEXT;
                     PRAGMA user_version=4;
+                    COMMIT;
+                """)
+            if version < 5:
+                conn.executescript("""
+                    BEGIN IMMEDIATE;
+                    ALTER TABLE facts ADD COLUMN item_key TEXT;
+                    ALTER TABLE facts ADD COLUMN subject_scope TEXT NOT NULL DEFAULT 'unknown';
+                    ALTER TABLE changes ADD COLUMN change_json TEXT;
+                    PRAGMA user_version=5;
                     COMMIT;
                 """)
             conn.commit()
@@ -484,29 +493,10 @@ class Repository:
     def get_previous_facts(self, org_number: str, exclude_run_id: str) -> List[Fact]:
         """Latest published facts for a company from any earlier run."""
         rows = self.conn.execute(
-            """
-            SELECT f.* FROM facts f
-            JOIN runs r ON r.run_id = f.run_id
-            WHERE f.org_number = ? AND f.run_id != ? AND f.status = ?
-              AND r.started_at = (
-                  SELECT MAX(r2.started_at) FROM runs r2
-                  JOIN facts f2 ON f2.run_id = r2.run_id
-                  WHERE f2.org_number = ? AND f2.run_id != ? AND f2.status = ? AND f2.fact_key_slot = f.fact_key_slot
-              )
-            """.replace(
-                "f.fact_key_slot", "f.category || '|' || f.field || '|' || COALESCE(f.reporting_period,'')"
-            ).replace(
-                "f2.fact_key_slot",
-                "f2.category || '|' || f2.field || '|' || COALESCE(f2.reporting_period,'')",
-            ),
-            (
-                org_number,
-                exclude_run_id,
-                FactStatus.PUBLISHED.value,
-                org_number,
-                exclude_run_id,
-                FactStatus.PUBLISHED.value,
-            ),
+            "SELECT f.* FROM facts f JOIN runs r ON r.run_id=f.run_id "
+            "WHERE f.org_number=? AND f.run_id!=? AND f.status=? "
+            "ORDER BY r.started_at DESC,f.rowid DESC",
+            (org_number, exclude_run_id, FactStatus.PUBLISHED.value),
         ).fetchall()
         facts = [self._row_to_fact(r) for r in rows]
         # dedupe by fact slot, keep latest retrieved
@@ -630,8 +620,8 @@ class Repository:
     def insert_fact(self, fact: Fact) -> None:
         with self._lock:
             self.conn.execute(
-                "INSERT OR REPLACE INTO facts (fact_id, org_number, run_id, category, field, value_json, normalized_value_json, unit, currency, valid_from, valid_to, reporting_period, source_id, evidence_id, retrieved_at, published_at, entity_verdict, fact_confidence, status, conflict_note) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO facts (fact_id, org_number, run_id, category, field, value_json, normalized_value_json, unit, currency, valid_from, valid_to, reporting_period, source_id, evidence_id, retrieved_at, published_at, entity_verdict, fact_confidence, status, conflict_note, item_key, subject_scope) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     fact.fact_id,
                     fact.org_number,
@@ -653,6 +643,8 @@ class Repository:
                     fact.fact_confidence,
                     fact.status,
                     fact.conflict_note,
+                    fact.item_key,
+                    fact.subject_scope,
                 ),
             )
             self.conn.commit()
@@ -688,8 +680,8 @@ class Repository:
     def insert_facts_bulk(self, facts: Iterable[Fact]) -> None:
         with self._lock:
             self.conn.executemany(
-                "INSERT OR REPLACE INTO facts (fact_id, org_number, run_id, category, field, value_json, normalized_value_json, unit, currency, valid_from, valid_to, reporting_period, source_id, evidence_id, retrieved_at, published_at, entity_verdict, fact_confidence, status, conflict_note) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO facts (fact_id, org_number, run_id, category, field, value_json, normalized_value_json, unit, currency, valid_from, valid_to, reporting_period, source_id, evidence_id, retrieved_at, published_at, entity_verdict, fact_confidence, status, conflict_note, item_key, subject_scope) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [
                     (
                         f.fact_id,
@@ -712,6 +704,8 @@ class Repository:
                         f.fact_confidence,
                         f.status,
                         f.conflict_note,
+                        f.item_key,
+                        f.subject_scope,
                     )
                     for f in facts
                 ],
@@ -736,8 +730,8 @@ class Repository:
     def insert_changes(self, changes: Iterable[ChangeRecord]) -> None:
         with self._lock:
             self.conn.executemany(
-                "INSERT OR REPLACE INTO changes (change_id, org_number, run_id, change_type, field, category, previous_value_json, current_value_json, previous_source_id, current_source_id, detected_at, explanation) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO changes (change_id, org_number, run_id, change_type, field, category, previous_value_json, current_value_json, previous_source_id, current_source_id, detected_at, explanation, change_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [
                     (
                         c.change_id,
@@ -752,6 +746,7 @@ class Repository:
                         c.current_source_id,
                         c.detected_at,
                         c.explanation,
+                        c.model_dump_json(),
                     )
                     for c in changes
                 ],
@@ -945,6 +940,8 @@ class Repository:
             valid_from=r["valid_from"],
             valid_to=r["valid_to"],
             reporting_period=r["reporting_period"],
+            item_key=r["item_key"],
+            subject_scope=r["subject_scope"],
             source_id=r["source_id"],
             evidence_id=r["evidence_id"],
             retrieved_at=r["retrieved_at"],
@@ -957,6 +954,8 @@ class Repository:
         )
 
     def _row_to_change(self, r) -> ChangeRecord:
+        if r["change_json"]:
+            return ChangeRecord.model_validate_json(r["change_json"])
         return ChangeRecord(
             change_id=r["change_id"],
             org_number=r["org_number"],
@@ -982,8 +981,9 @@ class Repository:
         # runs is legitimate; within one run a slot must appear once
         dup_facts = self.conn.execute(
             """
-            SELECT org_number, category, field, COALESCE(reporting_period,'') as period, run_id, COUNT(*) as n
-            FROM facts GROUP BY org_number, category, field, period, run_id HAVING n > 1
+            SELECT org_number, category, field, COALESCE(reporting_period,'') as period,
+                item_key,subject_scope,run_id,COUNT(*) as n
+            FROM facts GROUP BY org_number,category,field,period,item_key,subject_scope,run_id HAVING n > 1
             """
         ).fetchall()
         issues["duplicate_fact_slots_same_run"] = len(dup_facts)

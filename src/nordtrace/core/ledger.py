@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Tuple
 
+from nordtrace.core.changes import assertions_differ
 from nordtrace.core.evidence import verify_snapshot_support
 from nordtrace.core.models import (
     EvidenceRecord,
@@ -50,6 +51,9 @@ class CitationValidator:
         # 1. correct company
         if fact.entity_verdict not in (MatchVerdict.VERIFIED.value, MatchVerdict.LIKELY.value):
             return False, f"entity verdict {fact.entity_verdict}"
+        if (fact.category, fact.field) in (("jobs", "job_posting"), ("locations", "branch")):
+            if not fact.item_key or not fact.item_key.strip():
+                return False, "collection claim requires a stable source item key"
         # 2. source actually retrieved
         src = self.sources.get(fact.source_id)
         if src is None:
@@ -160,6 +164,23 @@ class FactLedger:
             fact.conflict_note = reason
             self._entries.append(LedgerEntry(fact=fact))
             return fact
+        source_record = self.sources[fact.source_id]
+        for entry in self._entries:
+            existing = entry.fact
+            prior_source = self.sources.get(existing.source_id)
+            if (
+                existing.status == FactStatus.PUBLISHED.value and existing.fact_key() == fact.fact_key()
+                and prior_source and source_record.content_hash
+                and prior_source.content_hash == source_record.content_hash
+                and existing.value == fact.value and existing.normalized_value == fact.normalized_value
+                and existing.unit == fact.unit and existing.currency == fact.currency
+                and existing.valid_from == fact.valid_from and existing.valid_to == fact.valid_to
+            ):
+                if existing is fact:
+                    return existing
+                fact.status = FactStatus.DUPLICATE.value
+                fact.conflict_note = f"same claim and snapshot as observation {existing.fact_id}"
+                return existing
         # conflict detection: same slot, different normalized value
         conflict = self._detect_conflict(fact)
         if conflict:
@@ -186,7 +207,7 @@ class FactLedger:
                 continue
             if other.status not in (FactStatus.PUBLISHED.value, FactStatus.CONFLICT.value):
                 continue
-            if _values_differ(other.normalized_value, fact.normalized_value):
+            if assertions_differ(other, fact):
                 return (
                     f"conflicts with fact {other.fact_id} from source {other.source_id} "
                     f"(existing={_short(other.normalized_value)}, new={_short(fact.normalized_value)})"
@@ -244,14 +265,6 @@ class FactLedger:
         ]
         rows.sort(key=lambda f: (f.valid_from or f.reporting_period or "", f.retrieved_at or ""))
         return rows
-
-
-def _values_differ(a, b) -> bool:
-    if a is None and b is None:
-        return False
-    if isinstance(a, float) and isinstance(b, float):
-        return abs(a - b) > 1e-9
-    return a != b
 
 
 def _short(v) -> str:

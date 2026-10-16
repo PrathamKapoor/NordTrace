@@ -375,6 +375,8 @@ class WebsiteAdapter:
                             run_id=run_id,
                             category="jobs",
                             field="job_posting",
+                            item_key=job.get("url"),
+                            subject_scope="legal_entity",
                             value={
                                 "title": job["title"],
                                 "location": job.get("location"),

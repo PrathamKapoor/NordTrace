@@ -121,6 +121,8 @@ class NavJobsAdapter:
                     run_id=run_id,
                     category="jobs",
                     field="job_posting",
+                    item_key=f"nav:{hit['_id']}" if hit.get("_id") else None,
+                    subject_scope="legal_entity",
                     value={
                         "title": title,
                         "employer": employer,

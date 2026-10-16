@@ -221,6 +221,7 @@ class BrregAdapter:
                 evidences.append(evidence)
                 facts.append(Fact(
                     org_number=identity.organisation_number, run_id=run_id, category="identity", field=field,
+                    subject_scope="legal_entity",
                     value=value, normalized_value=value, source_id=source.source_id,
                     evidence_id=evidence.evidence_id, retrieved_at=source.retrieved_at,
                     entity_verdict=MatchVerdict.VERIFIED.value, fact_confidence=0.99,
@@ -494,6 +495,8 @@ class BrregAdapter:
                     run_id=run_id,
                     category="locations",
                     field="branch",
+                    item_key=u_orgnr,
+                    subject_scope="legal_entity",  # The parent has this identified subunit.
                     value={
                         "orgnr": u_orgnr,
                         "name": u_name,

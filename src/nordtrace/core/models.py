@@ -7,12 +7,13 @@ never the other way around.
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from nordtrace.core.orgnr import validate_orgnr
 
@@ -30,6 +31,7 @@ class MatchVerdict(str, Enum):
 
 class FactStatus(str, Enum):
     DISCOVERED = "DISCOVERED"
+    DUPLICATE = "DUPLICATE"
     EXTRACTED = "EXTRACTED"
     ENTITY_VERIFIED = "ENTITY_VERIFIED"
     EVIDENCE_VERIFIED = "EVIDENCE_VERIFIED"
@@ -212,6 +214,8 @@ class Fact(BaseModel):
     valid_from: Optional[str] = None
     valid_to: Optional[str] = None
     reporting_period: Optional[str] = None
+    item_key: Optional[str] = None
+    subject_scope: Literal["legal_entity", "group", "branch", "brand", "unknown"] = "unknown"
     source_id: str
     evidence_id: str
     retrieved_at: Optional[str] = None
@@ -223,8 +227,22 @@ class Fact(BaseModel):
     run_id: Optional[str] = None
 
     def fact_key(self) -> str:
-        """Identity of the fact slot for change detection."""
-        return f"{self.category}|{self.field}|{self.reporting_period or ''}"
+        """Unambiguous logical identity; values and observation IDs are excluded."""
+        return json.dumps([
+            self.org_number, self.category, self.field, self.reporting_period or None,
+            self.item_key or None, self.subject_scope,
+        ], ensure_ascii=True, separators=(",", ":"))
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def claim_id(self) -> str:
+        return "claim_v1_" + content_hash(self.fact_key())
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def observation_id(self) -> str:
+        """fact_id is retained as the historical observation primary key."""
+        return self.fact_id
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +257,9 @@ class ChangeRecord(BaseModel):
     change_type: str  # NEW / CHANGED / RETRACTED / UNCHANGED / SOURCE_UNAVAILABLE
     field: str
     reporting_period: Optional[str] = None
+    claim_id: Optional[str] = None
+    item_key: Optional[str] = None
+    subject_scope: str = "unknown"
     category: str
     previous_value: Optional[Any] = None
     current_value: Optional[Any] = None

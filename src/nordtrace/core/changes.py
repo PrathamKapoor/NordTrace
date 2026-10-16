@@ -7,6 +7,8 @@ slot, with explanations. Preserves history (previous values stay in the ledger).
 
 from __future__ import annotations
 
+import json
+from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional
 
 from nordtrace.core.models import ChangeRecord, Fact, FactStatus, utcnow
@@ -49,7 +51,7 @@ def detect_changes(
         if cur is None:
             changes.append(_mk(org_number, run_id, slot, prev, None, "RETRACTED", now))
             continue
-        if _differs(prev, cur):
+        if assertions_differ(prev, cur):
             changes.append(_mk(org_number, run_id, slot, prev, cur, "CHANGED", now))
         else:
             changes.append(_mk(org_number, run_id, slot, prev, cur, "UNCHANGED", now))
@@ -65,14 +67,18 @@ def detect_changes(
 def _mk(
     org_number: str, run_id: str, slot: str, prev: Optional[Fact], cur: Optional[Fact], ctype: str, now: str
 ) -> ChangeRecord:
-    category, field, period = (slot.split("|") + ["", ""])[:3]
+    representative = cur or prev
+    assert representative is not None
     return ChangeRecord(
         org_number=org_number,
         run_id=run_id,
         change_type=ctype,
-        field=field,
-        category=category,
-        reporting_period=period or None,
+        field=representative.field,
+        category=representative.category,
+        reporting_period=representative.reporting_period,
+        claim_id=representative.claim_id,
+        item_key=representative.item_key,
+        subject_scope=representative.subject_scope,
         previous_value=prev.value if prev else None,
         current_value=cur.value if cur else None,
         previous_source_id=prev.source_id if prev else None,
@@ -82,12 +88,21 @@ def _mk(
     )
 
 
-def _differs(a: Fact, b: Fact) -> bool:
-    va, vb = a.normalized_value, b.normalized_value
-    if va is None and vb is None:
-        return False
-    if isinstance(va, float) and isinstance(vb, float):
-        return abs(va - vb) > 1e-9
-    if isinstance(va, dict) and isinstance(vb, dict):
-        return va != vb
-    return va != vb
+def assertions_differ(a: Fact, b: Fact) -> bool:
+    """Compare published values/qualifiers, not a shortened extraction label."""
+    for field in ("currency", "unit", "valid_from", "valid_to"):
+        if getattr(a, field) != getattr(b, field):
+            return True
+    if (
+        a.category == b.category == "financials"
+        and not isinstance(a.value, bool) and not isinstance(b.value, bool)
+    ):
+        try:
+            va, vb = Decimal(str(a.value)), Decimal(str(b.value))
+            if va.is_finite() and vb.is_finite():
+                return va != vb  # Exact numeric equality, without a float epsilon.
+        except InvalidOperation:
+            pass
+    before = json.dumps(a.model_dump(mode="json", include={"value"}), sort_keys=True, allow_nan=False)
+    after = json.dumps(b.model_dump(mode="json", include={"value"}), sort_keys=True, allow_nan=False)
+    return before != after
