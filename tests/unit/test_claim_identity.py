@@ -186,7 +186,7 @@ def test_schema4_upgrade_preserves_history_and_adds_unknown_qualifiers(tmp_path)
     repo.close()
     upgraded = Repository(path)
     assert upgraded.get_run(run.run_id).companies == [ORG]
-    assert upgraded.conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert upgraded.conn.execute("PRAGMA user_version").fetchone()[0] == 6
     upgraded.close()
     backups = list(tmp_path.glob("upgrade4.db.pre-v5-*.bak"))
     assert len(backups) == 1

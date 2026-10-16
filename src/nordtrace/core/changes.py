@@ -11,13 +11,13 @@ import json
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional
 
-from nordtrace.core.models import ChangeRecord, Fact, FactStatus, utcnow
+from nordtrace.core.models import ChangeRecord, Fact, utcnow
 
 _CHANGE_EXPLANATIONS = {
     "NEW": "New verified fact not present in the previous run.",
     "CHANGED": "Value changed since the previous run.",
     "RETRACTED": "Fact present in the previous run but not found in this run.",
-    "SOURCE_UNAVAILABLE": "Source was unavailable in this run; previous value retained but marked unverified.",  # noqa: E501
+    "SOURCE_UNAVAILABLE": "Previous observation was not reconfirmed; absence is not evidence of removal.",
     "UNCHANGED": "Value confirmed by this run.",
 }
 
@@ -29,10 +29,14 @@ def detect_changes(
     current_facts: List[Fact],
     current_sources_ok: bool = True,
 ) -> List[ChangeRecord]:
-    """Fact-slot-level diff. A fact slot is (category, field, reporting_period).
+    """Diff logical claims, preserving period/item/scope distinctions.
 
     current_facts should contain only PUBLISHED (verified) facts of this run.
     previous_facts are the latest PUBLISHED facts from earlier runs.
+    current_sources_ok is retained for call compatibility; successful transport
+    cannot establish source/extraction completeness or affirmative removal.
+    No producer currently provides verified removal proof, so missing claims
+    always remain unconfirmed, never RETRACTED.
     """
     now = utcnow().isoformat()
     prev_by_slot: Dict[str, Fact] = {}
@@ -44,12 +48,9 @@ def detect_changes(
 
     changes: List[ChangeRecord] = []
     for slot, prev in prev_by_slot.items():
-        if prev.status == FactStatus.SOURCE_UNAVAILABLE.value and not current_sources_ok:
-            changes.append(_mk(org_number, run_id, slot, prev, None, "SOURCE_UNAVAILABLE", now))
-            continue
         cur = curr_by_slot.get(slot)
         if cur is None:
-            changes.append(_mk(org_number, run_id, slot, prev, None, "RETRACTED", now))
+            changes.append(_mk(org_number, run_id, slot, prev, None, "SOURCE_UNAVAILABLE", now))
             continue
         if assertions_differ(prev, cur):
             changes.append(_mk(org_number, run_id, slot, prev, cur, "CHANGED", now))
@@ -83,6 +84,10 @@ def _mk(
         current_value=cur.value if cur else None,
         previous_source_id=prev.source_id if prev else None,
         current_source_id=cur.source_id if cur else None,
+        previous_evidence_id=prev.evidence_id if prev else None,
+        current_evidence_id=cur.evidence_id if cur else None,
+        previous_observation_id=prev.fact_id if prev else None,
+        current_observation_id=cur.fact_id if cur else None,
         detected_at=now,
         explanation=_CHANGE_EXPLANATIONS.get(ctype, ctype),
     )

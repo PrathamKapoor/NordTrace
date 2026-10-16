@@ -254,7 +254,7 @@ def test_schema3_upgrade_preserves_captures_and_adds_nullable_locators(tmp_path)
     repo.close()
     upgraded = Repository(path)
     assert upgraded.read_capture(source.source_id)[0] == source
-    assert upgraded.conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert upgraded.conn.execute("PRAGMA user_version").fetchone()[0] == 6
     assert upgraded.conn.execute("PRAGMA foreign_key_check").fetchall() == []
     upgraded.close()
     backups = list(tmp_path.glob("upgrade3.db.pre-v4-*.bak"))

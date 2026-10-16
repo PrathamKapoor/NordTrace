@@ -156,7 +156,7 @@ def test_migration_backs_up_legacy_database_and_preserves_records(tmp_path):
     repo = Repository(database)
     assert repo.get_company("982463718").legal_name == "LEGACY AS"
     assert repo.get_snapshot("legacy-hash", "https://example.no") == "old bytes"
-    assert repo.conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert repo.conn.execute("PRAGMA user_version").fetchone()[0] == 6
     backups = list(tmp_path.glob("legacy.db.pre-v1-*.bak"))
     assert len(backups) == 1
     with sqlite3.connect(backups[0]) as backup:

@@ -19,7 +19,6 @@ from nordtrace.adapters.nav_jobs import NavJobsAdapter
 from nordtrace.adapters.pdf_pipeline import PdfFinancialPipeline
 from nordtrace.adapters.website import WebsiteAdapter
 from nordtrace.core.budget import BudgetManager
-from nordtrace.core.changes import detect_changes
 from nordtrace.core.contracts import build_result, project_identity
 from nordtrace.core.entity import EntityResolver, PublicationFirewall
 from nordtrace.core.ledger import FactLedger
@@ -31,6 +30,7 @@ from nordtrace.core.models import (
     EvidenceRecord,
     Fact,
     FactStatus,
+    RefreshOutcome,
     SourceRecord,
     SourceType,
     TerminalState,
@@ -38,6 +38,7 @@ from nordtrace.core.models import (
     utcnow,
 )
 from nordtrace.core.orgnr import validate_orgnr
+from nordtrace.core.refresh import apply_refresh, stale_notice
 from nordtrace.core.repository import Repository
 from nordtrace.core.request_gateway import RequestGateway
 from nordtrace.core.synthesis import build_summary
@@ -52,6 +53,9 @@ class CompanyOutcome:
     identity: Optional[CompanyIdentity] = None
     facts: List[Fact] = field(default_factory=list)
     conflicts: List[Fact] = field(default_factory=list)
+    last_known: List[Fact] = field(default_factory=list)
+    refresh_outcomes: List[RefreshOutcome] = field(default_factory=list)
+    previous_run_id: Optional[str] = None
     evidence: List[EvidenceRecord] = field(default_factory=list)
     sources: List[SourceRecord] = field(default_factory=list)
     rejected: List[Dict] = field(default_factory=list)
@@ -96,6 +100,8 @@ class ResearchPipeline:
             return CompanyOutcome(
                 org_number=org_number, terminal_state=previous.status, identity=previous.company,
                 facts=previous.facts, conflicts=previous.conflicts,
+                last_known=previous.last_known, refresh_outcomes=previous.refresh_outcomes,
+                previous_run_id=previous.previous_run_id,
                 evidence=previous.evidence, sources=previous.sources,
                 rejected=previous.rejected_sources, changes=previous.changes, summary=previous.summary,
                 unknowns=previous.unknowns, coverage=previous.coverage,
@@ -332,22 +338,8 @@ class ResearchPipeline:
                 stages.append("activity")
                 self._trace(run_id, org_number, "activity", f"{len(act_facts)} registry activity events")
 
-            # 7. change detection vs previous run
-            prev_facts = self.repo.get_previous_facts(org_number, exclude_run_id=run_id)
+            # 7. changes are compared against canonical supported history in finalization.
             current_facts = ledger.published_facts(org_number)
-            changes = detect_changes(org_number, run_id, prev_facts, current_facts)
-            if changes:
-                self.repo.insert_changes(changes)
-                stages.append("changes")
-                n_changed = sum(1 for c in changes if c.change_type in ("CHANGED", "NEW"))
-                self._trace(
-                    run_id,
-                    org_number,
-                    "changes",
-                    f"change detection: {n_changed} new/changed, "
-                    f"{len(changes) - n_changed} unchanged/retracted",
-                )
-            outcome.changes = changes
 
             # 8. derive coverage; ledger persistence runs for success and failure below.
             coverage = self._coverage_from(ledger, org_number, financials_status)
@@ -360,7 +352,6 @@ class ResearchPipeline:
             if outcome.conflicts:
                 outcome.terminal_state = TerminalState.AMBIGUOUS.value
             # 10. synthesis (deterministic; LLM optional)
-            outcome.summary = build_summary(ident, ledger, coverage, outcome.changes)
             outcome.unknowns = self._unknowns(coverage)
             if outcome.conflicts:
                 outcome.unknowns.append(
@@ -382,6 +373,16 @@ class ResearchPipeline:
         finally:
             if ledger.sources:
                 self._finalize_ledger(outcome, ledger, run_id, financials_status)
+            apply_refresh(self.repo, outcome, run_id)
+            if outcome.changes:
+                stages.append("changes")
+            if outcome.identity is not None:
+                outcome.summary = build_summary(
+                    outcome.identity, ledger, Coverage(states=outcome.coverage), outcome.changes,
+                )
+            notice = stale_notice(outcome)
+            if notice:
+                outcome.summary = " ".join(filter(None, [outcome.summary, notice]))
             outcome.stages = stages
             outcome.duration_sec = time.monotonic() - started  # type: ignore
         return outcome

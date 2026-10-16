@@ -189,9 +189,9 @@ class Repository:
         with self._lock:
             conn = self.conn
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version > 5:
-                raise ValueError(f"database schema {version} is newer than supported version 5")
-            if version < 5 and conn.execute(
+            if version > 6:
+                raise ValueError(f"database schema {version} is newer than supported version 6")
+            if version < 6 and conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='runs'"
             ).fetchone():
                 # SQLite backup includes committed WAL data; never overwrite a previous backup.
@@ -263,6 +263,20 @@ class Repository:
                     PRAGMA user_version=5;
                     COMMIT;
                 """)
+            if version < 6:
+                conn.executescript("""
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE IF NOT EXISTS history_order (
+                        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                        run_id TEXT NOT NULL REFERENCES runs(run_id),
+                        result_key TEXT,
+                        UNIQUE(run_id, result_key)
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_run_creation_order
+                        ON history_order(run_id) WHERE result_key IS NULL;
+                    PRAGMA user_version=6;
+                    COMMIT;
+                """)
             conn.commit()
 
     def try_claim_company(self, run_id: str, key: str, owner: str, lease_seconds: float) -> bool:
@@ -308,6 +322,11 @@ class Repository:
                 "INSERT OR IGNORE INTO company_results VALUES (?,?,?)",
                 (result.run_id, result.organisation_number, payload),
             )
+            if not existing:
+                self.conn.execute(
+                    "INSERT INTO history_order(run_id,result_key) VALUES (?,?)",
+                    (result.run_id, result.organisation_number),
+                )
             row = self.conn.execute(
                 "SELECT company_states_json FROM runs WHERE run_id=?", (result.run_id,)
             ).fetchone()
@@ -340,6 +359,25 @@ class Repository:
         ).fetchone()
         return CompanyProfile.model_validate_json(row[0]) if row else None
 
+    def previous_result(self, result_key: str, current_run_id: str) -> Optional[CompanyProfile]:
+        """Frozen previous envelope, excluding later or concurrently completed runs."""
+        row = self.conn.execute(
+            "SELECT c.payload_json FROM company_results c "
+            "JOIN runs previous ON previous.run_id=c.run_id "
+            "JOIN runs current ON current.run_id=? "
+            "LEFT JOIN history_order published ON published.run_id=c.run_id "
+            "AND published.result_key=c.result_key "
+            "LEFT JOIN history_order cutoff ON cutoff.run_id=current.run_id AND cutoff.result_key IS NULL "
+            "WHERE c.result_key=? AND c.run_id!=current.run_id "
+            "AND julianday(previous.started_at)<=julianday(current.started_at) "
+            "AND (published.sequence<cutoff.sequence OR (published.sequence IS NULL AND "
+            "julianday(json_extract(c.payload_json,'$.research_metadata.completed_at'))"
+            "<julianday(current.started_at))) "
+            "ORDER BY julianday(previous.started_at) DESC,published.sequence DESC,c.rowid DESC LIMIT 1",
+            (current_run_id, result_key),
+        ).fetchone()
+        return CompanyProfile.model_validate_json(row[0]) if row else None
+
     def save_run_inputs(self, run_id: str, inputs: List[dict]) -> None:
         with self._lock, self.conn:
             self.conn.execute("INSERT INTO run_inputs VALUES (?,?)", (run_id, json.dumps(inputs)))
@@ -364,6 +402,7 @@ class Repository:
                     budget_json,
                 ),
             )
+            self.conn.execute("INSERT INTO history_order(run_id) VALUES (?)", (run.run_id,))
             self.conn.commit()
 
     def update_run(self, run: ResearchRun) -> None:

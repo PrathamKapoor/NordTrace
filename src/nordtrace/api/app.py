@@ -229,12 +229,12 @@ def _company_payload(repo: Repository, orgnr: str, run_id: Optional[str] = None)
 
 
 @app.get("/companies/{orgnr}")
-async def get_company(orgnr: str):
+async def get_company(orgnr: str, run_id: Optional[str] = None):
     orgnr = orgnr.replace(" ", "").replace("-", "")
     if not validate_orgnr(orgnr).valid:
         raise HTTPException(status_code=422, detail="invalid organisation number")
     repo = get_repo()
-    return _company_payload(repo, orgnr)
+    return _company_payload(repo, orgnr, run_id)
 
 
 @app.get("/companies/{orgnr}/facts")

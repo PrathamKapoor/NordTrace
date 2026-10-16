@@ -195,11 +195,11 @@ def test_change_detection_new():
     assert any(c.change_type == "NEW" for c in changes)
 
 
-def test_change_detection_retracted():
+def test_change_detection_missing_observation_is_unconfirmed():
     prev = [make_fact(val=100, retrieved="2026-01-01")]
     curr = []
     changes = detect_changes("982463718", "run2", prev, curr)
-    assert any(c.change_type == "RETRACTED" for c in changes)
+    assert [c.change_type for c in changes] == ["SOURCE_UNAVAILABLE"]
 
 
 def test_change_detection_ceo_change():
@@ -215,7 +215,7 @@ def test_change_detection_temporal_periods_separate():
     curr = [make_fact(cat="leadership", fld="role:CEO", val="New", period="FY2025", retrieved="2026-02-01")]
     changes = detect_changes("982463718", "run2", prev, curr)
     types = {c.reporting_period: c.change_type for c in changes}
-    assert types.get("FY2024") == "RETRACTED"
+    assert types.get("FY2024") == "SOURCE_UNAVAILABLE"
     assert types.get("FY2025") == "NEW"
 
 

@@ -1,5 +1,7 @@
 # Implementation checkpoint — 2026-10-17
 
+Latest continuation update: conflict correction committed as f139f3f (355 offline tests). Refresh correction now verified on that base: schema6 publication-order barriers, source-state outcomes, supported last_known observations, old/new evidence references and actual historical HTTP selection. Full regression 368 passed/8 live deselected (69.17s); final targeted13 passed (18.32s), Ruff/mypy32 pass. Commit/status must be checked on continuation. Next task: wire paginated parent-verified branches and typed snapshot locators under the existing strict publication gate. Broader unfinished gates below still apply; no live smoke/accuracy or complete release is established.
+
 This is a continuation checkpoint, not a release-completion report. The user most recently said **continue**. Keep implementing the master prompt autonomously; do not restart or overwrite completed work.
 
 Update after the original checkpoint below: conflict-publication correction is in progress on cfa0cf4. It withholds all competing observations, adds canonical conflicts, projects disputed identity fields, fixes typed synthesis lookups and preserves ledger/support through later adapter failures. Seven conflict cases pass. Check actual HEAD/status and verification.md for the subsequent commit/full check; the older clean-tree statement below applies only before this unit began. Next dependency-ready task is per-source refresh completeness and outage-safe last-known observations (F07).

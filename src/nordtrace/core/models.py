@@ -266,6 +266,10 @@ class ChangeRecord(BaseModel):
     current_value: Optional[Any] = None
     previous_source_id: Optional[str] = None
     current_source_id: Optional[str] = None
+    previous_evidence_id: Optional[str] = None
+    current_evidence_id: Optional[str] = None
+    previous_observation_id: Optional[str] = None
+    current_observation_id: Optional[str] = None
     detected_at: Optional[str] = None
     explanation: Optional[str] = None
 
@@ -360,6 +364,18 @@ class ResearchError(BaseModel):
     retryable: bool = False
 
 
+class RefreshOutcome(BaseModel):
+    """Current attempt state; transport success alone does not prove completeness."""
+
+    requested_url: str
+    family: str
+    state: Literal["available", "not_available", "blocked", "not_applicable", "ambiguous", "failed"]
+    source_id: Optional[str] = None
+    completeness: Literal["complete", "partial", "unknown"] = "unknown"
+    observed_at: str
+    reason: str
+
+
 class CompanyProfile(BaseModel):
     schema_version: str = "1.1"
     run_id: str
@@ -368,6 +384,8 @@ class CompanyProfile(BaseModel):
     company: Optional[CompanyIdentity] = None
     facts: List[Fact] = Field(default_factory=list)
     conflicts: List[Fact] = Field(default_factory=list)
+    last_known: List[Fact] = Field(default_factory=list)
+    refresh_outcomes: List[RefreshOutcome] = Field(default_factory=list)
     changes: List[ChangeRecord] = Field(default_factory=list)
     summary: Optional[str] = None
     unknowns: List[str] = Field(default_factory=list)
@@ -395,11 +413,15 @@ class CompanyProfile(BaseModel):
             raise ValueError("duplicate source or evidence IDs")
         if any(fact.status != FactStatus.CONFLICT.value for fact in self.conflicts):
             raise ValueError("conflict observations must carry CONFLICT status")
+        if any(fact.status != FactStatus.SOURCE_UNAVAILABLE.value for fact in self.last_known):
+            raise ValueError("last-known observations must carry SOURCE_UNAVAILABLE status")
+        if {fact.claim_id for fact in self.facts} & {fact.claim_id for fact in self.last_known}:
+            raise ValueError("current claim cannot also be last-known")
         if {fact.claim_id for fact in self.facts} & {fact.claim_id for fact in self.conflicts}:
             raise ValueError("conflicting claim cannot also be published")
         if len({fact.fact_id for fact in self.facts + self.conflicts}) != len(self.facts + self.conflicts):
             raise ValueError("duplicate observation IDs in result")
-        for fact in self.facts + self.conflicts:
+        for fact in self.facts + self.conflicts + self.last_known:
             source = sources.get(fact.source_id)
             support = evidence.get(fact.evidence_id)
             if fact.org_number != self.organisation_number:
@@ -410,4 +432,6 @@ class CompanyProfile(BaseModel):
                 raise ValueError("source belongs to another company")
             if support.org_number and support.org_number != self.organisation_number:
                 raise ValueError("evidence belongs to another company")
+        if any(fact.status != FactStatus.PUBLISHED.value for fact in self.facts):
+            raise ValueError("published facts must carry PUBLISHED status")
         return self

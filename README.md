@@ -1,6 +1,6 @@
 # Implementation status — 2026-10-16
 
-Update 2026-10-17: local full offline suite: 286 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
+Update 2026-10-17: local full offline suite: 368 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
 
 The current locked install is `uv sync --frozen --extra dev --python 3.12` (uv 0.12.5). Run commands with `uv run --frozen python -m nordtrace.cli ...`. Website attachment now checks operator contradictions before matching, preserves footer identity text and uses an offline public suffix list. Complex group/brand relationships remain under repair.
 
@@ -8,7 +8,9 @@ The repair assignment is in progress. Older benchmark/test/readiness statements 
 
 Publication now requires snapshot-backed locators in production. Atomic registry identity fields have supported JSON pointers and explicit normalization. Other extraction families are temporarily withheld until their support rules are converted; their existing extractors are not evidence of working external coverage. Invalid employee counts and missing status flags remain unknown. This is an incomplete repair, not a release-ready competition entry.
 
-Results now expose stable `claim_id` values separately from historical `fact_id`/`observation_id`. Period, source item and subject scope distinguish collections; repeated runs retain their observations without changing the logical identity. Source outage/retraction correctness and external-family publication remain outstanding.
+Results expose stable `claim_id` values separately from historical `fact_id`/`observation_id`. Period, source item and subject scope distinguish collections. Conflicting observations are withheld together and retained in `conflicts`; disputed structured identity values are cleared with `unresolved_fields`. Source outages and incomplete extraction preserve revalidated observations in `last_known`, separate from current facts and with original evidence/timestamps. Automatic disappearance/expiry detection remains unfinished: missing observations never establish removal. External-family publication remains under repair.
+
+Historical API views use `GET /companies/ORGNR?run_id=RUN_ID`. Frozen canonical results include current/last-known/conflicting observations and per-source refresh outcomes. Schema6 backs up existing databases and records publication ordering without fabricating old history.
 
 Acquired HTTP responses now retain complete bounded bytes in SQLite with `http-response-body-v1` SHA-256 integrity. Inspect an existing run offline using `uv run --frozen python -m nordtrace.cli verify-snapshots RUN_ID`, and export a retained response with `uv run --frozen python -m nordtrace.cli replay-source SOURCE_ID --output data/source.bin`. These checks verify acquisition bytes, not factual support. Schema upgrades back up existing databases automatically; legacy truncated snapshots are not accepted as new captures. Keep source data local unless its specific redistribution rights permit publication.
 

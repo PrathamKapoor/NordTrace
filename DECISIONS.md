@@ -1,5 +1,25 @@
 # Decision Log — NordTrace
 
+## D-037 — Unconfirmed refresh preserves last-known support
+
+- Date/status: 2026-10-17, accepted; affirmative removal production remains unfinished.
+- Problem/evidence: a missing current observation defaulted to RETRACTED even after source failure or successful incomplete extraction. Five initial regressions failed, including retained-history and source-state gaps.
+- Decision/implementation: core.refresh applies to every pipeline completion. It revalidates frozen earlier observations against retained bytes and current support rules, compares stable logical IDs and separates SOURCE_UNAVAILABLE last_known copies from current facts. Missing claims cannot establish removal. Sources/evidence and original verification IDs/times remain inspectable; summary labels unconfirmed observations. Change records include old/new evidence and observation IDs. Current facts require PUBLISHED status; other states cannot silently occupy that collection.
+- Application: new single/batch/API outcomes, including registry early returns and later failures. A successful source body does not prove source-family completeness. Per-source RefreshOutcome availability and unknown completeness are explicit; 404/410 is not_available without business removal.
+- Alternatives: global current_sources_ok, failed requests or missing parser output cannot prove disappearance. Promoting old existence-only ledger rows would reintroduce unsupported publication. Silently dropping stale history loses useful evidence.
+- Tradeoffs/limits: removal/expiry detection is conservatively disabled until producers supply verified affirmative or complete-collection evidence. ETag/304, source-specific retention, full family completeness and stale UI presentation remain unfinished. A tampered/missing prior snapshot is not promoted; its failed revalidation is recorded in unknowns and original history remains untouched.
+- Verification: real simulated acquisition/SQLite fixtures exercise blocked, unavailable, malformed and incomplete refresh then recovery; stable claims reconfirm as UNCHANGED and frozen histories persist. New-period expectations now retain the older period. No live refresh accuracy is claimed. Revisit when removal-support contracts and converted producers are implemented; extends D-034/D-035/D-036.
+
+## D-038 — Durable history ordering and actual historical API selection
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: reviewer reproduced sequential runs with equal second-resolution timestamps losing their predecessor. A timestamp-only query also cannot establish whether concurrent results were published before research began. An HTTP regression showed the company route ignored run_id despite its canonical helper supporting history.
+- Decision/implementation: additive schema6 history_order records run creation and first immutable publication in the corresponding SQLite transaction. Previous-result selection requires a publication sequence before the current run-creation barrier and no later run start. Old rows receive no invented ordering; known earlier completion timestamps are the conservative fallback. The actual company HTTP route forwards optional run_id to the frozen canonical serializer.
+- Application: new refresh predecessor selection and historical company API. Existing data is backed up before migration, canonical payload bytes remain unchanged, repeat saves do not create new publication events.
+- Alternatives: truncating clocks loses valid same-second predecessors; increasing clock precision alone does not provide a durable cross-process publication barrier. Reading latest result at refresh completion admits concurrent future observations. Reconstructing history from current rows is incorrect.
+- Tradeoffs/limits: legacy histories without sufficient timing abstain. The sequence orders committed local events, not external source effective dates. Relational legacy get_previous_facts remains for compatibility but is no longer the production refresh input.
+- Verification: same-timestamp predecessor/concurrent publication fixture failed before correction; schema5 copy verifies unchanged envelopes, no backfilled events, one backup and intact foreign keys. HTTP historical refresh assertion failed before route forwarding. Revisit with complete shared-run budget/checkpoint transactions; extends D-021/D-022.
+
 ## D-036 — Withhold all observations of unresolved conflicts
 
 - Date/status: 2026-10-17, accepted.
