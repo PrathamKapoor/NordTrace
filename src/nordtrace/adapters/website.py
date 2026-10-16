@@ -118,10 +118,12 @@ class WebsiteAdapter:
             if not full.startswith("http"):
                 continue
             host = (urlsplit(full).hostname or "").lower()
+            path = urlsplit(full).path.lower()
+            if path.endswith(".pdf") or "/pdf" in path:
+                pdfs.append(full.split("#")[0])
+                continue  # Documents must not enter the HTML extraction path.
             if registrable_domain(host) == reg:
                 internal.append(full.split("#")[0])
-            if full.lower().endswith(".pdf") or "/pdf" in full.lower():
-                pdfs.append(full)
         return list(dict.fromkeys(internal))[:40], list(dict.fromkeys(pdfs))[:5]
 
     # ------------------------------------------------------------ discovery
@@ -488,9 +490,10 @@ class WebsiteAdapter:
                     url=pdf_url,
                     source_type=SourceType.COMPANY_DOCUMENT.value,
                     authority_tier=1,
-                    access_status="success",
+                    access_status="discovered",
                     org_number=identity.organisation_number,
-                    retrieved_at=now,
+                    discovered_at=now,
+                    discovery_source_id=ev_home.source_id,
                     title="discovered PDF",
                 )
             )

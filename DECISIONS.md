@@ -532,6 +532,16 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
 # Current decisions — 2026-10-16
 
+## D-033 — Separate PDF candidates, acquisition and fallback eligibility
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: a discovery-only crawl of the previous code reports an unrequested PDF as success with a retrieval timestamp (F14). PDFs can also enter HTML extraction. Previous pipeline skips fallback for not_found accounts and omits the actually fetched PDF source, withholding its claims (F16/F15).
+- Decision: record discovered documents separately with referring source/time, never fabricated retrieval metadata; exclude PDF paths from HTML extraction. Attempt document fallback for absent accepted financial claims across unavailable/error/ambiguous accounts outcomes; respect explicit not_applicable and budget/time gates. Register every returned PDF source before its evidence and claims. Count accepted publication rather than extracted candidates.
+- Implementation/application: WebsiteAdapter._extract_links/crawl and ResearchPipeline adaptive financial path. Existing company-document source type remains, acquisition state is discovered until retrieval. Exact source ID/hash resolves to retained bytes.
+- Alternatives: treating links as fetched misstates evidence; reusing a placeholder ID attributes claims to unfetched material; retaining the old not_found-only selector wrongly turns source unavailability into inapplicability. Rewriting PDF extraction simultaneously would obscure these independently testable orchestration defects.
+- Tradeoffs/failure modes: fallback consumes budget on sources that may still be unreadable/ambiguous. A source blocked by its own robots/transport policy remains blocked. This decision does not make the existing numerical parser correct, establish scope or expand source rights.
+- Verification: test_pdf_acquisition.py covers discovery with zero page allowance, five unavailable states, not_applicable abstention, query/fragment routing and exact fetched-source/snapshot/FK registration. Previous trusted repository modules loaded into an isolated test process reproduced success-for-discovery, zero fallback calls for not_found, and missing published registration for not_available. Extraction is stubbed in orchestration tests and is not live/financial accuracy evidence. Revisit when structured accounts/table-aware extraction and source-completeness scheduling are repaired. Extends D-032 and supersedes old PDF discovery labeling.
+
 ## D-032 — Retain complete response bytes and separate acquisition replay from claim proof
 
 - Date/status: 2026-10-17, accepted.

@@ -274,7 +274,17 @@ class ResearchPipeline:
                     c
                     for c in ("business_description", "financials", "jobs", "products_services")
                     if cov_now.get(c) == "not_found"
+                    and not (c == "financials" and financials_status == "not_applicable")
                 ]
+                # An unavailable accounts source does not make permitted company
+                # documents inapplicable. Also retry when candidates were found
+                # but the publication gate rejected every financial claim.
+                if (
+                    financials_status != "not_applicable"
+                    and not any(f.category == "financials" for f in ledger.published_facts(org_number))
+                    and "financials" not in missing
+                ):
+                    missing.append("financials")
                 if missing and self.budget.runtime.should_start_expensive_operation(20):
                     # business_description: try remaining name-derived candidates
                     if "business_description" in missing:
@@ -314,20 +324,22 @@ class ResearchPipeline:
                             if not pdf_src.url:
                                 continue
                             evs2, f2, src2, st2 = await self.pdf.process_pdf(ident, pdf_src.url, run_id)
+                            ledger.add_source(src2)
                             for e in evs2:
                                 ledger.add_evidence(e)
                             for f in f2:
                                 ledger.add_fact(f, None, None)
                             pdf_evs.extend(evs2)
                             pdf_facts.extend(f2)
-                        if pdf_facts:
+                        accepted_pdf = [f for f in pdf_facts if f.status == FactStatus.PUBLISHED.value]
+                        if accepted_pdf:
                             financials_status = "found"
                             stages.append("adaptive_financials")
                             self._trace(
                                 run_id,
                                 org_number,
                                 "adaptive_financials",
-                                f"PDF financial extraction: {len(pdf_facts)} facts",
+                                f"PDF financial extraction: {len(accepted_pdf)} published facts",
                             )
 
             # 6. activity from registry signals

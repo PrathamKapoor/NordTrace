@@ -160,6 +160,8 @@ class SourceRecord(BaseModel):
     redirect_chain: List[str] = Field(default_factory=list)
     content_type: Optional[str] = None
     cache_hit: bool = False
+    discovered_at: Optional[str] = None
+    discovery_source_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
