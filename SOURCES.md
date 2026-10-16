@@ -21,3 +21,8 @@ Note: `hent-regnskap` paths are 404; the working path is `/regnskapsregisteret/r
 
 ## Tier 4 — Discovery Sources
 - Not implemented as a search engine; registry search (`?navn=`) serves discovery needs
+# Acquisition policy update — 2026-10-16
+
+Website discovery, internal pages and PDF retrieval apply robots through the counted gateway. Successful robots rules are enforced; 404/410 permit access; other errors, refusal and unavailable robots deny it. This is a conservative local policy, not a claim that robots alone grants storage or redistribution rights. Company/registry source rights and retention still need field-specific review.
+
+Redirects are manual and every permitted hop is charged and checked. Connections use validated public IPs with the original Host/TLS identity and separate pools for each original origin. Environment proxies are disabled. Compressed responses are refused before decoding to enforce memory bounds; normal requests ask for identity encoding. Cache hits retain original retrieval timestamps and are labelled. Actual TLS/network behavior, bounded DNS and model transport require further verification; no optional model integration is claimed to use this boundary yet.

@@ -22,6 +22,8 @@ Settings read a root .env with case-insensitive names, but DATA_DIR and database
 
 ## Result classification
 
+Transport correction: seven regressions initially failed. Two review regressions for cross-host TLS pool reuse and redirected retry policy also failed before correction. Final gateway/API/security boundary command returned 75 passed, one upstream warning in 4.60s; Ruff and mypy passed. Gateway-only coverage is 11 tests, including actual httpcore pools over a simulated network backend. This proves control-flow/handshake identity separation without making a live certificate-validation claim. No live company collection was used to validate this change.
+
 Identity/PSL correction: initial boundary corpus produced 14 failures and 1 pass. After repair, the identity/orgnr/adversarial command returned 63 passed in 1.20s; expanded focused boundary checks returned 17 passed in 1.04s. These are synthetic semantic fixtures, not an independent Norwegian-population accuracy estimate. tldextract 5.4.0 uses bundled PSL data without network refresh. `uv lock` resolved 80 packages; `uv sync --frozen --extra dev` succeeded using uv 0.12.5 and public PyPI sources. Clean-clone and Linux/container results are still unverified.
 
 Rate/simulation correction: `.\.venv\Scripts\python.exe -m pytest tests/unit/test_rate_limiting.py -q` returned 16 passed in 17.80s. `.\.venv\Scripts\python.exe -m pytest tests/integration/test_contamination_scale.py -m 'not live' -q` returned 3 passed, 1 deselected in 2.93s after explicitly wiring the fake pipelines. These supersede the earlier stopped resume test; neither proves slow-request cancellation or real coverage.

@@ -197,6 +197,7 @@ class WebsiteAdapter:
                 company=identity.organisation_number,
                 source_type=self.source_type,
                 authority_tier=self.authority_tier,
+                respect_robots=True,
             )
             sources.append(src)
             if src.access_status != "success":

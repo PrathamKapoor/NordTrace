@@ -532,6 +532,16 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
 # Current decisions — 2026-10-16
 
+## D-026 — Explicit transport hops, bounded bodies and origin-preserving DNS pinning
+
+- Date/status: 2026-10-16, accepted.
+- Problem/evidence: seven instrumented regressions failed: hidden private redirects, uncharged hops/robots, full oversized allocation, missing deadline cancellation, fail-open robots and ignored redirect limits. Review additionally reproduced cross-host TLS reuse after naive IP pinning and a redirected host's ignored zero-retry policy; both received failing regressions before correction.
+- Decision/implementation: RequestGateway manually validates every hop, charges each actual transport attempt, reacquires rate tokens, honors each destination's retry ceiling, and streams within a byte cap and monotonic async deadline. Robots use the same counted boundary. PinnedTransport connects to a validated public IP with original Host/SNI and distinct pools keyed by the original scheme/hostname/port. Proxy environment configuration is disabled. Cache hits are explicit and retain the original retrieval time.
+- Application/source policy: website discovery, internal crawls and PDFs request robots enforcement. 404/410 allow acquisition, successful robots rules control it, and other errors/refusals deny it. Unsolicited compression is refused before decoding, rather than risking decompression allocation. Redirect chains/final URLs/media types are included in canonical source records.
+- Alternatives: automatic redirects cannot enforce policy before connection; URL-only DNS checks permit rebinding; pooling by rewritten numeric IP skips a second hostname's TLS verification. Automatic compression needs a separately bounded decoder and is deferred.
+- Tradeoffs/limits: strict robots/encoding/DNS rules can lower coverage; no environment-proxy support. DNS lookups remain synchronous and may delay cancellation. Batch queue/parsing/finalization deadlines, persistent/shared budgets, model transport and live TLS/network verification are unfinished. Relational legacy source rows lack the new metadata, which is retained in canonical envelopes.
+- Verification: eleven gateway checks include private redirects, exact counted hops/robots, slow/large streams, rebinding, Host/SNI, actual httpcore pooling with a simulated socket backend and redirected retry policy. The gateway/API/security boundary run returned 75 passed, one upstream warning. Revisit after bounded DNS, parsing and optional model integration; extends D-002/D-003/D-004.
+
 ## D-024 — Contextual identifiers and offline public suffix boundaries
 
 - Date/status: 2026-10-16, accepted.

@@ -81,13 +81,13 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | F01 | Value support / rejected evidence | core/ledger.py | unsupported financial and verdict fixtures | not_started | Not yet reproduced in this checkout |
 | F02 | Homepage contradictory orgnr | core/entity.py; adapters/website.py | contradictory homepage fixture | verified | Contradiction bypass reproduced; test_identity_boundaries checks name/target-ID overrides and footer-preserving crawl; complex scopes separately tracked |
 | F03 | PDF table, period, scale and scope | adapters/pdf_pipeline.py | financial fixture matrix | not_started | Not yet reproduced in this checkout |
-| F04 | Redirect safety and accounting | core/request_gateway.py | private redirect transport instrumentation | not_started | Not yet reproduced in this checkout |
+| F04 | Redirect safety and accounting | core/request_gateway.py | private redirect transport instrumentation | verified | Instrumented private redirect sends only initial operation; safe hops match actual transport counts; loop/limit tests pass; live network separately unverified |
 | F05 | Complete batch envelopes | cli.py; engine/runner.py | input/output cardinality contract tests | implemented_unverified | Reproduced dropped invalid inputs; complete results/input mapping now exported; contract tests pass. Interrupted/scale/export manifest checks outstanding |
 | F06 | Resume schedules completed companies | engine/runner.py | spy actual research calls | verified | test_result_contract.py::test_resume_only_invokes_unfinished_companies failed before repair, passes afterward; budget restoration tracked separately |
 | F07 | Outage causes retraction | core/changes.py | source outage and recovery fixtures | not_started | Not yet reproduced in this checkout |
 | F08 | Replay duplicates logical claims | core/models.py; core/repository.py | snapshot replay / stable item tests | not_started | Not yet reproduced in this checkout |
 | F09 | Research does not retain snapshots | engine/pipeline.py; core/repository.py | production snapshot hash resolution | not_started | Not yet reproduced in this checkout |
-| F10 | Hard runtime and body bounds | core/request_gateway.py; engine/runner.py | slow stream, queued work and deadline tests | not_started | Not yet reproduced in this checkout |
+| F10 | Hard runtime and body bounds | core/request_gateway.py; engine/runner.py | slow stream, queued work and deadline tests | implemented_unverified | Stream byte cap and absolute fetch cancellation verified; synchronous DNS, queued companies, parsing and finalization reserve remain unresolved |
 | F11 | Branches unwired | adapters/brreg.py; engine/pipeline.py | paginated parent-mapped branches | not_started | Not yet reproduced in this checkout |
 | F12 | NAV municipality corroboration | adapters/nav_jobs.py; core/entity.py | real employer evidence fixtures | not_started | Not yet reproduced in this checkout |
 | F13 | Vacancy fact-slot collisions | core/models.py; core/ledger.py | distinct vacancy IDs coexist | not_started | Not yet reproduced in this checkout |
@@ -101,8 +101,8 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | F21 | Evidence drawer lacks spans | api/app.py; frontend/index.html | supporting snippet/locator endpoint and UI | not_started | Not yet reproduced in this checkout |
 | F22 | Activity cites wrong registry payload | engine/pipeline.py; adapters/activity.py | entity versus accounts attribution | not_started | Not yet reproduced in this checkout |
 | F23 | News index treated as dated event | adapters/website.py; adapters/activity.py | dated individual events / unknown dates | not_started | Not yet reproduced in this checkout |
-| F24 | Discovery skips robots | adapters/website.py; core/request_gateway.py | homepage robots enforcement | not_started | Not yet reproduced in this checkout |
-| F25 | Uncounted transports | core/request_gateway.py; core/llm.py | independent request instrumentation | not_started | Not yet reproduced in this checkout |
+| F24 | Discovery skips robots | adapters/website.py; core/request_gateway.py | homepage robots enforcement | verified | Homepage discovery requests robots; gateway denial/error tests prevent content retrieval and charge robots operations; PDFs also opt in |
+| F25 | Uncounted transports | core/request_gateway.py; core/llm.py | independent request instrumentation | implemented_unverified | Redirect/robots operations match instrumented mock transport; optional model transport and whole-run live accounting remain unresolved |
 | F26 | Cost reservations non-atomic | core/budget.py; core/llm.py | parallel reservations/retries | not_started | Not yet reproduced in this checkout |
 | F27 | Unjustified currency / absent period | adapters/brreg.py; core/ledger.py | missing semantics abstention | not_started | Not yet reproduced in this checkout |
 | F28 | Orgnr and registrable-domain parsing | core/orgnr.py; core/entity.py | grouped IDs, substrings, public suffix fixtures | verified | NO/MVA/groups/checksums, incidental digits, substring guards, co.uk/private suffixes and hostname-boundary tests pass; bundled PSL cannot fetch network |

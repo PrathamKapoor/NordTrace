@@ -164,3 +164,6 @@ def test_gateway_enforces_budget_without_network():
             await gw.fetch("https://example.com/x")
 
     asyncio.run(go())
+@pytest.fixture(autouse=True)
+def offline_public_dns(monkeypatch):
+    monkeypatch.setattr("nordtrace.core.request_gateway._resolve_host", lambda host: ["8.8.8.8"])

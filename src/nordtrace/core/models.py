@@ -154,6 +154,11 @@ class SourceRecord(BaseModel):
     access_status: str = "unknown"  # success / failed / blocked / timeout / robots_denied
     error_detail: Optional[str] = None
     org_number: Optional[str] = None  # company this source was fetched for
+    requested_url: Optional[str] = None
+    final_url: Optional[str] = None
+    redirect_chain: List[str] = Field(default_factory=list)
+    content_type: Optional[str] = None
+    cache_hit: bool = False
 
 
 # ---------------------------------------------------------------------------

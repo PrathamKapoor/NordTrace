@@ -110,3 +110,24 @@ def test_crawl_preserves_footer_identifiers_for_attachment_check():
 def test_registrable_domain_rejects_whole_url_at_its_boundary():
     with pytest.raises(ValueError, match="hostname"):
         registrable_domain("https://news.example.co.uk/path")
+
+
+def test_homepage_discovery_requests_robots_policy():
+    import asyncio
+    from types import SimpleNamespace
+
+    from nordtrace.core.models import SourceRecord
+
+    requests = []
+
+    class CapturedGateway:
+        async def fetch(self, url, **kwargs):
+            requests.append(kwargs.get("respect_robots", False))
+            return SourceRecord(url=url, access_status="success", source_type="company_website")
+
+        def get_content(self, url):
+            return SimpleNamespace(text="<main>TELENOR ASA orgnr 982463718</main>")
+
+    adapter = WebsiteAdapter(CapturedGateway(), BudgetManager(), EntityResolver())
+    asyncio.run(adapter.crawl(TARGET, "fixture"))
+    assert requests == [True]

@@ -186,6 +186,7 @@ class PdfFinancialPipeline:
         found / not_found / failed / blocked."""
         src = await self.gateway.fetch(
             pdf_url,
+            respect_robots=True,
             stage="pdf",
             company=identity.organisation_number,
             source_type=SourceType.COMPANY_DOCUMENT.value,

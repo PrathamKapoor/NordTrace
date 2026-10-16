@@ -22,10 +22,11 @@ import logging
 import re
 import socket
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Dict, List, Optional, Tuple
 from urllib import robotparser
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -87,6 +88,8 @@ def validate_url(url: str, allowed_domains: Optional[List[str]] = None) -> Tuple
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise SSRFError(f"scheme {parsed.scheme!r} not allowed")
+    if parsed.username or parsed.password:
+        raise SSRFError("URL credentials are prohibited")
     host = (parsed.hostname or "").lower().strip(".")
     if not host:
         raise SSRFError("missing host")
@@ -106,7 +109,10 @@ def validate_url(url: str, allowed_domains: Optional[List[str]] = None) -> Tuple
     if host_is_numeric_ip:
         raise SSRFError("raw/numeric IP targets are blocked")
     # DNS resolution guard
-    for ip in _resolve_host(host):
+    addresses = _resolve_host(host)
+    if not addresses:
+        raise SSRFError("hostname could not be resolved safely")
+    for ip in addresses:
         if _is_private_ip(ip):
             raise SSRFError(f"{host!r} resolves to private address {ip}")
     if allowed_domains is not None:
@@ -135,6 +141,7 @@ class CachedResponse:
     content: bytes = b""
     from_cache: bool = False
     final_url: str = ""
+    redirect_chain: List[str] = field(default_factory=list)
 
     def age_sec(self) -> float:
         return time.time() - self.retrieved_at
@@ -145,6 +152,43 @@ class RobotsCacheEntry:
     fetched_at: float
     parser: robotparser.RobotFileParser
     allowed: bool  # whether robots.txt itself was fetchable
+
+
+class ResponseLimitError(ValueError):
+    pass
+
+
+class PinnedTransport(httpx.AsyncBaseTransport):
+    """Connect to a freshly validated numeric address, retaining TLS SNI/Host.
+
+    The HTTP layer cannot independently re-resolve the hostname after validation.
+    Environment proxy configuration is disabled on the owning client.
+    """
+
+    def __init__(self, retries: int = 0):
+        self._retries = retries
+        self._origins: Dict[tuple[str, str, Optional[int]], httpx.AsyncHTTPTransport] = {}
+
+    async def aclose(self) -> None:
+        await asyncio.gather(*(transport.aclose() for transport in self._origins.values()))
+        self._origins.clear()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        host = request.url.host
+        addresses = _resolve_host(host)
+        if not addresses or any(_is_private_ip(address) for address in addresses):
+            raise SSRFError("connection destination could not be verified as public")
+        extensions = dict(request.extensions)
+        extensions["sni_hostname"] = host
+        pinned = httpx.Request(
+            request.method, request.url.copy_with(host=addresses[0]), headers=request.headers,
+            stream=request.stream, extensions=extensions,
+        )
+        origin = (request.url.scheme, host, request.url.port)
+        if origin not in self._origins:
+            self._origins[origin] = httpx.AsyncHTTPTransport(retries=self._retries, trust_env=False)
+        # Pool by the original TLS identity, never by a potentially shared IP.
+        return await self._origins[origin].handle_async_request(pinned)
 
 
 class RequestGateway:
@@ -165,11 +209,9 @@ class RequestGateway:
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
-                timeout=settings.crawl_timeout,
-                follow_redirects=True,
-                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+                timeout=settings.crawl_timeout, follow_redirects=False, trust_env=False,
+                transport=PinnedTransport(retries=0),
                 headers={"User-Agent": settings.user_agent},
-                verify=True,
             )
         return self._client
 
@@ -177,245 +219,198 @@ class RequestGateway:
         if self._client is not None and not self._client.is_closed:
             await self._client.aclose()
 
-    # ------------------------------------------------------------- robots.txt
-    async def _robots_allows(self, url: str, user_agent: str = "*") -> bool:
+    async def _robots_allows(
+        self, url: str, *, company: Optional[str] = None,
+        allowed_domains: Optional[List[str]] = None,
+    ) -> bool:
         if not settings.respect_robots:
             return True
         parsed = urlparse(url)
         base = f"{parsed.scheme}://{parsed.netloc}"
         entry = self._robots.get(base)
-        if entry is None or (time.time() - entry.fetched_at) > self.cache_ttl:
-            rp = robotparser.RobotFileParser()
-            robots_url = f"{base}/robots.txt"
-            allowed = False
-            try:
-                # robots.txt fetch does not count against the crawl budget
-                # (it's a politeness requirement, not research data)
-                async with httpx.AsyncClient(
-                    timeout=10.0, follow_redirects=True, headers={"User-Agent": settings.user_agent}
-                ) as c:
-                    r = await c.get(robots_url)
-                if r.status_code == 200:
-                    rp.parse(r.text.splitlines())
-                    allowed = True
-                elif r.status_code == 404:
-                    allowed = True  # no robots.txt → full permission
-            except Exception:
-                # network failure fetching robots → fail open but conservatively
-                # treat as allowed; content checks still apply
+        if entry is None or time.time() - entry.fetched_at > self.cache_ttl:
+            robots_url = base + "/robots.txt"
+            record = await self.fetch(
+                robots_url, stage="robots", company=company, max_bytes=128 * 1024,
+                retries=0, respect_robots=False, allowed_domains=allowed_domains,
+            )
+            parser = robotparser.RobotFileParser()
+            cached = self.get_content(robots_url)
+            if record.access_status == "success" and cached:
+                parser.parse(cached.text.splitlines())
                 allowed = True
-                rp.parse([])
-            entry = RobotsCacheEntry(fetched_at=time.time(), parser=rp, allowed=allowed)
+            elif record.http_status in (404, 410):
+                parser.parse([])
+                allowed = True
+            else:
+                allowed = False
+            entry = RobotsCacheEntry(time.time(), parser, allowed)
             self._robots[base] = entry
-        if not entry.allowed:
-            return True
+        return entry.allowed and entry.parser.can_fetch(settings.user_agent, url)
+
+    async def _exchange(
+        self, url: str, host: str, *, stage: str, company: Optional[str],
+        max_bytes: int, retry: bool,
+    ) -> httpx.Response:
+        token = await self.rate_limiter.acquire(host)
+        attempted = False
+        successful = False
+        rate_limited = False
         try:
-            return entry.parser.can_fetch(user_agent, url)
-        except Exception:
-            return True
+            self.budget.check()
+            if not self.budget.requests.try_acquire():
+                raise BudgetExceededError("request budget exhausted")
+            attempted = True
+            client = await self._get_client()
+            async with client.stream(
+                "GET", url, follow_redirects=False,
+                headers={"User-Agent": settings.user_agent, "Accept": "*/*", "Accept-Encoding": "identity"},
+            ) as response:
+                rate_limited = response.status_code == 429
+                # Refuse unsolicited compression before decoding, bounding decompression allocation.
+                if response.headers.get("content-encoding", "identity").lower() not in ("", "identity"):
+                    raise ResponseLimitError("compressed response refused; identity encoding required")
+                try:
+                    length = int(response.headers.get("content-length", "0"))
+                except ValueError:
+                    length = 0
+                if length > max_bytes:
+                    raise ResponseLimitError(f"response too large ({length} > {max_bytes})")
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(body) + len(chunk) > max_bytes:
+                        raise ResponseLimitError(f"response too large (> {max_bytes})")
+                    body.extend(chunk)
+                successful = 200 <= response.status_code < 400
+                return httpx.Response(
+                    response.status_code, headers=response.headers, content=bytes(body),
+                    request=httpx.Request("GET", url),
+                )
+        finally:
+            if attempted:
+                self.budget.requests.record_outcome(
+                    successful, retry=retry, domain=host, stage=stage, company=company,
+                )
+            if successful:
+                token.record_success()
+            else:
+                token.record_failure(rate_limited=rate_limited)
 
-    # ---------------------------------------------------------------- fetch
-    async def fetch(
-        self,
-        url: str,
-        *,
-        stage: str = "unknown",
-        company: Optional[str] = None,
-        source_type: str = SourceType.OTHER.value,
-        authority_tier: int = 4,
-        max_bytes: Optional[int] = None,
-        cache_ttl_override: Optional[float] = None,
-        respect_robots: bool = False,
-        allowed_domains: Optional[List[str]] = None,
-        retries: int = 2,
-    ) -> SourceRecord:
-        """Fetch a URL through all budget/security gates.
-
-        Always returns a SourceRecord (access_status=failed/blocked on error,
-        never None) — callers can rely on access_status without None-checks.
-
-        Returns a SourceRecord with access_status and (on success) content hash.
-        The response *text* is stored in the gateway cache, retrievable via
-        `get_cached_content(content_hash)`; this keeps SourceRecord small while
-        preserving the evidence text.
-        """
-        # 1. URL validation (SSRF guard)
-        try:
-            clean_url, host = validate_url(url, allowed_domains=allowed_domains)
-        except SSRFError as e:
-            logger.warning("SSRF blocked %s: %s", url, e)
-            return SourceRecord(
-                url=url,
-                domain=urlparse(url).hostname,
-                source_type=source_type,
-                authority_tier=authority_tier,
-                access_status="blocked",
-                error_detail=f"ssrf: {e}",
-                org_number=company,
-                retrieved_at=utcnow().isoformat(),
-            )
-
-        # 2. Robots check (for crawlers)
-        if respect_robots and not await self._robots_allows(clean_url):
-            return SourceRecord(
-                url=clean_url,
-                domain=host,
-                source_type=source_type,
-                authority_tier=authority_tier,
-                access_status="robots_denied",
-                error_detail="disallowed by robots.txt",
-                org_number=company,
-                retrieved_at=utcnow().isoformat(),
-            )
-
-        # 3. Cache freshness
-        cache_key = clean_url
-        ttl = self.cache_ttl if cache_ttl_override is None else cache_ttl_override
-        cached = self._cache.get(cache_key)
-        if cached is not None and cached.status_code == 200 and cached.age_sec() < ttl:
-            rec = self._source_from_cache(cached, source_type, authority_tier, company, clean_url)
-            return rec
-
-        # 4. Per-domain rate limiting + circuit breaker
-        try:
-            token = await self.rate_limiter.acquire(host)
-        except RateLimited as e:
-            return SourceRecord(
-                url=clean_url,
-                domain=host,
-                source_type=source_type,
-                authority_tier=authority_tier,
-                access_status="rate_limited",
-                error_detail=str(e),
-                org_number=company,
-                retrieved_at=utcnow().isoformat(),
-            )
-
-        # 5. Budget acquisition (hard stop) — 1 slot per attempt, retries too
-        attempt = 0
-        last_error: Optional[str] = None
-        client = await self._get_client()
-        while attempt <= retries:
-            if not self.budget.requests.try_acquire(1):
-                raise BudgetExceededError(f"request budget exhausted at {self.budget.requests.total_used}")
-            attempt += 1
+    async def fetch(self, url: str, **kwargs) -> SourceRecord:
+        """Bound all waits, retries and body reads by the monotonic run deadline."""
+        remaining = self.budget.runtime.time_remaining()
+        if remaining > 0:
             try:
-                resp = await client.get(
-                    clean_url,
-                    headers={"User-Agent": settings.user_agent, "Accept": "*/*"},
-                )
-                limit = max_bytes or settings.max_response_bytes
-                # Stream guard: we already have full body in memory via httpx default;
-                # enforce size after read.
-                body = resp.text
-                if len(resp.content) > limit:
-                    self.budget.requests.record_outcome(
-                        False, retry=attempt > 1, domain=host, stage=stage, company=company
-                    )
-                    return SourceRecord(
-                        url=clean_url,
-                        domain=host,
-                        source_type=source_type,
-                        authority_tier=authority_tier,
-                        http_status=resp.status_code,
-                        access_status="failed",
-                        error_detail=f"response too large ({len(resp.content)} > {limit})",
-                        org_number=company,
-                        retrieved_at=utcnow().isoformat(),
-                    )
-                status = resp.status_code
-                success = status == 200
-                self.budget.requests.record_outcome(
-                    success, retry=attempt > 1, domain=host, stage=stage, company=company
-                )
-                if success:
-                    token.record_success()
-                else:
-                    token.record_failure(rate_limited=status == 429)
-                if status == 200:
-                    ch = content_hash(body)
-                    cached = CachedResponse(
-                        url=clean_url,
-                        status_code=status,
-                        text=body,
-                        content_hash=ch,
-                        retrieved_at=time.time(),
-                        headers=dict(resp.headers),
-                        final_url=str(resp.url),
-                        content=resp.content,
-                    )
-                    self._cache[clean_url] = cached
-                    return SourceRecord(
-                        url=clean_url,
-                        domain=host,
-                        source_type=source_type,
-                        authority_tier=authority_tier,
-                        http_status=status,
-                        access_status="success",
-                        content_hash=ch,
-                        retrieved_at=utcnow().isoformat(),
-                        org_number=company,
-                    )
-                if status in _RETRY_STATUS and attempt <= retries:
-                    # respect Retry-After if the source provides it
-                    retry_after = resp.headers.get("retry-after")
-                    if retry_after:
-                        try:
-                            await asyncio.sleep(min(float(retry_after), 10.0))
-                        except ValueError:
-                            await _backoff(attempt)
-                    else:
-                        await _backoff(attempt)
-                    last_error = f"http {status}"
-                    continue
-                return SourceRecord(
-                    url=clean_url,
-                    domain=host,
-                    source_type=source_type,
-                    authority_tier=authority_tier,
-                    http_status=status,
-                    access_status=(
-                        "rate_limited" if status == 429 else "blocked" if status in (401, 403) else "failed"
-                    ),
-                    error_detail=f"http {status}",
-                    org_number=company,
-                    retrieved_at=utcnow().isoformat(),
-                )
-            except (httpx.TimeoutException, httpx.TransportError) as e:
-                self.budget.requests.record_outcome(
-                    False, retry=attempt > 1, domain=host, stage=stage, company=company
-                )
-                token.record_failure(rate_limited=False)
-                last_error = type(e).__name__
-                if attempt <= retries:
-                    await _backoff(attempt)
-                    continue
-                break
-            except Exception as e:  # unexpected → do not retry
-                self.budget.requests.record_outcome(
-                    False, retry=False, domain=host, stage=stage, company=company
-                )
-                logger.exception("gateway error for %s", clean_url)
-                return SourceRecord(
-                    url=clean_url,
-                    domain=host,
-                    source_type=source_type,
-                    authority_tier=authority_tier,
-                    access_status="failed",
-                    error_detail=f"error: {type(e).__name__}",
-                    org_number=company,
-                    retrieved_at=utcnow().isoformat(),
-                )
+                async with asyncio.timeout(remaining):
+                    return await self._fetch(url, **kwargs)
+            except TimeoutError:
+                pass
         return SourceRecord(
-            url=clean_url,
-            domain=host,
-            source_type=source_type,
-            authority_tier=authority_tier,
-            access_status="timeout" if last_error and "Timeout" in last_error else "failed",
-            error_detail=last_error or "retries exhausted",
-            org_number=company,
+            url=url, requested_url=url, source_type=kwargs.get("source_type", SourceType.OTHER.value),
+            authority_tier=kwargs.get("authority_tier", 4), org_number=kwargs.get("company"),
+            access_status="timeout", error_detail="absolute run deadline exceeded",
             retrieved_at=utcnow().isoformat(),
         )
+
+    async def _fetch(
+        self, url: str, *, stage: str = "unknown", company: Optional[str] = None,
+        source_type: str = SourceType.OTHER.value, authority_tier: int = 4,
+        max_bytes: Optional[int] = None, cache_ttl_override: Optional[float] = None,
+        respect_robots: bool = False, allowed_domains: Optional[List[str]] = None, retries: int = 2,
+    ) -> SourceRecord:
+        self.budget.check()
+        chain: List[str] = []
+        current = url
+
+        def record(status: str, error: Optional[str] = None, response=None, **extra) -> SourceRecord:
+            return SourceRecord(
+                url=url, requested_url=url, final_url=current, redirect_chain=list(chain),
+                domain=urlparse(current).hostname, source_type=source_type, authority_tier=authority_tier,
+                org_number=company, retrieved_at=utcnow().isoformat(), access_status=status,
+                error_detail=error, http_status=response.status_code if response else None,
+                content_type=response.headers.get("content-type") if response else None, **extra,
+            )
+
+        try:
+            clean, host = validate_url(url, allowed_domains)
+            url = current = clean
+            chain = [clean]
+            ttl = self.cache_ttl if cache_ttl_override is None else cache_ttl_override
+            cached = self._cache.get(clean)
+            if cached and cached.age_sec() < ttl:
+                for cached_hop in cached.redirect_chain or [clean]:
+                    validate_url(cached_hop, allowed_domains)
+                    if respect_robots and not await self._robots_allows(
+                        cached_hop, company=company, allowed_domains=allowed_domains,
+                    ):
+                        return record("robots_denied", "robots policy denied or unavailable")
+                return self._source_from_cache(cached, source_type, authority_tier, company, clean)
+            attempts = min(max(retries, 0), self.rate_limiter.state_for(host).policy.max_retries) + 1
+            url_attempts: Dict[str, int] = {}
+            for attempt in range(attempts):
+                current = clean
+                chain = [clean]
+                for hop in range(settings.max_redirects + 1):
+                    current, hop_host = validate_url(current, allowed_domains)
+                    if respect_robots and not await self._robots_allows(
+                        current, company=company, allowed_domains=allowed_domains,
+                    ):
+                        return record("robots_denied", "robots policy denied or unavailable")
+                    try:
+                        url_attempts[current] = url_attempts.get(current, 0) + 1
+                        hop_retry_limit = self.rate_limiter.state_for(hop_host).policy.max_retries
+                        response = await self._exchange(
+                            current, hop_host, stage=stage, company=company,
+                            max_bytes=max_bytes if max_bytes is not None else settings.max_response_bytes,
+                            retry=attempt > 0,
+                        )
+                    except (httpx.TimeoutException, httpx.TransportError) as error:
+                        if attempt + 1 == attempts or url_attempts[current] > hop_retry_limit:
+                            state = "timeout" if isinstance(error, httpx.TimeoutException) else "failed"
+                            return record(state, type(error).__name__)
+                        await _backoff(attempt + 1)
+                        break
+                    if response.status_code in (301, 302, 303, 307, 308):
+                        location = response.headers.get("location")
+                        if not location or hop == settings.max_redirects:
+                            return record("failed", "redirect limit reached or missing Location", response)
+                        current, _ = validate_url(urljoin(current, location), allowed_domains)
+                        if current in chain:
+                            return record("failed", "redirect loop", response)
+                        chain.append(current)
+                        continue
+                    if response.status_code == 200:
+                        hashed = content_hash(response.text)
+                        self._cache[clean] = CachedResponse(
+                            url=clean, status_code=200, text=response.text, content_hash=hashed,
+                            retrieved_at=time.time(), headers=dict(response.headers),
+                            content=response.content,
+                            final_url=current, redirect_chain=list(chain),
+                        )
+                        return record("success", response=response, content_hash=hashed)
+                    if (
+                        response.status_code in _RETRY_STATUS and attempt + 1 < attempts
+                        and url_attempts[current] <= hop_retry_limit
+                    ):
+                        try:
+                            delay = max(0, min(float(response.headers.get("retry-after", "0")), 10))
+                        except ValueError:
+                            delay = 0
+                        if delay:
+                            await asyncio.sleep(delay)
+                        else:
+                            await _backoff(attempt + 1)
+                        break
+                    state = "rate_limited" if response.status_code == 429 else (
+                        "blocked" if response.status_code in (401, 403) else "failed"
+                    )
+                    return record(state, f"http {response.status_code}", response)
+            return record("failed", "retry exhaustion")
+        except (SSRFError, RateLimited) as error:
+            return record("blocked", str(error))
+        except ResponseLimitError as error:
+            return record("failed", str(error))
+
 
     def _source_from_cache(
         self, cached: CachedResponse, source_type: str, authority_tier: int, company: Optional[str], url: str
@@ -428,8 +423,13 @@ class RequestGateway:
             http_status=cached.status_code,
             content_hash=cached.content_hash,
             access_status="success",
-            retrieved_at=utcnow().isoformat(),
+            retrieved_at=datetime.fromtimestamp(cached.retrieved_at, UTC).isoformat(),
             org_number=company,
+            requested_url=url,
+            final_url=cached.final_url or url,
+            redirect_chain=cached.redirect_chain or [url],
+            content_type=cached.headers.get("content-type"),
+            cache_hit=True,
         )
         return rec
 
