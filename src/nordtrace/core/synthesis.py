@@ -20,10 +20,14 @@ def build_summary(
 ) -> str:
     parts: List[str] = []
     org = identity.organisation_number
+    conflicts = ledger.conflicting_facts(org)
 
     # 1. what the company does
     desc = _latest(ledger, org, "business_description", "description")
-    parts.append(f"{identity.legal_name} (orgnr {org})")
+    if any(fact.field == "legal_name" for fact in conflicts):
+        parts.append(f"Organisation {org} (legal name unresolved)")
+    else:
+        parts.append(f"{identity.legal_name} (orgnr {org})")
     if desc is not None and getattr(desc, "value", None):
         parts.append(f"What it does: {desc.value}")
     elif isinstance(desc, str):
@@ -33,11 +37,10 @@ def build_summary(
 
     # 2. main business areas
     ind_f = _latest(ledger, org, "identity", "industry_description")
-    ind = (
-        ind_f.value if ind_f is not None and getattr(ind_f, "value", None) else None
-    ) or identity.industry_description
+    ind = ind_f.value if ind_f is not None else None
+    ind_code = _latest(ledger, org, "identity", "industry_code")
     if ind:
-        parts.append(f"Industry: {ind}" + (f" ({identity.industry_code})" if identity.industry_code else ""))
+        parts.append(f"Industry: {ind}" + (f" ({ind_code.value})" if ind_code is not None else ""))
     else:
         parts.append("Industry: not available.")
 
@@ -97,6 +100,8 @@ def build_summary(
     unknowns = _unknown_list(coverage)
     if unknowns:
         parts.append("Unknowns: " + "; ".join(unknowns) + ".")
+    if conflicts:
+        parts.append("Some sources disagree. Disputed values are withheld; their evidence remains available.")
 
     return " ".join(parts)
 
@@ -105,9 +110,8 @@ def _latest(ledger: FactLedger, org: str, category: str, field: str) -> Optional
     """Latest fact for a slot regardless of reporting_period (latest run wins)."""
     cur = ledger.current_values(org)
     best = None
-    prefix = f"{category}|{field}|"
-    for k, f in cur.items():
-        if k.startswith(prefix):
+    for f in cur.values():
+        if f.category == category and f.field == field:
             if best is None or (f.reporting_period or "") > (best.reporting_period or ""):
                 best = f
     return best
@@ -126,9 +130,9 @@ def _fmt(fact: Fact) -> str:
 def _role_facts(ledger: FactLedger, org: str) -> List[tuple]:
     cur = ledger.current_values(org)
     out = []
-    for k, f in sorted(cur.items()):
+    for _, f in sorted(cur.items()):
         if f.category == "leadership" and isinstance(f.value, dict) and f.value.get("name"):
-            role = f.value.get("role", k.split("|")[1])
+            role = f.value.get("role", f.field)
             out.append((role, f.value["name"]))
     return out
 
@@ -136,12 +140,12 @@ def _role_facts(ledger: FactLedger, org: str) -> List[tuple]:
 def _activity_facts(ledger: FactLedger, org: str) -> List[str]:
     cur = ledger.current_values(org)
     out = []
-    for k, f in sorted(cur.items()):
+    for _, f in sorted(cur.items()):
         if f.category == "recent_activity":
             v = f.value
             if isinstance(v, dict):
                 date = v.get("date") or v.get("registered") or ""
-                out.append(f"{v.get('event', k.split('|')[1])}" + (f" ({date})" if date else ""))
+                out.append(f"{v.get('event', f.field)}" + (f" ({date})" if date else ""))
             else:
                 out.append(str(v)[:80])
     return out

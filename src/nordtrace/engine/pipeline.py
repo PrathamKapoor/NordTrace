@@ -20,7 +20,7 @@ from nordtrace.adapters.pdf_pipeline import PdfFinancialPipeline
 from nordtrace.adapters.website import WebsiteAdapter
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.changes import detect_changes
-from nordtrace.core.contracts import build_result
+from nordtrace.core.contracts import build_result, project_identity
 from nordtrace.core.entity import EntityResolver, PublicationFirewall
 from nordtrace.core.ledger import FactLedger
 from nordtrace.core.llm import LLMClient
@@ -51,6 +51,7 @@ class CompanyOutcome:
     terminal_state: str
     identity: Optional[CompanyIdentity] = None
     facts: List[Fact] = field(default_factory=list)
+    conflicts: List[Fact] = field(default_factory=list)
     evidence: List[EvidenceRecord] = field(default_factory=list)
     sources: List[SourceRecord] = field(default_factory=list)
     rejected: List[Dict] = field(default_factory=list)
@@ -94,7 +95,8 @@ class ResearchPipeline:
         if previous:
             return CompanyOutcome(
                 org_number=org_number, terminal_state=previous.status, identity=previous.company,
-                facts=previous.facts, evidence=previous.evidence, sources=previous.sources,
+                facts=previous.facts, conflicts=previous.conflicts,
+                evidence=previous.evidence, sources=previous.sources,
                 rejected=previous.rejected_sources, changes=previous.changes, summary=previous.summary,
                 unknowns=previous.unknowns, coverage=previous.coverage,
                 stages=previous.research_metadata.stages_executed,
@@ -102,6 +104,9 @@ class ResearchPipeline:
                 error_code=previous.errors[0].code if previous.errors else None,
             )
         outcome = await self._research_company(org_number, run_id)
+        outcome.identity = project_identity(outcome.identity, outcome.conflicts)
+        if outcome.identity is not None:
+            self.repo.upsert_company(outcome.identity, run_id)
         run = self.repo.get_run(run_id)
         self.repo.save_result(build_result(
             outcome, run_id, self.budget, run.started_at if run and run.started_at else utcnow().isoformat()
@@ -344,36 +349,23 @@ class ResearchPipeline:
                 )
             outcome.changes = changes
 
-            # 8. persist ledger + coverage (order: sources → evidence → facts)
-            for s in ledger.sources.values():
-                s.org_number = org_number
-            self.repo.insert_sources_bulk(list(ledger.sources.values()), run_id, org_number)
-            all_ev = list(ledger.evidence.values())
-            # only evidence whose source was persisted
-            persisted_ids = {s.source_id for s in ledger.sources.values()}
-            all_ev = [e for e in all_ev if e.source_id in persisted_ids]
-            if all_ev:
-                self.repo.insert_evidence_bulk(all_ev)
-            all_facts = [e.fact for e in ledger.all_entries()]
-            # only facts whose source+evidence were persisted (skips FAILED w/ dangling ev)
-            persisted_ev = {e.evidence_id for e in all_ev}
-            all_facts = [
-                f for f in all_facts if f.source_id in persisted_ids and f.evidence_id in persisted_ev
-            ]
-            if all_facts:
-                self.repo.insert_facts_bulk(all_facts)
-
+            # 8. derive coverage; ledger persistence runs for success and failure below.
             coverage = self._coverage_from(ledger, org_number, financials_status)
             outcome.coverage = coverage.states
             outcome.facts = current_facts
-            outcome.evidence = all_ev
-            outcome.sources = list(ledger.sources.values())
+            outcome.conflicts = ledger.conflicting_facts(org_number)
 
             # 9. terminal state from coverage
             outcome.terminal_state = self._terminal_state(coverage, ident)
+            if outcome.conflicts:
+                outcome.terminal_state = TerminalState.AMBIGUOUS.value
             # 10. synthesis (deterministic; LLM optional)
             outcome.summary = build_summary(ident, ledger, coverage, outcome.changes)
             outcome.unknowns = self._unknowns(coverage)
+            if outcome.conflicts:
+                outcome.unknowns.append(
+                    "Conflicting supported observations were withheld; inspect their evidence."
+                )
             stages.append("synthesis")
             self._trace(
                 run_id,
@@ -388,11 +380,37 @@ class ResearchPipeline:
             outcome.error = f"{type(e).__name__}: {e}"
             self._trace(run_id, org_number, "error", str(e)[:300], "error")
         finally:
+            if ledger.sources:
+                self._finalize_ledger(outcome, ledger, run_id, financials_status)
             outcome.stages = stages
             outcome.duration_sec = time.monotonic() - started  # type: ignore
         return outcome
 
     # ------------------------------------------------------------------ helpers
+    def _finalize_ledger(
+        self, outcome: CompanyOutcome, ledger: FactLedger, run_id: str, accounts_status: str,
+    ) -> None:
+        """Retain accepted and conflicting observations even after an adapter failure."""
+        org = outcome.org_number
+        sources = list(ledger.sources.values())
+        for source in sources:
+            source.org_number = org
+        source_ids = {source.source_id for source in sources}
+        evidence = [item for item in ledger.evidence.values() if item.source_id in source_ids]
+        evidence_ids = {item.evidence_id for item in evidence}
+        facts = [entry.fact for entry in ledger.all_entries()
+                 if entry.fact.source_id in source_ids and entry.fact.evidence_id in evidence_ids]
+        outcome.facts = ledger.published_facts(org)
+        outcome.conflicts = ledger.conflicting_facts(org)
+        outcome.evidence = evidence
+        outcome.sources = sources
+        outcome.coverage = self._coverage_from(ledger, org, accounts_status).states
+        self.repo.insert_sources_bulk(sources, run_id, org)
+        if evidence:
+            self.repo.insert_evidence_bulk(evidence)
+        if facts:
+            self.repo.insert_facts_bulk(facts)
+
     def _coverage_from(self, ledger: FactLedger, org_number: str, accounts_status: str) -> Coverage:
         cov = Coverage()
         # identity
@@ -422,6 +440,11 @@ class ResearchPipeline:
             cov.set("jobs", "found")
         if any(f.category == "recent_activity" for f in ledger.published_facts(org_number)):
             cov.set("recent_activity", "found")
+        for fact in ledger.conflicting_facts(org_number):
+            category = fact.category
+            if category == "identity" and fact.field in ("industry_code", "industry_description"):
+                category = "industry"
+            cov.set(category, "ambiguous")
         return cov
 
     def _terminal_state(self, coverage: Coverage, ident: Optional[CompanyIdentity]) -> str:

@@ -14,7 +14,14 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from nordtrace.core.budget import BudgetManager
-from nordtrace.core.models import CompanyProfile, ResearchError, ResearchMetadata, utcnow
+from nordtrace.core.models import (
+    CompanyIdentity,
+    CompanyProfile,
+    Fact,
+    ResearchError,
+    ResearchMetadata,
+    utcnow,
+)
 from nordtrace.core.orgnr import validate_orgnr
 
 
@@ -42,6 +49,32 @@ def map_inputs(values: list[str]) -> list[InputMapping]:
     ]
 
 
+def project_identity(identity: CompanyIdentity | None, conflicts: list[Fact]) -> CompanyIdentity | None:
+    """Withhold disputed structured values without changing the acquisition anchor.
+
+    The required legacy legal_name string uses empty string for unresolved names.
+    unresolved_fields distinguishes this from a successfully verified blank value.
+    """
+    if identity is None:
+        return None
+    fields = set(identity.unresolved_fields)
+    for fact in conflicts:
+        if fact.org_number == identity.organisation_number and fact.category == "identity":
+            if fact.field in CompanyIdentity.model_fields and fact.field != "organisation_number":
+                fields.add(fact.field)
+    if "registered_address" in fields:
+        fields.update(("municipality", "postal_code"))
+    if "status" in fields:
+        fields.update(("bankrupt", "under_liquidation", "deleted_date"))
+    updates: dict[str, Any] = dict.fromkeys(fields)
+    if "legal_name" in fields:
+        updates["legal_name"] = ""
+    if "status" in fields:
+        updates["status"] = "unknown"
+    updates["unresolved_fields"] = sorted(fields)
+    return CompanyIdentity.model_validate(identity.model_dump() | updates)
+
+
 def build_result(outcome: Any, run_id: str, budget: BudgetManager, started_at: str) -> CompanyProfile:
     """Serialize the actual outcome, never infer it from a claim count."""
     completed = utcnow().isoformat()
@@ -54,7 +87,9 @@ def build_result(outcome: Any, run_id: str, budget: BudgetManager, started_at: s
         ))
     return CompanyProfile(
         run_id=run_id, organisation_number=outcome.org_number, status=outcome.terminal_state,
-        company=outcome.identity, facts=outcome.facts, evidence=outcome.evidence,
+        company=project_identity(outcome.identity, getattr(outcome, "conflicts", [])),
+        facts=outcome.facts, evidence=outcome.evidence,
+        conflicts=getattr(outcome, "conflicts", []),
         changes=outcome.changes, summary=outcome.summary, unknowns=outcome.unknowns,
         sources=outcome.sources, rejected_sources=outcome.rejected, coverage=outcome.coverage,
         errors=errors, refresh_metadata={"observed_at": completed},

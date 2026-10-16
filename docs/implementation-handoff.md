@@ -1,0 +1,72 @@
+# Implementation checkpoint — 2026-10-17
+
+This is a continuation checkpoint, not a release-completion report. The user most recently said **continue**. Keep implementing the master prompt autonomously; do not restart or overwrite completed work.
+
+Update after the original checkpoint below: conflict-publication correction is in progress on cfa0cf4. It withholds all competing observations, adds canonical conflicts, projects disputed identity fields, fixes typed synthesis lookups and preserves ledger/support through later adapter failures. Seven conflict cases pass. Check actual HEAD/status and verification.md for the subsequent commit/full check; the older clean-tree statement below applies only before this unit began. Next dependency-ready task is per-source refresh completeness and outage-safe last-known observations (F07).
+
+## Repository and authorization
+
+- Root: `C:\Projects\NordTrace`; branch `main`; code HEAD at this checkpoint: `cfa0cf4fdd74c811162fbc3ad688940ae2bb8f61`.
+- Tree was clean immediately before creating this checkpoint file. The checkpoint itself is newly uncommitted documentation. Verify actual HEAD/status/diffs on continuation.
+- Origin fetch/push remains `https://github.com/PrathamKapoor/NordTrace.git`. No remote writes, PRs, deployment, email, publication or collaborator changes performed or authorized.
+- Every new commit author AND committer must remain `PrathamKapoor <prathamkapoor027@gmail.com>`, configured locally. All thirteen local implementation commits after original `2fea06eefb7a019d1a0d85ef2e919f384e9e4d0b` were inspected for both identities. Preserve all existing history/data. No applicable AGENTS.md or other parent/nested repository was found initially.
+- Use Python 3.12.5 in `.venv`, uv 0.12.5, frozen `uv.lock`; `uv sync --frozen --extra dev --python 3.12`. Do not silently use global dependencies or credentials.
+- Existing reviewer `/root/review_canonical_results` is idle. The requesting-code-review skill explicitly authorizes its scoped read-only reviews; do not spawn unrelated agents. Relevant skills already read: using-superpowers, brainstorming, writing-plans, systematic-debugging, test-driven-development, verification-before-completion, requesting-code-review.
+
+## Verified code boundaries
+
+- `75b5cc8`: baseline/tracker/contract.
+- `10f49ea`: immutable canonical results, invalid/duplicate input mapping, consistent CLI/API/batch, resume pending-only scheduling, additive outcome migration/task leases.
+- `d6d69e6`: monotonic rate-spacing correction and offline simulation wiring.
+- `da4af48`: contextual orgnr/contradictions, footer-preserving identity, offline PSL/shared domains, uv lock.
+- `f440f14`: manual bounded redirects, stream caps, robots accounting, public-IP connection pinning and separate TLS-origin pools.
+- `eb6f08e`: preliminary financial/value/verdict rejection conditions.
+- `e64c0ee`: runtime settings, package HTML/licences, local CI and Docker wiring.
+- `c891cff`: unavailable entity diagnostics and synthetic 100/1,000-invalid-input cardinality checks.
+- `dc92751`: exact returned registry orgnr required; missing/invalid/foreign response abstains.
+- `46e4e52`: complete response-byte captures, schema 3, integrity-checked offline reads/export, deadline-bounded SQLite capture.
+- `d5d9d8f`: discovered PDF state separate from acquisition/HTML crawl; unavailable-accounts fallback matrix; fetched source registered before evidence.
+- `80dcce0`: production snapshot-backed publication, atomic Brreg identity pointers, schema 4, strict types/provenance, unknown/forced status, authoritative redirect host/scheme policy incl robots/cache.
+- `cfa0cf4`: stable logical claim IDs, separate observation IDs, item/scope keys, schema 5, exact assertion comparisons and no-op replay.
+
+## Current behavior and important limits
+
+Production `ResearchPipeline` supplies its Repository to Gateway and FactLedger. Successful HTTP bodies (including robots/cache hits) are retained before success is returned. `http-response-body-v1` hashes complete body bytes after transfer framing; content encoding must be identity. Schema 3 blobs/capture metadata are immutable and independently hash/length verified. Legacy truncated text snapshots remain untouched and are not promoted as valid captures. `replay-source SOURCE_ID --output data/source.bin` and `verify-snapshots RUN_ID` are offline byte operations, not extraction replay or factual-support proof.
+
+Production publication now fails closed on missing/unsupported locators. **Only atomic registry identity predicates currently have supported JSON-pointer rules. All non-identity producer candidates are temporarily withheld.** Roles/website/activity/PDF/NAV extractors still run, but their snippets/confidence cannot enable publication. Restore external families by converting their real evidence/semantics; never weaken the gate to regain counts. In-memory ledger tests without a repository cover only preliminary legacy/key logic, not source truth.
+
+Identity proof binds captured URL/chain/type/hash/status/time/authority to SourceRecord, evidence and claim; checks exact document orgnr, pointer raw value, predicate/path, normalization and field type. Registry identity requires scalar legal_entity scope. Employee booleans/invalid counts stay unknown; absent bankruptcy/liquidation/group flags stay unknown. Compulsory liquidation is distinct. All registry requests restrict redirect host and scheme; nested robots fetches inherit policy and caches are policy-scoped. Two host/downgrade and two fresh/cache robots regressions prevent prohibited second connections.
+
+`Fact.claim_id` hashes canonical escaped JSON of `(org,category,field,period,item_key,subject_scope)`. Value/UUID excluded. `fact_id` remains the observation PK and is exposed as observation_id. Historical qualifiers stay unknown; no retroactive source support or item ID is invented. Identical same-snapshot assertion within a ledger coalesces; same-instance replay stays published. Different runs keep observations with stable logical identity. Vacancy/branch keys are required; external candidates have NAV ID/URL/subunit ID but publication remains unconverted. Schema 5 persists item/scope and complete change JSON. Diff/conflict comparison uses full values, currency/unit/validity and exact monetary Decimal equality; shortened normalization cannot hide a changed deadline.
+
+Canonical company_results are immutable, preserve summary/identity/errors/sources/evidence and support no-company outcomes. Historical canonical API profile is frozen; legacy fallback is explicitly unfrozen. Batch exports full envelopes atomically with ordered input mapping; duplicate semantics are local policy, organizer acceptance unknown. Invalid research/batch exits 2; failed execution exits 1. Resume schedules only pending companies and task leases prevent simultaneous ownership, **but budgets are still reset on resume and crash/cancellation recovery is incomplete**.
+
+## Verification and environment
+
+- Latest full: `.venv\Scripts\python.exe -m pytest -q --tb=short` — **348 passed, 8 live deselected**, one upstream Starlette deprecation warning, 49.11s.
+- Ruff `check src tests` passed; mypy `src/nordtrace` passed, 31 source files. Claim-identity corpus 13 tests; locator corpus 22 tests. No failing check at this boundary.
+- Real existing DB migration tested **on a copy only**: original opened read-only at schema 1, copied DB upgraded to schema 5; all original column/row fingerprints across ten tables equal, zero FK violations. Manifest/copy ignored under `data/migration-verification.json`. Original remains untouched by this check.
+- Earlier test-isolation mistake: six invalid fixture runs had entered the actual DB. Compared exact IDs against pre-upgrade backup, backed up again, removed only those six invalid/no-source runs transactionally; FK check passed. Original history and backups retained. CLI tests now isolate repositories. See verification.md; do not reset/restore user DB.
+- Clean noneditable clone proof exists at **e64c0ee**, not latest HEAD: frozen install, 286 offline tests, lint/types, installed wheel/dashboard and invalid CLI adapter. Path stored ignored in data/clean-clone-path.txt. Repeat clean installation at a later release boundary before claiming latest-release clean-install proof.
+- Docker CLI installed; daemon pipe absent. Compose config parses. Actual build/run blocked. CI configuration is local-only, no hosted/Linux run evidence.
+- No live smoke/held-out accuracy/recall/ablation/official score measured. Synthetic 100/1,000 invalid inputs are NOT eligible researched profiles. The 100-company HTTP fixture now uses real production adapters/gateway/persistence over instrumented MockTransport, retaining bytes and checking request equality; it is NOT live coverage.
+
+## Contract and primary sources
+
+Four Builderr primary URLs retrieved 2026-10-16; scoring v2 effective 2026-08-26. Published 50/30/12/8, 70/30 company/claim within external families, 65 qualification, real 100-company smoke; organizer batches grow from about 1,000. Numeric supplied budgets, official batch/snapshot and private machine schema unavailable. Old 2,000 requests/2,700s/$10 are local defaults, never silently scaled. docs/evaluator-contract.md and ignored data/contracts manifest retain dates/hashes. Draft clarification exists and was NOT SENT.
+
+Brreg accounts OpenAPI 1.1.16 retained ignored at data/contracts/regnskap-openapi.json; SHA256 c6b99a196249d22b494a26341a9b7f84d15388ebbb989bce63dcbcb55c59dac5. It distinguishes SELSKAP/KONSERN/currency/period; units are not yet established. This is not evaluator schema.
+
+Brreg entity docs 2.0.0 retrieved local date 2026-10-17, https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/index.html; SHA256 dd857144bf1a5efcd91c86b54a68eb3657f70e4e7f3d4edd77324d5aa1a4fd3b. Publisher declares NLOD2.0. Raw HTML ignored at data/contracts/enhetsregisteret-docs.html. No website instructions were executed. Rights/privacy/retention of all sources still require source-specific decisions; source data is not MIT by virtue of the code licence.
+
+## Next dependency-ready work
+
+1. **Conflicts:** current ledger marks only incoming conflicting fact CONFLICT while leaving the earlier one PUBLISHED. Fix both/all competing observations, retain them inspectably in canonical output, and make family status/synthesis honest. Test through real retained snapshots. Do not silently pick first/last. Avoid same-instance/duplicate-observation mutation regressions.
+2. **Refresh F07:** detect_changes still defaults missing facts to RETRACTED without affirmative completeness. Parser regressions/outages must retain last-known supported claims/evidence with stale/unverified refresh state. Add source/family completeness contracts, no-op/outage/recovery/new-period/expiry/partial-pagination tests, frozen history. Legacy unsupported observations cannot be promoted as currently verified.
+3. **A/D correctness:** terminal state still inferred from coverage count; define actual completion reason independently. Persist request/cost/deadline allowances and restore same-run budgets on resume; release/fence leases under cancellation; bound queues/parsing/finalization/DNS. Cost reservation currently only checks affordability; dormant LLM transport/retries bypass gateway and could overspend if activated.
+4. **Convert producers under strict support:** paginated parent-checked branches; structured roles pointers; website legal/contact/meta/Organization/span extraction, real adaptive/sitemap/search; corrected accounts Decimal/currency/period/scale/entity/group semantics; table-aware PDF matrix; real NAV feed/schema/access/rights with orgnr + actual municipality, JobPosting/ATS; dated individual activity/news. Current activity reads accounts payload while citing entity source (F22); news index recency (F23); NAV identity and PDF numerical parsing remain defective but withheld.
+5. **API/UI:** legacy endpoints/old DB facts can still display unsupported PUBLISHED labels; do not portray them as newly verified. Evidence drawer still shows IDs/hashes without support spans, and historical load JS ignores requested run. Add safe URLs/XSS/keyboard/mobile verification after data paths work. No decorative rewrite.
+6. Evaluation: representative official-universe development/held-out manifests and independent adjudication/hard negatives; source rights; benchmark shared accounting/ablations; real permitted 100 smoke and parameterized 1,000 evidence-complete scale. Do not count brand fixture/adaptor confidence as accuracy or invent official scores.
+7. Docs: keep FLOW.md, DECISIONS.md (last D-035), tracker and verification current in each coherent commit. Complete release documents/CI/install/license/source/model declarations and final A–J delivery report. Current tracker has many unfinished requirements; do not claim completion.
+
+Further known limitations: whole-ledger transactions/immutable observations and explicit claim/observation aggregation incomplete; source URL repeats and legacy duplicate metrics can misclassify legitimate observations; previous-fact selection lacks strict temporal cutoff; unsupported current candidates can trigger old refresh retractions; synthesis lacks claim references; source states/unknown wording often conflate no information and source failure. These are independent code tasks, not external blockers. Continue them without asking whether to proceed.

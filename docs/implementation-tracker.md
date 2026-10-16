@@ -2,6 +2,8 @@
 
 Updated: 2026-10-17. Historical claims in older documents are not current verification. Status vocabulary: `not_started`, `in_progress`, `implemented_unverified`, `verified`, `blocked`. Defect rows remain `not_started` until reproduced or explicitly shown inapplicable; inspection alone does not establish a fix.
 
+Conflict correction: competing supported observations are all withheld and retained separately, with ambiguous family state. Canonical/current identity projections clear disputed fields; synthesis no longer parses obsolete delimiter keys. Seven targeted cases pass, including real simulated acquisition/SQLite/API and injected later failure. Source-complete refresh and legacy publication remain unfinished; see D-036 and verification.md.
+
 ## Requirements and release gates
 
 | Requirement | Acceptance scope | Owner component | Verification | Status | Evidence / limitation |

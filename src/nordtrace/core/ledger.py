@@ -167,6 +167,8 @@ class FactLedger:
         source_record = self.sources[fact.source_id]
         for entry in self._entries:
             existing = entry.fact
+            if existing is fact:
+                return existing
             prior_source = self.sources.get(existing.source_id)
             if (
                 existing.status == FactStatus.PUBLISHED.value and existing.fact_key() == fact.fact_key()
@@ -176,8 +178,6 @@ class FactLedger:
                 and existing.unit == fact.unit and existing.currency == fact.currency
                 and existing.valid_from == fact.valid_from and existing.valid_to == fact.valid_to
             ):
-                if existing is fact:
-                    return existing
                 fact.status = FactStatus.DUPLICATE.value
                 fact.conflict_note = f"same claim and snapshot as observation {existing.fact_id}"
                 return existing
@@ -199,6 +199,7 @@ class FactLedger:
         return fact
 
     def _detect_conflict(self, fact: Fact) -> Optional[str]:
+        competing = []
         for entry in self._entries:
             other = entry.fact
             if other.org_number != fact.org_number:
@@ -207,12 +208,23 @@ class FactLedger:
                 continue
             if other.status not in (FactStatus.PUBLISHED.value, FactStatus.CONFLICT.value):
                 continue
-            if assertions_differ(other, fact):
-                return (
-                    f"conflicts with fact {other.fact_id} from source {other.source_id} "
-                    f"(existing={_short(other.normalized_value)}, new={_short(fact.normalized_value)})"
-                )
+            competing.append(other)
+        if competing and (
+            any(other.status == FactStatus.CONFLICT.value for other in competing)
+            or any(assertions_differ(other, fact) for other in competing)
+        ):
+            note = f"unresolved conflict for {fact.claim_id}; competing observations withheld"
+            for other in competing:
+                other.status = FactStatus.CONFLICT.value
+                other.conflict_note = note
+            return note
         return None
+
+    def conflicting_facts(self, org_number: Optional[str] = None) -> List[Fact]:
+        return [
+            entry.fact for entry in self._entries if entry.fact.status == FactStatus.CONFLICT.value
+            and (org_number is None or entry.fact.org_number == org_number)
+        ]
 
     def published_facts(self, org_number: Optional[str] = None) -> List[Fact]:
         return [
@@ -265,8 +277,3 @@ class FactLedger:
         ]
         rows.sort(key=lambda f: (f.valid_from or f.reporting_period or "", f.retrieved_at or ""))
         return rows
-
-
-def _short(v) -> str:
-    s = str(v)
-    return s[:40] + ("…" if len(s) > 40 else "")

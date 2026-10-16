@@ -1,5 +1,7 @@
 # Current implementation verification
 
+Conflict publication correction (2026-10-17): `.venv/Scripts/python -m pytest -q --tb=short` returned **355 passed, 8 live deselected, one upstream Starlette warning in 54.93s**. Ruff passed; mypy passed for 31 source files. Seven focused cases cover all-sided withholding, repeated corroboration, immutable canonical/API references, disputed structured-field projection, supported summary lookup and an injected later accounts-parser failure. Review reproduced canonical FIRST AS leakage and loss of conflicts after failure; both received failing assertions before correction and passed afterward. Failure envelopes preserve already accepted/conflicting observations. These are offline simulated transport tests; no live coverage or release accuracy is claimed.
+
 Date: 2026-10-16. This record supersedes historical PASS statements for the current implementation assignment without erasing previous run history.
 
 ## Checkout and environment baseline

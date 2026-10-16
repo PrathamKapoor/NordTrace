@@ -1,5 +1,16 @@
 # Decision Log — NordTrace
 
+## D-036 — Withhold all observations of unresolved conflicts
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: ledger conflict detection withheld only the incoming observation, leaving the first supported value published. Review reproduced the same arbitrary winner in canonical company fields and the dashboard. Stable JSON claim keys also exposed old delimiter-based synthesis lookups.
+- Decision/implementation: ledger marks all competing observations CONFLICT; envelopes carry a separate conflicts collection with complete references. Family availability becomes ambiguous. contracts.project_identity clears disputed structured fields and dependent address/status values for canonical output and final company-row persistence. Required legal_name uses empty string plus unresolved_fields. Summaries use typed fact attributes and omit disputed identity/industry values. Acquired bytes and every competing observation remain available.
+- Application: new results and their current company projection; existing immutable envelopes/history are not rewritten. Repeated corroboration does not resolve a conflict without an explicit resolution policy.
+- Alternatives: first/last insertion wins or confidence-based selection would conceal disagreement. Making every acquisition identity field nullable would unnecessarily change adapters; the projection preserves their internal anchor.
+- Tradeoffs/limits: conservative withholding lowers coverage; no automated temporal/source-priority resolution is introduced. Legacy endpoint support, last-known refresh and complete atomic publication remain separate unfinished requirements. The organisation number stays identified while individual values may be unresolved.
+- Failure path: reviewer reproduced conflicts disappearing when a later accounts adapter raised. Ledger finalization now runs in finally for both successful and failed execution; a failed envelope retains prior supported observations and disagreements before identity projection. Persistence remains sequential and full transaction/cancellation guarantees are separate work.
+- Verification: test_conflict_publication.py reproduces ledger and canonical/API leaks, preserves retained competing evidence through injected failure, tests dependent-field suppression and summary lookups. Revisit with source-completeness/temporal resolution rules. Extends D-021/D-034/D-035.
+
 Serious engineering decision log. Each entry explains WHAT changed, WHY, what
 problem it solved, alternatives considered, why they were rejected, trade-offs
 accepted, and supporting evidence/tests. Entries added whenever meaningful

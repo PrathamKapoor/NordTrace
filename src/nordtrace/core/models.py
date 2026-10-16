@@ -132,6 +132,7 @@ class CompanyIdentity(BaseModel):
     under_liquidation: Optional[bool] = None
     deleted_date: Optional[str] = None
     last_verified_at: Optional[str] = None
+    unresolved_fields: List[str] = Field(default_factory=list)
 
     def validate_format(self) -> bool:
         return validate_orgnr(self.organisation_number).valid
@@ -366,6 +367,7 @@ class CompanyProfile(BaseModel):
     status: str = TerminalState.NOT_AVAILABLE.value
     company: Optional[CompanyIdentity] = None
     facts: List[Fact] = Field(default_factory=list)
+    conflicts: List[Fact] = Field(default_factory=list)
     changes: List[ChangeRecord] = Field(default_factory=list)
     summary: Optional[str] = None
     unknowns: List[str] = Field(default_factory=list)
@@ -391,7 +393,13 @@ class CompanyProfile(BaseModel):
         evidence = {item.evidence_id: item for item in self.evidence}
         if len(sources) != len(self.sources) or len(evidence) != len(self.evidence):
             raise ValueError("duplicate source or evidence IDs")
-        for fact in self.facts:
+        if any(fact.status != FactStatus.CONFLICT.value for fact in self.conflicts):
+            raise ValueError("conflict observations must carry CONFLICT status")
+        if {fact.claim_id for fact in self.facts} & {fact.claim_id for fact in self.conflicts}:
+            raise ValueError("conflicting claim cannot also be published")
+        if len({fact.fact_id for fact in self.facts + self.conflicts}) != len(self.facts + self.conflicts):
+            raise ValueError("duplicate observation IDs in result")
+        for fact in self.facts + self.conflicts:
             source = sources.get(fact.source_id)
             support = evidence.get(fact.evidence_id)
             if fact.org_number != self.organisation_number:
