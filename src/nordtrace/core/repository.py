@@ -189,9 +189,9 @@ class Repository:
         with self._lock:
             conn = self.conn
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version > 3:
-                raise ValueError(f"database schema {version} is newer than supported version 3")
-            if version < 3 and conn.execute(
+            if version > 4:
+                raise ValueError(f"database schema {version} is newer than supported version 4")
+            if version < 4 and conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='runs'"
             ).fetchone():
                 # SQLite backup includes committed WAL data; never overwrite a previous backup.
@@ -244,6 +244,14 @@ class Repository:
                         metadata_json TEXT NOT NULL
                     );
                     PRAGMA user_version=3;
+                    COMMIT;
+                """)
+            if version < 4:
+                conn.executescript("""
+                    BEGIN IMMEDIATE;
+                    ALTER TABLE evidence ADD COLUMN locator_json TEXT;
+                    ALTER TABLE sources ADD COLUMN source_json TEXT;
+                    PRAGMA user_version=4;
                     COMMIT;
                 """)
             conn.commit()
@@ -557,14 +565,15 @@ class Repository:
                     s.content_hash,
                     s.access_status,
                     s.error_detail,
+                    s.model_dump_json(),
                 )
                 for s in sources
                 if s.source_id and org_number
             ]
             if rows:
                 self.conn.executemany(
-                    "INSERT OR REPLACE INTO sources (source_id, run_id, org_number, url, domain, source_type, authority_tier, title, retrieved_at, published_at, http_status, content_hash, access_status, error_detail) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT OR REPLACE INTO sources (source_id, run_id, org_number, url, domain, source_type, authority_tier, title, retrieved_at, published_at, http_status, content_hash, access_status, error_detail, source_json) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     rows,
                 )
             self.conn.commit()
@@ -582,8 +591,8 @@ class Repository:
     def insert_evidence(self, ev: EvidenceRecord) -> None:
         with self._lock:
             self.conn.execute(
-                "INSERT OR REPLACE INTO evidence (evidence_id, source_id, url, source_title, source_type, authority_tier, retrieved_at, published_at, evidence_text, page_or_section, content_hash, entity_match_details, entity_verdict, org_number) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO evidence (evidence_id, source_id, url, source_title, source_type, authority_tier, retrieved_at, published_at, evidence_text, page_or_section, content_hash, entity_match_details, entity_verdict, org_number, locator_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     ev.evidence_id,
                     ev.source_id,
@@ -599,6 +608,7 @@ class Repository:
                     json.dumps(ev.entity_match_details, ensure_ascii=False),
                     ev.entity_verdict,
                     ev.org_number,
+                    ev.locator.model_dump_json() if ev.locator else None,
                 ),
             )
             self.conn.commit()
@@ -650,8 +660,8 @@ class Repository:
     def insert_evidence_bulk(self, evidence: Iterable[EvidenceRecord]) -> None:
         with self._lock:
             self.conn.executemany(
-                "INSERT OR REPLACE INTO evidence (evidence_id, source_id, url, source_title, source_type, authority_tier, retrieved_at, published_at, evidence_text, page_or_section, content_hash, entity_match_details, entity_verdict, org_number) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO evidence (evidence_id, source_id, url, source_title, source_type, authority_tier, retrieved_at, published_at, evidence_text, page_or_section, content_hash, entity_match_details, entity_verdict, org_number, locator_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [
                     (
                         e.evidence_id,
@@ -668,6 +678,7 @@ class Repository:
                         json.dumps(e.entity_match_details, ensure_ascii=False),
                         e.entity_verdict,
                         e.org_number,
+                        e.locator.model_dump_json() if e.locator else None,
                     )
                     for e in evidence
                 ],
@@ -884,6 +895,8 @@ class Repository:
 
     # ------------------------------------------------------------ row mappers
     def _row_to_source(self, r) -> SourceRecord:
+        if r["source_json"]:
+            return SourceRecord.model_validate_json(r["source_json"])
         return SourceRecord(
             source_id=r["source_id"],
             url=r["url"],
@@ -916,6 +929,7 @@ class Repository:
             entity_match_details=json.loads(r["entity_match_details"] or "{}"),
             entity_verdict=r["entity_verdict"],
             org_number=r["org_number"],
+            locator=json.loads(r["locator_json"]) if r["locator_json"] else None,
         )
 
     def _row_to_fact(self, r) -> Fact:

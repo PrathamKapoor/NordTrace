@@ -164,6 +164,8 @@ def test_upgrade_v2_preserves_outcomes_and_creates_one_backup(tmp_path):
     # Construct the immediately previous schema on this isolated fixture only.
     repo.conn.execute("DROP TABLE source_captures")
     repo.conn.execute("DROP TABLE snapshot_blobs")
+    repo.conn.execute("ALTER TABLE evidence DROP COLUMN locator_json")
+    repo.conn.execute("ALTER TABLE sources DROP COLUMN source_json")
     repo.conn.execute("PRAGMA user_version=2")
     repo.conn.commit()
     repo.close()

@@ -1,4 +1,10 @@
-# Sources (all verified live 2026-09-29/30)
+# Current source record — 2026-10-17
+
+The source list below records historical adapter access, not current live verification or working publication coverage. Production publication now requires retained snapshots and supported locators. Only atomic registry identity predicates currently have converted support rules; other source candidates are withheld pending conversion. See docs/implementation-tracker.md and docs/verification.md.
+
+Enhetsregisteret primary documentation version 2.0.0 was retrieved 2026-10-17 at https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/index.html. It declares Norwegian Licence for Open Government Data (NLOD) 2.0; the code's MIT licence does not relicense registry/company data. Retained documentation hash: dd857144bf1a5efcd91c86b54a68eb3657f70e4e7f3d4edd77324d5aa1a4fd3b. Raw copy is local ignored data/contracts/enhetsregisteret-docs.html. Source-specific personal-data retention and all external source terms remain under review. No authenticated personal-identifier registry endpoints are used.
+
+# Historical sources (access reported 2026-09-29/30)
 
 ## Tier 0 — Official Registry (live-verified)
 - Brreg Enhetsregisteret: `data.brreg.no/enhetsregisteret/api/enheter/{orgnr}` — identity, form, status, address, NACE, capital, employees

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Tuple
 
+from nordtrace.core.evidence import verify_snapshot_support
 from nordtrace.core.models import (
     EvidenceRecord,
     Fact,
@@ -24,6 +25,7 @@ from nordtrace.core.models import (
     SourceRecord,
     utcnow,
 )
+from nordtrace.core.repository import Repository
 
 
 @dataclass
@@ -36,9 +38,13 @@ class LedgerEntry:
 class CitationValidator:
     """Deterministic validation of the fact → evidence → source chain."""
 
-    def __init__(self, sources: Dict[str, SourceRecord], evidence_index: Dict[str, EvidenceRecord]):
+    def __init__(
+        self, sources: Dict[str, SourceRecord], evidence_index: Dict[str, EvidenceRecord],
+        repository: Optional[Repository] = None,
+    ):
         self.sources = sources
         self.evidence_index = evidence_index
+        self.repository = repository
 
     def validate(self, fact: Fact) -> Tuple[bool, str]:
         # 1. correct company
@@ -83,6 +89,11 @@ class CitationValidator:
                 return False, "financial reporting year absent from evidence"
             if not _quoted_number(fact.value, ev.evidence_text):
                 return False, "financial value absent from evidence"
+        if self.repository is not None:
+            try:
+                verify_snapshot_support(self.repository, fact, src, ev)
+            except (ValueError, KeyError, TypeError, RecursionError) as error:
+                return False, f"snapshot support: {error}"
         return True, "ok"
 
 
@@ -113,7 +124,8 @@ def _quoted_number(value, text: str) -> bool:
 class FactLedger:
     """In-memory + repository-backed fact store with conflict detection."""
 
-    def __init__(self):
+    def __init__(self, repository: Optional[Repository] = None):
+        self.repository = repository
         self.sources: Dict[str, SourceRecord] = {}
         self.evidence: Dict[str, EvidenceRecord] = {}
         self._entries: List[LedgerEntry] = []
@@ -139,7 +151,7 @@ class FactLedger:
             fact.normalized_value = str(fact.value)
         if evidence:
             fact.evidence_id = evidence.evidence_id
-        validator = CitationValidator(self.sources, self.evidence)
+        validator = CitationValidator(self.sources, self.evidence, self.repository)
         ok, reason = validator.validate(fact)
         if not ok:
             fact.status = (

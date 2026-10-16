@@ -46,168 +46,62 @@ def test_cross_company_contamination(tmp_path):
             assert sources[f.source_id].org_number == org
 
 
-def _simulated_batch_100(tmp_path):
-    """Deterministic fixture provider simulating 100 companies with mixed
-    source outcomes: success, 429, timeouts, missing websites, malformed PDFs,
-    conflicting evidence, slow sources."""
-    from nordtrace.adapters import activity, brreg, nav_jobs, pdf_pipeline, website
+def _simulated_batch_100(tmp_path, monkeypatch):
+    """Real production pipeline over offline HTTP, with identity 200/429/timeout.
+
+    Other source families return 404. This is orchestration/support integrity,
+    not live coverage, slow-source cancellation or independently labelled recall.
+    """
+    import httpx
+
     from nordtrace.core.budget import BudgetManager
-    from nordtrace.core.models import (
-        CompanyIdentity,
-        EvidenceRecord,
-        SourceRecord,
-        utcnow,
-    )
+    from nordtrace.core.rate_limiter import SourcePolicy
     from nordtrace.core.repository import Repository
     from nordtrace.engine.pipeline import ResearchPipeline
 
-    class FakeGateway:
-        """Simulated gateway: no network, deterministic mixed outcomes."""
+    monkeypatch.setattr("nordtrace.core.request_gateway._resolve_host", lambda host: ["8.8.8.8"])
 
-        def __init__(self, budget):
-            self.budget = budget
-            self.calls: list = []
-
-        async def fetch(
-            self,
-            url,
-            *,
-            stage="unknown",
-            company=None,
-            source_type="other",
-            authority_tier=4,
-            max_bytes=None,
-            cache_ttl_override=None,
-            respect_robots=False,
-            allowed_domains=None,
-            retries=2,
-        ):
-            self.budget.requests.try_acquire(1)
-            self.calls.append((url, stage, company))
-            # deterministic failure patterns by company hash
-            h = sum(ord(c) for c in (company or "x"))
-            mode = h % 10
-            if mode == 0:  # rate-limited source
-                return SourceRecord(
-                    url=url,
-                    domain="x.no",
-                    source_type=source_type,
-                    authority_tier=authority_tier,
-                    access_status="rate_limited",
-                    error_detail="429",
-                    org_number=company,
-                )
-            if mode == 1:  # timeout
-                return SourceRecord(
-                    url=url,
-                    domain="x.no",
-                    source_type=source_type,
-                    authority_tier=authority_tier,
-                    access_status="timeout",
-                    error_detail="timeout",
-                    org_number=company,
-                )
-            if mode == 2 and "pdf" in url:  # malformed PDF
-                return SourceRecord(
-                    url=url,
-                    domain="x.no",
-                    source_type=source_type,
-                    authority_tier=authority_tier,
-                    access_status="success",
-                    content_hash="bad",
-                    org_number=company,
-                )
-            return SourceRecord(
-                url=url,
-                domain="x.no",
-                source_type=source_type,
-                authority_tier=authority_tier,
-                access_status="success",
-                content_hash=f"h-{company}-{stage}",
-                org_number=company,
-            )
-
-        def get_content(self, url):
-            h = sum(ord(c) for c in url)
-            if h % 20 == 0:
-                return None  # cache miss (forces honest failure)
-            if "pdf" in url and h % 20 == 2:
-                from types import SimpleNamespace
-
-                return SimpleNamespace(text="", content=b"not-a-pdf", headers={"content-type": "text/html"})
-            from types import SimpleNamespace
-
-            body = f"navn FAKE AS orgnr content for {url}"
-            return SimpleNamespace(text=body, content=body.encode(), headers={"content-type": "text/html"})
-
-        async def aclose(self):
-            pass
-
-        def snapshot_cache_entries(self):
-            return []
-
-    class FakeBrreg(brreg.BrregAdapter):
-        def __init__(self, gateway, budget):
-            self.gateway = gateway
-            self.budget = budget
-
-        async def fetch_entity(self, org_number, run_id):
-            src = await self.gateway.fetch(
-                f"https://brreg/{org_number}",
-                stage="identity",
-                company=org_number,
-                source_type="registry",
-                authority_tier=0,
-            )
-            if src.access_status != "success":
-                if src.http_status == 404:
-                    return None, src, None, "not_found"
-                return None, src, None, "failed"
-            ident = CompanyIdentity(
-                organisation_number=org_number,
-                legal_name=f"FAKE AS {org_number}",
-                status="active",
-                municipality="OSLO",
-                industry_code="01.000",
-                last_verified_at=utcnow().isoformat(),
-            )
-            ev = EvidenceRecord(
-                source_id=src.source_id,
-                url=src.url,
-                evidence_text="FAKE AS",
-                entity_verdict="VERIFIED",
-                org_number=org_number,
-                content_hash=src.content_hash,
-            )
-            return ident, src, ev, "found"
-
-    # monkeypatch pipeline internals via subclass
     class SimPipeline(ResearchPipeline):
         def __init__(self, repo, budget):
-            from nordtrace.core.entity import EntityResolver, PublicationFirewall
-            from nordtrace.core.llm import LLMClient
+            super().__init__(repo, budget)
+            self.transport_calls = []
+            # Artificial transport latency/retries are disabled in this scale
+            # fixture. Dedicated transport/rate tests verify their real guards.
+            policy = SourcePolicy(min_interval=0, max_retries=0, breaker_threshold=10000)
+            self.gateway.rate_limiter.default_policy = policy
+            for host in ("data.brreg.no", "arbeidsplassen.nav.no"):
+                self.gateway.rate_limiter.state_for(host).policy = policy
 
-            self.repo = repo
-            self.budget = budget
-            self.gateway = FakeGateway(budget)
-            self.resolver = EntityResolver()
-            self.firewall = PublicationFirewall(self.resolver)
-            self.brreg = FakeBrreg(self.gateway, budget)
-            self.website = website.WebsiteAdapter(self.gateway, budget, self.resolver)
-            self.jobs = nav_jobs.NavJobsAdapter(self.gateway, budget, self.resolver)
-            self.pdf = pdf_pipeline.PdfFinancialPipeline(self.gateway, budget, self.resolver)
-            self.activity = activity.ActivityAdapter(self.gateway, budget)
-            self.llm = LLMClient(budget)
+            def respond(request):
+                self.transport_calls.append(str(request.url))
+                path = request.url.path
+                if "/enheter/" in path and not path.endswith("/roller"):
+                    org = path.rsplit("/", 1)[-1]
+                    mode = sum(ord(c) for c in org) % 10
+                    if mode == 0:
+                        return httpx.Response(429)
+                    if mode == 1:
+                        raise httpx.ReadTimeout("fixture timeout", request=request)
+                    return httpx.Response(200, json={
+                        "organisasjonsnummer": org, "navn": f"FAKE AS {org}",
+                        "konkurs": False, "underAvvikling": False,
+                        "underTvangsavviklingEllerTvangsopplosning": False,
+                        "forretningsadresse": {"kommune": "OSLO"},
+                        "naeringskode1": {"kode": "01.000", "beskrivelse": "Fixture industry"},
+                    })
+                return httpx.Response(404)
+
+            self.gateway._client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
 
     repo = Repository(tmp_path / "sim100.db")
-    bm = BudgetManager(max_requests=2000)
-    return repo, bm, SimPipeline
+    budget = BudgetManager(max_requests=2000)
+    return repo, budget, SimPipeline
 
 
-def test_100_companies_simulated_all_terminal(tmp_path):
+def test_100_companies_simulated_all_terminal(tmp_path, monkeypatch):
     """100 simulated companies → all terminal states, no bypass, no deadlock,
     no duplicate facts, no cross-company contamination."""
-    repo, bm, SimPipeline = _simulated_batch_100(tmp_path)
+    repo, bm, SimPipeline = _simulated_batch_100(tmp_path, monkeypatch)
 
     async def go():
         pipe = SimPipeline(repo, bm)
@@ -234,9 +128,9 @@ def test_100_companies_simulated_all_terminal(tmp_path):
 
         await asyncio.gather(*[one(o) for o in orgs])
         await pipe.aclose()
-        return run
+        return run, pipe.transport_calls
 
-    asyncio.run(go())
+    run, transport_calls = asyncio.run(go())
     # companies were researched via pipeline directly (not runner) — check facts instead
     facts = repo.conn.execute("SELECT COUNT(DISTINCT org_number) FROM facts").fetchone()[0]
     # deterministic failure mix: mode 0 (rate-limited) + mode 1 (timeout) = 20% of
@@ -248,8 +142,9 @@ def test_100_companies_simulated_all_terminal(tmp_path):
     assert issues["duplicate_fact_slots_same_run"] == 0, issues
     assert issues["cross_company_contamination"] == 0, issues
     assert issues["foreign_key_violations"] == 0
-    # no budget bypass
-    assert bm.requests.total_used <= 2000
+    # Independent HTTP instrumentation must agree with actual charged operations.
+    assert bm.requests.total_used == len(transport_calls) <= 2000
+    assert len(repo.get_results(run.run_id)) == 100
 
 
 def test_resume_under_failure_at_company_37(tmp_path, monkeypatch):
@@ -260,7 +155,7 @@ def test_resume_under_failure_at_company_37(tmp_path, monkeypatch):
     from nordtrace.core.budget import BudgetManager
     from nordtrace.engine.runner import BatchRunner
 
-    repo, bm, SimPipeline = _simulated_batch_100(tmp_path)
+    repo, bm, SimPipeline = _simulated_batch_100(tmp_path, monkeypatch)
 
     from nordtrace.core.orgnr import _checksum_valid
 
@@ -330,7 +225,7 @@ def test_extreme_deadline_1sec(tmp_path, monkeypatch):
     from nordtrace.core.budget import BudgetManager
     from nordtrace.engine.runner import BatchRunner
 
-    repo, _, SimPipeline = _simulated_batch_100(tmp_path)
+    repo, _, SimPipeline = _simulated_batch_100(tmp_path, monkeypatch)
     monkeypatch.setattr("nordtrace.engine.runner.ResearchPipeline", SimPipeline)
     from nordtrace.core.orgnr import _checksum_valid
 

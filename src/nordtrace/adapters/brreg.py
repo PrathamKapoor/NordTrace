@@ -13,15 +13,19 @@ are simply absent, and 404s produce not_found terminal states upstream.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
+from nordtrace.core.evidence import IDENTITY_PATHS, normalize_registry_value, resolve_pointer
 from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
     Fact,
     FactStatus,
+    JsonPointerLocator,
     MatchVerdict,
     SourceRecord,
     SourceType,
@@ -90,6 +94,8 @@ class BrregAdapter:
             company=org_number,
             source_type=self.source_type,
             authority_tier=0,
+            allowed_domains=[urlsplit(url).hostname or ""],
+            allowed_schemes=[urlsplit(url).scheme],
         )
         if source.access_status != "success":
             hint = {
@@ -150,17 +156,10 @@ class BrregAdapter:
         nace = d.get("naeringskode1") or {}
         addr = d.get("forretningsadresse") or d.get("postadresse") or {}
         kap = d.get("kapital") or {}
-        slettet = bool(d.get("slettedato"))
-        under_avvikling = bool(d.get("underAvvikling"))
-        konkurs = bool(d.get("konkurs"))
-        if slettet:
-            status = "deleted"
-        elif konkurs:
-            status = "bankrupt"
-        elif under_avvikling:
-            status = "under_liquidation"
-        else:
-            status = "active"
+        employees = d.get("antallAnsatte")
+        under_avvikling = d.get("underAvvikling") if isinstance(d.get("underAvvikling"), bool) else None
+        konkurs = d.get("konkurs") if isinstance(d.get("konkurs"), bool) else None
+        status = normalize_registry_value(d, "brreg-status-v1")
         return CompanyIdentity(
             organisation_number=org_number,
             legal_name=d.get("navn") or "",
@@ -175,16 +174,59 @@ class BrregAdapter:
             industry_description=nace.get("beskrivelse"),
             website=self._normalize_website(d.get("hjemmeside")),
             registration_date=d.get("registreringsdatoEnhetsregisteret"),
-            employee_count=d.get("antallAnsatte"),
+            employee_count=employees if type(employees) is int and employees >= 0 else None,
             share_capital=kap.get("belop"),
             share_capital_currency=kap.get("valuta"),
             number_of_shares=kap.get("antallAksjer"),
-            is_part_of_concern=bool(d.get("erIKonsern")),
+            is_part_of_concern=d.get("erIKonsern") if isinstance(d.get("erIKonsern"), bool) else None,
             bankrupt=konkurs,
             under_liquidation=under_avvikling,
             deleted_date=d.get("slettedato"),
             last_verified_at=utcnow().isoformat(),
         )
+
+    def identity_claims(
+        self, identity: CompanyIdentity, source: SourceRecord, run_id: str,
+    ) -> tuple[List[EvidenceRecord], List[Fact]]:
+        """One schema-qualified pointer per atomic field; never a generated quote."""
+        cached = self.gateway.get_content(source.url or "")
+        document = json.loads(cached.text if cached else "")
+        evidences: List[EvidenceRecord] = []
+        facts: List[Fact] = []
+        for field, (pointers, normalization) in IDENTITY_PATHS.items():
+            for pointer in pointers:
+                try:
+                    raw = resolve_pointer(document, pointer)
+                    value = normalize_registry_value(raw, normalization)
+                except (ValueError, TypeError):
+                    continue
+                if value is None or value == "" or value == "unknown":
+                    continue
+                # The structured identity and claim must agree on normalization.
+                if value != getattr(identity, field):
+                    continue
+                evidence = EvidenceRecord(
+                    source_id=source.source_id, url=source.url,
+                    source_title="Brønnøysundregistrene — Enhetsregisteret",
+                    source_type=source.source_type, authority_tier=source.authority_tier,
+                    retrieved_at=source.retrieved_at, content_hash=source.content_hash,
+                    org_number=identity.organisation_number, entity_verdict=MatchVerdict.VERIFIED.value,
+                    evidence_text=json.dumps(raw, ensure_ascii=False, sort_keys=True),
+                    locator=JsonPointerLocator.model_validate({
+                        "kind": "json_pointer", "pointer": pointer, "raw_value": raw,
+                        "normalization": normalization,
+                    }),
+                    entity_match_details={"registry": "brreg", "orgnr": identity.organisation_number},
+                )
+                evidences.append(evidence)
+                facts.append(Fact(
+                    org_number=identity.organisation_number, run_id=run_id, category="identity", field=field,
+                    value=value, normalized_value=value, source_id=source.source_id,
+                    evidence_id=evidence.evidence_id, retrieved_at=source.retrieved_at,
+                    entity_verdict=MatchVerdict.VERIFIED.value, fact_confidence=0.99,
+                ))
+                break
+        return evidences, facts
 
     @staticmethod
     def _normalize_website(raw: Optional[str]) -> Optional[str]:
@@ -211,6 +253,8 @@ class BrregAdapter:
             company=org_number,
             source_type=self.source_type,
             authority_tier=0,
+            allowed_domains=[urlsplit(url).hostname or ""],
+            allowed_schemes=[urlsplit(url).scheme],
         )
         if source.access_status != "success":
             return [], [], source
@@ -301,6 +345,8 @@ class BrregAdapter:
             company=org_number,
             source_type=SourceType.REGISTRY_ACCOUNTS.value,
             authority_tier=0,
+            allowed_domains=[urlsplit(url).hostname or ""],
+            allowed_schemes=[urlsplit(url).scheme],
         )
         if source.access_status != "success":
             if source.http_status == 404:
@@ -407,6 +453,8 @@ class BrregAdapter:
             company=org_number,
             source_type=self.source_type,
             authority_tier=0,
+            allowed_domains=[urlsplit(url).hostname or ""],
+            allowed_schemes=[urlsplit(url).scheme],
         )
         if source.access_status != "success":
             return [], [], source

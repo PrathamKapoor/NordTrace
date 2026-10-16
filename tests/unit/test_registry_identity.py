@@ -81,3 +81,40 @@ def test_matching_registry_identifier_resolves_the_actual_returned_name():
     assert identity.organisation_number == "982463718"
     assert identity.legal_name == "TARGET AS"
     assert evidence.org_number == "982463718"
+
+
+@pytest.mark.parametrize("destination", [
+    "https://unrelated.example/entity", "http://data.brreg.no/enhetsregisteret/api/enheter/982463718",
+], ids=["foreign-authority", "tls-downgrade"])
+def test_registry_cannot_delegate_authority_to_an_unrelated_redirect(tmp_path, monkeypatch, destination):
+    import httpx
+
+    from nordtrace.core.repository import Repository
+    from nordtrace.engine.pipeline import ResearchPipeline
+
+    monkeypatch.setattr("nordtrace.core.request_gateway._resolve_host", lambda host: ["8.8.8.8"])
+    repo = Repository(tmp_path / "registry-redirect.db")
+    pipeline = ResearchPipeline(repo, BudgetManager())
+    calls = []
+
+    def respond(request):
+        calls.append(str(request.url))
+        if len(calls) == 1:
+            return httpx.Response(302, headers={"location": destination})
+        return httpx.Response(200, json={"organisasjonsnummer": "982463718", "navn": "IMPOSTOR AS"})
+
+    pipeline.gateway._client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+
+    async def execute():
+        try:
+            return await pipeline.brreg.fetch_entity("982463718", "fixture")
+        finally:
+            await pipeline.aclose()
+
+    identity, source, evidence, state = asyncio.run(execute())
+    assert len(calls) == 1
+    assert identity is None
+    assert evidence is None
+    assert state == "blocked"
+    assert source.access_status == "blocked"
+    repo.close()

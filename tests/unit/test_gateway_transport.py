@@ -171,6 +171,41 @@ def test_robots_unavailable_fails_closed(monkeypatch):
     assert budget.requests.total_used == 1
 
 
+@pytest.mark.parametrize("prime_permissive_cache", [False, True])
+def test_robots_redirects_and_cache_obey_source_scheme_policy(monkeypatch, prime_permissive_cache):
+    calls = []
+
+    def respond(request):
+        calls.append(str(request.url))
+        if request.url.path == "/robots.txt" and request.url.scheme == "https":
+            return httpx.Response(302, headers={"location": "http://public.example/robots.txt"})
+        return httpx.Response(
+            200, text="User-agent: *\nAllow: /" if request.url.path == "/robots.txt" else "page"
+        )
+
+    gw, budget = gateway(respond, monkeypatch)
+
+    async def execute():
+        try:
+            if prime_permissive_cache:
+                permissive = await gw.fetch("https://public.example/page", respect_robots=True, retries=0)
+                assert permissive.access_status == "success"
+                calls.clear()
+            before = budget.requests.total_used
+            source = await gw.fetch(
+                "https://public.example/page", respect_robots=True, retries=0, allowed_schemes=["https"]
+            )
+            assert budget.requests.total_used - before == len(calls)
+            return source
+        finally:
+            await gw.aclose()
+
+    source = asyncio.run(execute())
+    assert source.access_status == "robots_denied"
+    assert not any(url.startswith("http://") or url.endswith("/page") for url in calls)
+    assert budget.requests.total_used == (3 if prime_permissive_cache else 1)
+
+
 def test_redirect_limit_is_enforced_at_each_hop(monkeypatch):
     monkeypatch.setattr(settings, "max_redirects", 2)
     calls = []

@@ -31,7 +31,6 @@ from nordtrace.core.models import (
     EvidenceRecord,
     Fact,
     FactStatus,
-    MatchVerdict,
     SourceRecord,
     SourceType,
     TerminalState,
@@ -112,7 +111,7 @@ class ResearchPipeline:
     async def _research_company(self, org_number: str, run_id: str) -> CompanyOutcome:
         started = time.monotonic()
         outcome = CompanyOutcome(org_number=org_number, terminal_state=TerminalState.FAILED.value)
-        ledger = FactLedger()
+        ledger = FactLedger(repository=self.repo)
         stages: List[str] = []
         registry_payload: Optional[dict] = None
         financials_status = "unknown"
@@ -152,37 +151,13 @@ class ResearchPipeline:
             outcome.identity = ident
             # src/ev are non-None here (guaranteed by the early return above)
             assert src is not None and ev is not None
-            # registry identity facts
-            for fname, fval in (
-                ("legal_name", ident.legal_name),
-                ("organisation_form", ident.organisation_form),
-                ("status", ident.status),
-                ("registered_address", ident.registered_address),
-                ("municipality", ident.municipality),
-                ("industry_code", ident.industry_code),
-                ("industry_description", ident.industry_description),
-                ("website", ident.website),
-                ("registration_date", ident.registration_date),
-                ("employee_count", ident.employee_count),
-            ):
-                if fval in (None, "", "unknown"):
-                    continue
-                f = Fact(
-                    org_number=org_number,
-                    run_id=run_id,
-                    category="identity",
-                    field=fname,
-                    value=fval,
-                    normalized_value=str(fval),
-                    source_id=src.source_id,
-                    evidence_id=ev.evidence_id,
-                    retrieved_at=utcnow().isoformat(),
-                    entity_verdict=MatchVerdict.VERIFIED.value,
-                    fact_confidence=0.99,
-                    status=FactStatus.PUBLISHED.value,
-                    published_at=utcnow().isoformat(),
-                )
-                ledger.add_fact(f, ev, src)
+            # Atomic registry fields have schema-qualified snapshot pointers.
+            identity_evidence, identity_facts = self.brreg.identity_claims(ident, src, run_id)
+            ledger.add_source(src)
+            for item in identity_evidence:
+                ledger.add_evidence(item)
+            for fact in identity_facts:
+                ledger.add_fact(fact)
             self._trace(run_id, org_number, "identity", f"registry identity resolved: {ident.legal_name}")
             self.repo.upsert_company(ident, run_id)
 

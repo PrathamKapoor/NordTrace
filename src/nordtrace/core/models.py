@@ -10,7 +10,7 @@ import hashlib
 import secrets
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -125,7 +125,7 @@ class CompanyIdentity(BaseModel):
     share_capital: Optional[float] = None
     share_capital_currency: Optional[str] = None
     number_of_shares: Optional[int] = None
-    is_part_of_concern: bool = False
+    is_part_of_concern: Optional[bool] = None
     bankrupt: Optional[bool] = None
     under_liquidation: Optional[bool] = None
     deleted_date: Optional[str] = None
@@ -169,6 +169,14 @@ class SourceRecord(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class JsonPointerLocator(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["json_pointer"] = "json_pointer"
+    pointer: str
+    raw_value: Any
+    normalization: Literal["identity", "brreg-address-v1", "brreg-website-v1", "brreg-status-v1"] = "identity"
+
+
 class EvidenceRecord(BaseModel):
     evidence_id: str = Field(default_factory=lambda: new_id("ev"))
     source_id: str
@@ -184,6 +192,7 @@ class EvidenceRecord(BaseModel):
     entity_match_details: Dict[str, Any] = Field(default_factory=dict)
     entity_verdict: str = MatchVerdict.AMBIGUOUS.value
     org_number: Optional[str] = None
+    locator: Optional[JsonPointerLocator] = None
 
 
 # ---------------------------------------------------------------------------

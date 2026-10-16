@@ -118,8 +118,11 @@ def test_missing_accounts_fallback_registers_the_exact_fetched_pdf(tmp_path, mon
         repo.close()
         return
     assert calls.count(PDF) == 1
-    published = next(fact for fact in outcome.facts if fact.category == "financials")
-    source = next(source for source in outcome.sources if source.source_id == published.source_id)
+    # The new support gate must withhold this deliberately stubbed extraction.
+    # Acquisition still registers the exact source, even with zero accepted facts.
+    assert not any(fact.category == "financials" for fact in outcome.facts)
+    evidence = next(ev for ev in outcome.evidence if ev.evidence_text == "NOK 2024 Revenue 123")
+    source = next(source for source in outcome.sources if source.source_id == evidence.source_id)
     assert source.access_status == "success"
     assert source.http_status == 200
     assert repo.read_capture(source.source_id)[1] == b"%PDF fixture acquisition"
