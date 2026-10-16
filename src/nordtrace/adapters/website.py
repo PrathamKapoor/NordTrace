@@ -207,7 +207,11 @@ class WebsiteAdapter:
                 continue
             assert src.url is not None  # access_status=success implies a URL
             home_cached2 = self.gateway.get_content(src.url)
-            assert home_cached2 is not None  # just fetched successfully
+            if home_cached2 is None:
+                src.access_status = "failed"
+                src.error_detail = "content unavailable after reported successful acquisition"
+                rejected.append({"url": src.url, "reason": src.error_detail})
+                continue
             homepage_soup = BeautifulSoup(home_cached2.text, "lxml")
             identity_text = homepage_soup.get_text(" ", strip=True)
             ok, why = self.verify_site_homepage(identity, identity_text, src.url)
@@ -294,7 +298,11 @@ class WebsiteAdapter:
             crawled_pages += 1
             assert src.url is not None  # success implies URL
             page_cached = self.gateway.get_content(src.url)
-            assert page_cached is not None  # fetched successfully
+            if page_cached is None:
+                src.access_status = "failed"
+                src.error_detail = "content unavailable after reported successful acquisition"
+                rejected.append({"url": src.url, "reason": src.error_detail})
+                continue
             page_text = self._soup_text(BeautifulSoup(page_cached.text, "lxml"))
             ptype, _ = classify_url(link)
             # Pages under the verified company domain: domain corroboration is strong.

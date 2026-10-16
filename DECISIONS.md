@@ -532,6 +532,26 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
 # Current decisions — 2026-10-16
 
+## D-028 — Runtime-relative storage and failure-aware acquisition
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: DATA_DIR did not derive database location and seven active example names were ignored. Package location otherwise determined storage. Missing successful website bodies aborted resolved company research in the full synthetic regression.
+- Decision/implementation: Settings reads runtime .env, defaults data/ there and derives nordtrace.db unless DATABASE_PATH is explicit. Active example names match consumed fields; model settings are labelled dormant. WebsiteAdapter records missing bodies as failed sources/rejections and continues independent work.
+- Application: editable/wheel configuration and homepage/internal-page acquisition. No real database is moved or reset.
+- Alternatives: ignored settings/site-packages storage break clean installation; assertions on absent external content abort valid independent research.
+- Tradeoffs/limits: launches from other directories should set DATA_DIR for shared persistence. Full family-state propagation/typed run configuration remain unfinished.
+- Verification: configuration/missing-body tests failed before fixes; settings/identity/synthetic checks passed. Full offline suite: 286 passed, 8 deselected. Revisit with full source completeness and run contracts.
+
+## D-029 — Reproducible package assets, licence and offline CI
+
+- Date/status: 2026-10-17, accepted; container/hosted CI execution unverified.
+- Problem/evidence: wheel omitted dashboard HTML; MIT metadata lacked LICENSE; no CI existed. Docker lacked required licence files and compose named the wrong API module.
+- Decision/implementation: explicit frontend package data, MIT SPDX metadata, LICENSE/NOTICE; pin public-PyPI build tools setuptools 84.0.0/wheel 0.48.0. Add read-only offline Windows/Linux CI with pinned action commits and frozen install/test/lint/type/build/resource checks. Docker uses the frozen runtime lock; compose uses loopback host binding, /app/data and nordtrace.api.app:app.
+- Application: installation/distribution/CI/container configuration. No push, workflow dispatch, deployment or publication occurs. Source-data rights remain separate.
+- Alternatives: editable-only checks conceal missing resources; unlocked installs defeat replay; MIT software metadata cannot relicense retrieved data.
+- Tradeoffs/limits: uv 0.12.5 is a setup prerequisite. Local Windows/wheel checks do not prove Linux/container/hosted success. Docker daemon is unavailable; clean-clone evidence is recorded separately after execution.
+- Verification: ZIP assertion failed for absent HTML, then rebuilt wheel included HTML/LICENSE. Compose config parses; full offline checks pass. Revisit on platform/build-tool changes. Extends D-025 and supersedes historical model-integration claims in D-011/D-020: production model callers do not exist.
+
 ## D-027 — Reject verdict disagreement and unsupported financial snippets
 
 - Date/status: 2026-10-16, accepted as an additional rejection gate; complete evidence validation remains unfinished.

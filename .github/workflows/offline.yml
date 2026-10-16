@@ -1,0 +1,33 @@
+name: Offline verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.12.5"
+          python-version: "3.12"
+      - run: uv sync --frozen --extra dev
+      - run: uv run --frozen python -m pytest -q
+      - run: uv run --frozen python -m ruff check src tests
+      - run: uv run --frozen python -m mypy src/nordtrace
+      - run: uv build
+      - name: Check wheel resources
+        run: uv run --frozen python -c "from pathlib import Path; from zipfile import ZipFile; z=ZipFile(next(Path('dist').glob('*.whl'))); assert 'nordtrace/frontend/index.html' in z.namelist(); assert any(n.endswith('/LICENSE') for n in z.namelist())"

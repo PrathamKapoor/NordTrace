@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,8 @@ version = "1.0.0"
 description = "Norwegian company intelligence agent with evidence-backed research"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE", "NOTICE.md"]
 authors = [{name = "PrathamKapoor", email = "prathamkapoor027@gmail.com"}]
 keywords = ["norway", "company", "research", "intelligence", "brreg"]
 classifiers = [
@@ -61,6 +62,9 @@ nordtrace = "nordtrace.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"nordtrace.frontend" = ["*.html"]
 
 [tool.black]
 line-length = 88

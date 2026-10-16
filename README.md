@@ -1,5 +1,7 @@
 # Implementation status — 2026-10-16
 
+Update 2026-10-17: local full offline suite: 286 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
+
 The current locked install is `uv sync --frozen --extra dev --python 3.12` (uv 0.12.5). Run commands with `uv run --frozen python -m nordtrace.cli ...`. Website attachment now checks operator contradictions before matching, preserves footer identity text and uses an offline public suffix list. Complex group/brand relationships remain under repair.
 
 The repair assignment is in progress. Older benchmark/test/readiness statements below are historical and do not establish current release acceptance. See [current verification](docs/verification.md), [requirement tracker](docs/implementation-tracker.md) and [evaluator compatibility](docs/evaluator-contract.md).

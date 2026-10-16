@@ -1,6 +1,6 @@
 # Implementation tracker
 
-Updated: 2026-10-16. This file tracks the implementation assignment against the actual checkout. Historical claims in older documents are not current verification. Status vocabulary: `not_started`, `in_progress`, `implemented_unverified`, `verified`, `blocked`. Defect rows remain `not_started` until reproduced or explicitly shown inapplicable; code inspection alone does not establish a fix.
+Updated: 2026-10-17. Historical claims in older documents are not current verification. Status vocabulary: `not_started`, `in_progress`, `implemented_unverified`, `verified`, `blocked`. Defect rows remain `not_started` until reproduced or explicitly shown inapplicable; inspection alone does not establish a fix.
 
 ## Requirements and release gates
 
@@ -68,11 +68,13 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | 11.coverage | Held-out gains/ablations; precision/evidence; supplied scale or parameterized 100/1000; real 100 smoke | evaluation | retained full evidence-complete outputs/report | not_started |  |
 | 12.A–12.J | Final status/repository/contract/corrections/features/validation/performance/run/artifacts/risks | delivery report | actual final HEAD/status/evidence inspection | not_started |  |
 | X01 | Stale submission hash and historical PASS claims | README/SUBMISSION_READINESS/VERIFICATION_REPORT | date and verified release commit | not_started |  |
-| X02 | MIT declaration without licence | LICENSE; pyproject.toml | ownership/history and package inspection | not_started |  |
-| X03 | Unpinned install / absent hosted CI evidence | lock/.github | fresh locked install; local CI commands (hosted unverified) | not_started |  |
-| X04 | Env example not consumed; DATA_DIR disconnected | config.py; .env.example | isolated settings tests | not_started |  |
+| X02 | MIT declaration without licence | LICENSE; pyproject.toml | ownership/history and package inspection | verified | Author/history metadata checked; MIT LICENSE/NOTICE included in wheel; source data not relicensed |
+| X03 | Unpinned install / absent hosted CI evidence | lock/.github | fresh locked install; local CI commands (hosted unverified) | implemented_unverified | Frozen sync/local checks/wheel resources verified; CI added without hosted run; clean clone pending |
+| X04 | Env example not consumed; DATA_DIR disconnected | config.py; .env.example | isolated settings tests | verified | Four settings tests cover derivation, override, consumed names and runtime directory |
 | X05 | Brand-biased benchmark / uncounted discovery budget / misleading metrics | benchmark.py | universe sample and shared instrumentation | not_started |  |
 | X06 | Early timer wakeup bypasses spacing; synthetic runner fixtures invoke real networking | rate_limiter.py; integration tests | early-wakeup regression and wired fake pipelines | verified | 16 limiter tests and three explicitly offline integration scenarios pass; no slow-source cancellation claim |
+| X07 | Missing successful body aborts independent company research | website.py | missing-body fixture and synthetic scale regression | verified | Failed source/rejection preserves independent work; full regression passes |
+| X08 | Wheel omits dashboard HTML; Docker package/API wiring | pyproject/Docker/compose | wheel resources/config/runtime | implemented_unverified | HTML omission fixed, wheel resources verified, compose parses; daemon blocked |
 
 ## Audit defect register
 
@@ -95,7 +97,7 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | F15 | Fetched PDF source unregistered | engine/pipeline.py | PDF source/evidence FK resolution | not_started | Not yet reproduced in this checkout |
 | F16 | Unavailable accounts skip fallback | engine/pipeline.py | fallback state decision matrix | not_started | Not yet reproduced in this checkout |
 | F17 | Adaptive option has no effect | adapters/website.py | new-work crawl instrumentation | not_started | Not yet reproduced in this checkout |
-| F18 | Optional model has no callers | core/llm.py; core/synthesis.py | no-key, optional-caller, injection tests | not_started | Not yet reproduced in this checkout |
+| F18 | Optional model has no callers | core/llm.py; core/synthesis.py | no-key, optional-caller, injection tests | verified | Dormant helper accurately documented; complete_schema has no production callers; no model integration claimed |
 | F19 | API omits persisted summary | api/app.py; core/repository.py | CLI/API/batch canonical equivalence | verified | build_result persists synthesis; test_canonical_history_retains_summary_identity_and_failure_without_company checks the API payload |
 | F20 | Historical API reads present identity | api/app.py; core/repository.py | frozen run after later research | verified | Immutable historical envelopes tested after changed identity/summary; legacy historical envelopes explicitly unavailable |
 | F21 | Evidence drawer lacks spans | api/app.py; frontend/index.html | supporting snippet/locator endpoint and UI | not_started | Not yet reproduced in this checkout |

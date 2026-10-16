@@ -22,6 +22,10 @@ Settings read a root .env with case-insensitive names, but DATA_DIR and database
 
 ## Result classification
 
+2026-10-17 boundary: frozen synchronization succeeded; full `python -m pytest -q`: **286 passed, 8 deselected**, one upstream warning in 19.17s. Earlier full run: 280 passed/1 missing-body failure; the targeted missing-body assertion failed before correction. Configuration tests reproduced ignored names/disconnected/runtime-directory paths. Ruff/mypy passed; uv pip check found all 77 installed packages compatible. Compose parses; daemon execution remains blocked.
+
+Packaging: a failing ZIP assertion proved index.html missing from `uv build --wheel --out-dir data/package-check`; after repair, wheel includes HTML and LICENSE. Build tools are pinned to public-PyPI verified setuptools 84.0.0/wheel 0.48.0. tldextract's bundled PSL declares a 2025-04-07 cutoff. CI configuration exists locally; hosted execution is unverified. Clean-clone evidence follows only after actual execution.
+
 Publication correction: original exploit/verdict/period/substr-value tests initially returned 5 failures, 2 passes. Grouped-zero/sign fixtures then exposed three additional failures. Final targeted command over publication-safety, ledger, coverage-category and adversarial tests returned 65 passed in 1.16s, with Ruff/mypy passing. This is rejection-gate verification, not independently measured financial precision. Current filing-only financial candidates are withheld; source snapshot, locator and table-semantic repairs remain release blockers.
 
 Transport correction: seven regressions initially failed. Two review regressions for cross-host TLS pool reuse and redirected retry policy also failed before correction. Final gateway/API/security boundary command returned 75 passed, one upstream warning in 4.60s; Ruff and mypy passed. Gateway-only coverage is 11 tests, including actual httpcore pools over a simulated network backend. This proves control-flow/handshake identity separation without making a live certificate-validation claim. No live company collection was used to validate this change.

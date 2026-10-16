@@ -1,12 +1,9 @@
-"""Optional LLM client with schema validation and cost accounting.
+"""Dormant optional model helper, exercised only by mocked tests.
 
-Used ONLY where deterministic extraction is insufficient (messy page
-extraction, synthesis polish). Without LLM_API_KEY the client is disabled
-and callers fall back to deterministic behavior — cost stays $0.00.
-
-Every response is schema-validated (pydantic). Malformed output → rejected,
-retried within budget, else marked failed. Web content is UNTRUSTED: it is
-passed to the model as data inside a delimited block, never as instructions.
+Production extraction and synthesis do not call complete_schema. A key
+configures this helper but does not establish working research integration.
+Its separate transport and cost reservations remain unfinished release
+requirements. No paid model capability is claimed for current research.
 """
 
 from __future__ import annotations

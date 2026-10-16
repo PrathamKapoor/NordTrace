@@ -5,14 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-APP_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(APP_ROOT / ".env"),
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -51,8 +50,14 @@ class Settings(BaseSettings):
     respect_robots: bool = True
 
     # --- Persistence ---
-    data_dir: str = str(APP_ROOT / "data")
-    database_path: str = str(APP_ROOT / "data" / "nordtrace.db")
+    data_dir: str = Field(default_factory=lambda: str(Path.cwd() / "data"))
+    database_path: str = ""
+
+    @model_validator(mode="after")
+    def derive_database_path(self) -> Settings:
+        if not self.database_path:
+            self.database_path = str(Path(self.data_dir) / "nordtrace.db")
+        return self
 
     # --- HTTP identity ---
     user_agent: str = "NordTrace/1.0 (Norwegian company research agent; research use; contact via repository)"

@@ -131,3 +131,22 @@ def test_homepage_discovery_requests_robots_policy():
     adapter = WebsiteAdapter(CapturedGateway(), BudgetManager(), EntityResolver())
     asyncio.run(adapter.crawl(TARGET, "fixture"))
     assert requests == [True]
+
+
+def test_success_without_body_is_an_inspectable_source_failure():
+    import asyncio
+
+    from nordtrace.core.models import SourceRecord
+
+    class MissingBody:
+        async def fetch(self, url, **kwargs):
+            return SourceRecord(url=url, access_status="success", source_type="company_website")
+
+        def get_content(self, url):
+            return None
+
+    adapter = WebsiteAdapter(MissingBody(), BudgetManager(), EntityResolver())
+    evidence, facts, sources, rejected, coverage = asyncio.run(adapter.crawl(TARGET, "fixture"))
+    assert facts == []
+    assert sources and all(source.access_status == "failed" for source in sources)
+    assert all("content unavailable" in item["reason"] for item in rejected)
