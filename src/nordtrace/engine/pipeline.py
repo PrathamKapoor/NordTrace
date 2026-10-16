@@ -139,11 +139,14 @@ class ResearchPipeline:
                     if hint == "not_found"
                     else (TerminalState.BLOCKED.value if hint == "blocked" else TerminalState.FAILED.value)
                 )
+                if hint == "ambiguous":
+                    state = TerminalState.AMBIGUOUS.value
                 outcome.terminal_state = state
                 outcome.sources = [src] if src else []
                 outcome.error = f"registry lookup: {hint}"
                 outcome.error_code = {
                     "not_found": "entity_not_found", "blocked": "registry_blocked",
+                    "ambiguous": "entity_ambiguous",
                 }.get(hint, "registry_failed")
                 return outcome
             outcome.identity = ident

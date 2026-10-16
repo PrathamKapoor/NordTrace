@@ -532,6 +532,16 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
 # Current decisions — 2026-10-16
 
+## D-031 — Verify the returned authoritative identifier
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: three fixtures returned a different/missing/invalid orgnr with a legal name; fetch_entity manufactured the requested orgnr on all three, enabling wrong-company attachment despite an authoritative URL.
+- Decision/implementation: require a checksum-valid returned organisasjonsnummer equal to the normalized requested identifier before constructing identity or evidence. Wrong/absent identifiers return ambiguous with the captured source and entity_ambiguous error through the canonical API. Unexpected JSON shapes fail explicitly.
+- Application: live registry identity acquisition; exact supplied-snapshot anchoring still needs its separate input adapter.
+- Alternatives: trusting only the requested URL or copying requested identity cannot establish the response's subject.
+- Tradeoffs/limits: malformed/incomplete official responses abstain; no claim of independent population accuracy is made. Current registry transport/source evidence remains subject to unfinished snapshot/locator requirements.
+- Verification: three adapter tests failed before repair; API-level real gateway/MockTransport abstention and exact-identifier positive control pass. Revisit with the official supplied-snapshot schema; strengthens D-001/D-024.
+
 ## D-030 — Preserve unavailable-entity diagnostics and test error cardinality
 
 - Date/status: 2026-10-17, accepted.

@@ -27,6 +27,7 @@ from nordtrace.core.models import (
     SourceType,
     utcnow,
 )
+from nordtrace.core.orgnr import validate_orgnr
 from nordtrace.core.request_gateway import RequestGateway
 
 ROLE_LABELS_NO = {
@@ -80,7 +81,7 @@ class BrregAdapter:
     ) -> Tuple[Optional[CompanyIdentity], Optional[SourceRecord], Optional[EvidenceRecord], str]:
         """Canonical identity. Returns (identity, source, evidence, terminal_hint).
 
-        terminal_hint: 'found' | 'not_found' | 'failed' | 'blocked'
+        terminal_hint: 'found' | 'not_found' | 'failed' | 'blocked' | 'ambiguous'
         """
         url = f"{settings.brreg_base_url}/enheter/{org_number}"
         source = await self.gateway.fetch(
@@ -112,9 +113,20 @@ class BrregAdapter:
             return None, source, None, "failed"
 
         # Registry 404s sometimes come as JSON with no navn
+        if not isinstance(data, dict):
+            source.error_detail = "registry identity schema mismatch"
+            return None, source, None, "failed"
         if not data.get("navn") and source.http_status == 200:
             # registry returns 404 for missing; defensive
             return None, source, None, "not_found"
+
+        returned = validate_orgnr(data.get("organisasjonsnummer", ""))
+        requested = validate_orgnr(org_number)
+        if not returned.valid or returned.value != requested.value:
+            source.error_detail = (
+                "registry response identifier absent, invalid or different from requested entity"
+            )
+            return None, source, None, "ambiguous"
 
         identity = self._parse_entity(data, org_number)
         evidence = EvidenceRecord(

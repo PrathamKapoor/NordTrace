@@ -75,6 +75,7 @@ Updated: 2026-10-17. Historical claims in older documents are not current verifi
 | X06 | Early timer wakeup bypasses spacing; synthetic runner fixtures invoke real networking | rate_limiter.py; integration tests | early-wakeup regression and wired fake pipelines | verified | 16 limiter tests and three explicitly offline integration scenarios pass; no slow-source cancellation claim |
 | X07 | Missing successful body aborts independent company research | website.py | missing-body fixture and synthetic scale regression | verified | Failed source/rejection preserves independent work; full regression passes |
 | X08 | Wheel omits dashboard HTML; Docker package/API wiring | pyproject/Docker/compose | wheel resources/config/runtime | implemented_unverified | HTML omission fixed, wheel resources verified, compose parses; daemon blocked |
+| X09 | Registry response overwrites its own subject with requested orgnr | brreg.py; pipeline.py | wrong/missing/invalid ID and canonical API abstention | verified | Three negative fixtures failed before guard; exact returned ID required, ambiguity/source preserved; positive control covers valid resolution |
 
 ## Audit defect register
 
