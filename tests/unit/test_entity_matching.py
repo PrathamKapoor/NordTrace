@@ -31,7 +31,7 @@ def test_foreign_orgnr_in_name_field_rejects():
 
 
 def test_foreign_orgnr_in_text_rejects_even_with_name_match():
-    r = EntityResolver().evaluate(T, candidate_text="Telenor ASA OrgNr 987654321")
+    r = EntityResolver().evaluate(T, candidate_text="Telenor ASA OrgNr 958973306")
     assert r.verdict == MV.REJECTED.value
 
 
@@ -106,8 +106,8 @@ def test_normalize_name_keeps_geographic_words():
 def test_extract_orgnrs_dedupes_and_excludes():
     found = extract_orgnrs("Orgnr 982463718 og 982463718", exclude="982463718")
     assert found == []
-    found2 = extract_orgnrs("982463718 and 987654321", exclude="982463718")
-    assert found2 == ["987654321"]
+    found2 = extract_orgnrs("982463718 and 958973306", exclude="982463718")
+    assert found2 == ["958973306"]
 
 
 def test_name_similarity_bounds():

@@ -157,21 +157,19 @@ class WebsiteAdapter:
 
     # ------------------------------------------------------------ verification
     def verify_site_homepage(self, identity: CompanyIdentity, page_text: str, url: str) -> Tuple[bool, str]:
-        """A homepage belongs to the company if text mentions the legal name
-        (or the registry orgnr) — deterministic, no LLM."""
-        text_l = (page_text or "").lower()
-        if identity.organisation_number in (page_text or ""):
-            return True, "orgnr present on page"
-        if normalize_name(identity.legal_name) and normalize_name(identity.legal_name) in text_l:
-            return True, "legal name present on page"
-        # fallback: resolver VERIFIED only (orgnr match or name+corroboration).
-        # LIKELY is deliberately NOT accepted for homepage attachment: a parent's
-        # brand site (e.g. telenor.no) matches a subsidiary's name-core too, and
-        # wrong-company attribution is worse than a missing description.
-        match = self.resolver.evaluate(identity, candidate_text=page_text[:4000], candidate_url=url)
-        if match.verdict == MatchVerdict.VERIFIED.value:
-            return True, f"resolver VERIFIED: {match.reason}"
-        return False, f"no identity confirmation on page (resolver: {match.verdict})"
+        """Check contradictions before explicit legal attachment; brand/name alone abstains."""
+        match = self.resolver.evaluate(identity, candidate_text=page_text, candidate_url=url)
+        if match.verdict == MatchVerdict.REJECTED.value:
+            return False, match.reason
+        if match.signals.orgnr_match:
+            return True, "labelled organisation number identifies document subject"
+        text = re.sub(r"\s+", " ", page_text or "").casefold()
+        legal_name = re.sub(r"\s+", " ", identity.legal_name).casefold()
+        full_name = bool(legal_name and re.search(r"(?<!\w)" + re.escape(legal_name) + r"(?!\w)", text))
+        address = re.sub(r"\s+", " ", identity.registered_address or "").casefold()
+        if full_name and address and address in text:
+            return True, "full legal name and registered address present on page"
+        return False, "legal attachment ambiguous: identifier or full legal name/address required"
 
     # ------------------------------------------------------------ crawl
     async def crawl(
@@ -209,12 +207,14 @@ class WebsiteAdapter:
             assert src.url is not None  # access_status=success implies a URL
             home_cached2 = self.gateway.get_content(src.url)
             assert home_cached2 is not None  # just fetched successfully
-            text = self._soup_text(BeautifulSoup(home_cached2.text, "lxml"))
-            ok, why = self.verify_site_homepage(identity, text, src.url)
+            homepage_soup = BeautifulSoup(home_cached2.text, "lxml")
+            identity_text = homepage_soup.get_text(" ", strip=True)
+            ok, why = self.verify_site_homepage(identity, identity_text, src.url)
+            text = self._soup_text(homepage_soup)
             if ok:
                 home_url, home_text = src.url, text
                 self.resolver.register_verified_domain(
-                    registrable_domain(src.url), identity.organisation_number
+                    registrable_domain(urlsplit(src.url).hostname or ""), identity.organisation_number
                 )
                 break
             rejected.append({"url": cand["url"], "reason": f"identity not confirmed: {why}"})

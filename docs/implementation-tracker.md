@@ -79,7 +79,7 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | ID | Hypothesis to recheck | Owner component | Required verification | Status | Evidence / disposition |
 |---|---|---|---|---|---|
 | F01 | Value support / rejected evidence | core/ledger.py | unsupported financial and verdict fixtures | not_started | Not yet reproduced in this checkout |
-| F02 | Homepage contradictory orgnr | core/entity.py; adapters/website.py | contradictory homepage fixture | not_started | Not yet reproduced in this checkout |
+| F02 | Homepage contradictory orgnr | core/entity.py; adapters/website.py | contradictory homepage fixture | verified | Contradiction bypass reproduced; test_identity_boundaries checks name/target-ID overrides and footer-preserving crawl; complex scopes separately tracked |
 | F03 | PDF table, period, scale and scope | adapters/pdf_pipeline.py | financial fixture matrix | not_started | Not yet reproduced in this checkout |
 | F04 | Redirect safety and accounting | core/request_gateway.py | private redirect transport instrumentation | not_started | Not yet reproduced in this checkout |
 | F05 | Complete batch envelopes | cli.py; engine/runner.py | input/output cardinality contract tests | implemented_unverified | Reproduced dropped invalid inputs; complete results/input mapping now exported; contract tests pass. Interrupted/scale/export manifest checks outstanding |
@@ -105,7 +105,7 @@ Updated: 2026-10-16. This file tracks the implementation assignment against the 
 | F25 | Uncounted transports | core/request_gateway.py; core/llm.py | independent request instrumentation | not_started | Not yet reproduced in this checkout |
 | F26 | Cost reservations non-atomic | core/budget.py; core/llm.py | parallel reservations/retries | not_started | Not yet reproduced in this checkout |
 | F27 | Unjustified currency / absent period | adapters/brreg.py; core/ledger.py | missing semantics abstention | not_started | Not yet reproduced in this checkout |
-| F28 | Orgnr and registrable-domain parsing | core/orgnr.py; core/entity.py | grouped IDs, substrings, public suffix fixtures | not_started | Not yet reproduced in this checkout |
+| F28 | Orgnr and registrable-domain parsing | core/orgnr.py; core/entity.py | grouped IDs, substrings, public suffix fixtures | verified | NO/MVA/groups/checksums, incidental digits, substring guards, co.uk/private suffixes and hostname-boundary tests pass; bundled PSL cannot fetch network |
 
 ## External dependencies
 

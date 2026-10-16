@@ -1,7 +1,7 @@
 """Entity resolution: deterministic identity matching + publication firewall.
 
 Signals (deterministic, no LLM involvement):
-  - organisation number contradiction  (foreign 9-digit orgnr in candidate text)
+  - organisation number contradiction (explicit/labelled subject identifier)
   - normalised name similarity        (Norwegian legal-form suffixes stripped properly)
   - website domain match
   - municipality / address overlap
@@ -15,8 +15,9 @@ Verdicts:
   REJECTED   - contradictory identity (foreign orgnr, conflicting name+domain, etc.)
 
 Rules enforced:
-  - a candidate showing a foreign organisation number is always REJECTED
-  - a candidate whose domain belongs to a *different verified company* is REJECTED
+  - contradictory subject identifiers reject before positive identity shortcuts
+  - incidental numbers and explicitly labelled customer mentions are not subject IDs
+  - independently identified legal subjects may share one registrable domain
   - when signals are weak we prefer AMBIGUOUS (treated as "unknown") over wrong-company
 """
 
@@ -25,7 +26,10 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
+import tldextract
+
 from nordtrace.core.models import CompanyIdentity, MatchVerdict
+from nordtrace.core.orgnr import normalize_orgnr, validate_orgnr
 
 _LEGAL_SUFFIXES = {
     # actual legal-form codes, not geographic/descriptive words
@@ -52,8 +56,13 @@ _SUFFIX_RE = re.compile(
 
 # Regexes used for normalization and orgnr extraction from free text.
 _WS_RE = re.compile(r"[^0-9a-zæøåäö]+")
-_ORGNR_RE = re.compile(r"(?<!\d)(\d{9})(?!\d)")
-_NON_ORGNR_NINE = re.compile(r"\b(19|20)\d{7}\b|\b\d{4}[-. ]\d{4}\b|\b\d{4}-\d{2}-\d{2}\b")
+_ORGNR_RE = re.compile(r"(?<![0-9])([0-9]{9}|[0-9]{3}(?:[\s.\-][0-9]{3}){2})(?![0-9])")
+_LABELLED_ID = re.compile(
+    r"(?:org(?:anisasjons)?\.?\s*(?:nr|nummer)\.?|vat(?:\s*(?:id|number))?)"
+    r"\s*[:#]?\s*(?:NO\s*)?([0-9]{9}|[0-9]{3}(?:[\s.\-][0-9]{3}){2})(?![0-9])", re.I
+)
+_MENTION_ROLE = re.compile(r"\b(customer|client|kunde|supplier|leverandør)\b", re.I)
+_PSL = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True)
 
 
 def normalize_name(name: str) -> str:
@@ -78,22 +87,39 @@ def domain_of(url_or_host: str) -> str:
 
 
 def registrable_domain(host: str) -> str:
-    """crude but effective: last two labels (no PSL vendored for hackathon scale)."""
+    """Registrable hostname using bundled PSL data, with all network fetching disabled."""
     if not host:
         return ""
-    parts = host.split(".")
-    if len(parts) >= 2:
-        return ".".join(parts[-2:])
-    return host
+    if "://" in host or "/" in host:
+        raise ValueError("registrable_domain requires a hostname")
+    parsed = _PSL(host.lower().rstrip("."))
+    return parsed.top_domain_under_public_suffix or host.lower().rstrip(".")
 
 
 def extract_orgnrs(text: str, exclude: Optional[str] = None) -> List[str]:
-    """All 9-digit orgnr-looking tokens, excluding dates/phone-like patterns and `exclude`."""
+    """Checksum-valid whole/grouped identifier candidates; context is evaluated separately."""
     if not text:
         return []
-    cleaned = _NON_ORGNR_NINE.sub(" ", text)
-    found = _ORGNR_RE.findall(cleaned)
-    return list(dict.fromkeys(n for n in found if n != exclude))
+    found = _ORGNR_RE.findall(text)
+    values = [normalize_orgnr(number) for number in found if validate_orgnr(number).valid]
+    return list(dict.fromkeys(number for number in values if number != exclude))
+
+
+def subject_orgnrs(text: str) -> List[str]:
+    """Conservative labelled subject IDs; explicitly marked customer mentions are data.
+
+    This deliberately leaves unclassified mentions unresolved rather than treating
+    arbitrary financial/telephone digits as document identity.
+    """
+    found = []
+    for match in _LABELLED_ID.finditer(text):
+        context = re.split(r"[.!?;\n]", text[max(0, match.start() - 120):match.start()])[-1]
+        if _MENTION_ROLE.search(context):
+            continue
+        parsed = validate_orgnr(match[1])
+        if parsed.valid:
+            found.append(parsed.value)
+    return list(dict.fromkeys(found))
 
 
 def name_similarity(a: str, b: str) -> float:
@@ -108,7 +134,7 @@ def name_similarity(a: str, b: str) -> float:
         return 0.0
     overlap = len(ta & tb) / max(len(ta), len(tb))
     # containment: "telenor norge" ⊆ "telenor" style relationships
-    if na in nb or nb in na:
+    if ta <= tb or tb <= ta:
         overlap = max(overlap, 0.85)
     return overlap
 
@@ -139,11 +165,13 @@ class EntityResolver:
 
     def __init__(self, known_domains: Optional[Dict[str, str]] = None):
         # domain -> orgnr, populated as companies are verified (wrong-domain guard)
-        self.known_domains: Dict[str, str] = dict(known_domains or {})
+        self.known_domains: Dict[str, set[str]] = {
+            domain: {org} for domain, org in (known_domains or {}).items()
+        }
 
     def register_verified_domain(self, domain: str, org_number: str) -> None:
         if domain:
-            self.known_domains[registrable_domain(domain)] = org_number
+            self.known_domains.setdefault(registrable_domain(domain_of(domain)), set()).add(org_number)
 
     def evaluate(
         self,
@@ -159,9 +187,11 @@ class EntityResolver:
         sig = MatchSignals()
 
         # -- 1. Organisation-number contradictions dominate everything --------
-        orgnrs_in_text = extract_orgnrs(candidate_text, exclude=target.organisation_number)
-        if candidate_orgnr and candidate_orgnr != target.organisation_number:
-            orgnrs_in_text.append(candidate_orgnr)
+        subject_ids = subject_orgnrs(candidate_text)
+        explicit_orgnr = normalize_orgnr(candidate_orgnr) if candidate_orgnr else None
+        orgnrs_in_text = [number for number in subject_ids if number != target.organisation_number]
+        if explicit_orgnr and explicit_orgnr != target.organisation_number:
+            orgnrs_in_text.append(explicit_orgnr)
         if orgnrs_in_text:
             sig.orgnr_contradiction = True
             sig.foreign_orgnr = orgnrs_in_text[0]
@@ -171,9 +201,7 @@ class EntityResolver:
                 reason=f"candidate carries foreign organisation number {orgnrs_in_text[0]}",
                 score=-1.0,
             )
-        if candidate_orgnr == target.organisation_number or target.organisation_number in (
-            candidate_text or ""
-        ):
+        if explicit_orgnr == target.organisation_number or target.organisation_number in subject_ids:
             sig.orgnr_match = True
 
         # -- 2. Name similarity -------------------------------------------------
@@ -191,11 +219,11 @@ class EntityResolver:
             else:
                 # candidate domain already verified as belonging to a different company?
                 owner = self.known_domains.get(registrable_domain(cand_host))
-                if owner and owner != target.organisation_number:
+                if owner and target.organisation_number not in owner and not sig.orgnr_match:
                     sig.domain_conflict = True
         if cand_host:
             owner = self.known_domains.get(registrable_domain(cand_host))
-            if owner and owner != target.organisation_number:
+            if owner and target.organisation_number not in owner and not sig.orgnr_match:
                 sig.domain_conflict = True
 
         # -- 4. Corroboration signals -------------------------------------------

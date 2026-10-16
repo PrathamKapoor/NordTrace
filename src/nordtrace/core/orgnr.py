@@ -14,7 +14,10 @@ import re
 from dataclasses import dataclass
 
 _WEIGHTS = (3, 2, 7, 6, 5, 4, 3, 2)
-_ORGNR_RE = re.compile(r"^\d{9}$")
+_ORGNR_RE = re.compile(r"^[0-9]{9}$")
+_FORMATTED_RE = re.compile(
+    r"(?:NO\s*)?([0-9]{9}|[0-9]{3}(?:[\s.\-–—][0-9]{3}){2})(?:\s*MVA)?", re.I
+)
 
 
 @dataclass(frozen=True)
@@ -25,10 +28,12 @@ class OrgNrResult:
 
 
 def normalize_orgnr(raw: str) -> str:
-    """Strip whitespace, dashes, dots and OCR noise from raw input."""
+    """Normalize a whole identifier, never remove arbitrary text or OCR noise."""
     if raw is None:
         return ""
-    return re.sub(r"[\s\-–—_.]", "", str(raw))
+    value = str(raw).strip()
+    match = _FORMATTED_RE.fullmatch(value)
+    return re.sub(r"[\s.\-–—]", "", match[1]) if match else value
 
 
 def _checksum_valid(digits: str) -> bool:

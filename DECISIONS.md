@@ -532,6 +532,26 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
 # Current decisions — 2026-10-16
 
+## D-024 — Contextual identifiers and offline public suffix boundaries
+
+- Date/status: 2026-10-16, accepted.
+- Problem/evidence: 14 of 15 initial hard-negative/parser tests failed. Homepage name/number shortcuts bypassed another operator's identifier; footer cleaning hid identity evidence. Substring numbers/names created false matches, grouped/MVA identifiers failed, and last-two-label domains conflated co.uk and private hosting tenants.
+- Decision: whole-input checksum-checked normalization supports grouped digits and NO/MVA labels without stripping arbitrary text. Free-text subject matching uses explicit labels; clearly labelled customer/supplier mentions and incidental numbers are not operator identity. Contradictory subject IDs run before positive website attachment. A homepage requires a labelled matching subject ID or full legal name plus registered address. Preserve footer text for attachment inspection.
+- Implementation/application: `core/orgnr.py`, `core/entity.py` and `adapters/website.py`. Domain parsing receives hostnames and uses tldextract 5.4.0's bundled PSL, with suffix fetching and cache disabled; private hosting suffixes are included. Independently identified subjects can coexist in a domain's set. Full relationship provenance/effective dates remain unfinished.
+- Alternatives: extra hand-coded suffixes are brittle; automatic PSL network refresh bypasses the gateway and harms replay; name/registered-domain alone cannot prove exact legal attachment.
+- Tradeoffs/limits: conservative attachment abstains on unlabeled identifiers and name-only sites. Contextual role heuristics are limited to explicit customer/supplier wording; complex parent/group/footer scopes need further adjudicated fixtures. Two old tests used checksum-invalid 987654321 as a supposed free-text orgnr; their fixtures now use valid 958973306 while retaining the rejection/deduplication expectations.
+- Verification: 63 identity/orgnr/adversarial checks passed, then 17 focused boundary tests passed including production crawl footer handling and URL-versus-host validation. Dependency source: [tldextract documentation](https://github.com/john-kurkowski/tldextract), retrieved 2026-10-16. Revisit on PSL/package updates or measured identity-corpus errors. Supersedes the crude domain parser and overly broad numeric contradiction rule in D-001/D-005.
+
+## D-025 — Lock the existing dependency stack with uv
+
+- Date/status: 2026-10-16, accepted.
+- Problem/evidence: baseline declared only dependency ranges; a clean install selected current versions and cannot reproduce a later installation exactly. The necessary PSL utility adds three transitive packages.
+- Decision/implementation: retain setuptools/pyproject and add a cross-platform uv.lock with package versions, public PyPI sources and distribution hashes. `uv sync --frozen --extra dev --python 3.12` is the declared development install; `uv sync --frozen --python 3.12` installs the runtime. uv 0.12.5 produced and successfully synchronized the lock.
+- Application: reproducible installation and future offline CI. Existing pip editable install remains a development option but does not establish a locked release.
+- Alternatives: a Windows-only pip freeze can omit Linux conditional dependencies; replacing the application stack has no evidence-based benefit.
+- Tradeoffs/limits: uv is a setup prerequisite; platform-specific wheels still need validation on each supported platform. Clean-clone installation and container/hosted CI acceptance remain unverified at this decision. No optional model assets or paid APIs were added.
+- Verification: uv lock resolved 80 packages, frozen synchronization succeeded; registry URLs resolve to public pypi.org. Revisit when dependency updates or supported Python/platform changes are required.
+
 ## D-023 — Recheck rate-spacing deadlines and isolate synthetic execution
 
 - Date/status: 2026-10-16, accepted.

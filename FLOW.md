@@ -1,5 +1,7 @@
 # Current implementation record — 2026-10-16
 
+Identity input now calls `validate_orgnr → normalize_orgnr` on the entire supplied value, supporting grouped digits and NO/MVA labels while retaining checksum validation. `EntityResolver.evaluate → subject_orgnrs` separates labelled document-subject identifiers from incidental numbers and explicit customer/supplier mentions. Homepage attachment calls the resolver before positive tests and requires a matching labelled ID or exact legal name/address. `WebsiteAdapter.crawl` captures footer-inclusive identity text before body cleaning and passes a hostname to the offline PSL parser. Rejected operator contradictions stay inspectable; complex relationship scopes remain unverified. Tests: `test_identity_boundaries.py`, `test_entity_matching.py`, `test_orgnr.py`.
+
 RateLimiter.acquire now rechecks the monotonic spacing deadline after every timer wakeup. The runner's synthetic 100-company/deadline/resume fixtures explicitly supply their fake pipeline and run offline; the at-37 scenario finalizes deadline-exhausted companies and proves no repeat work, not crash recovery. Tests: `test_spacing_rechecks_monotonic_deadline_after_early_timer_wakeup` and the three non-live checks in `test_contamination_scale.py`.
 
 This record supersedes conflicting interface/persistence descriptions below. The earlier detailed audit remains historical context; snapshot acquisition, hard transport deadlines and safe refresh are still tracked as unfinished in `docs/implementation-tracker.md`.
