@@ -22,7 +22,7 @@ import click
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.contracts import batch_payload, build_result, write_json_atomic
+from nordtrace.core.contracts import batch_payload, build_result, write_bytes_atomic, write_json_atomic
 from nordtrace.core.repository import Repository
 from nordtrace.engine.runner import BatchRunner
 
@@ -42,6 +42,55 @@ def cli(ctx, debug: bool):
     ctx.ensure_object(dict)
     ctx.obj["debug"] = debug
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
+
+
+@cli.command("replay-source")
+@click.argument("source_id")
+@click.option("--output", required=True, type=click.Path(dir_okay=False))
+def replay_source(source_id: str, output: str):
+    """Export integrity-verified retained response bytes, entirely offline."""
+    repo = _repo()
+    try:
+        source, body = repo.read_capture(source_id)
+        write_bytes_atomic(output, body)
+        click.echo(json.dumps({
+            "source_id": source_id, "content_hash": source.content_hash,
+            "representation": source.snapshot_representation,
+            "retrieved_at": source.retrieved_at, "bytes": len(body), "output": output,
+        }))
+    except (KeyError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    finally:
+        repo.close()
+
+
+@cli.command("verify-snapshots")
+@click.argument("run_id")
+@click.pass_context
+def verify_snapshots(ctx, run_id: str):
+    """Verify captures referenced by a run; this does not prove claim support."""
+    repo = _repo()
+    checks = []
+    try:
+        if repo.get_run(run_id) is None:
+            raise click.ClickException("run not found")
+        sources = {
+            source.source_id: source for result in repo.get_results(run_id)
+            for source in result.sources if source.access_status == "success"
+        }
+        for source_id, expected in sources.items():
+            try:
+                captured, body = repo.read_capture(source_id)
+                if captured.content_hash != expected.content_hash:
+                    raise ValueError("result and capture hashes disagree")
+                checks.append({"source_id": source_id, "status": "verified", "bytes": len(body)})
+            except (KeyError, ValueError) as error:
+                checks.append({"source_id": source_id, "status": "failed", "error": str(error)})
+    finally:
+        repo.close()
+    click.echo(json.dumps({"run_id": run_id, "sources": checks}))
+    if any(check["status"] == "failed" for check in checks):
+        ctx.exit(1)
 
 
 @cli.command()

@@ -151,6 +151,7 @@ class SourceRecord(BaseModel):
     published_at: Optional[str] = None
     http_status: Optional[int] = None
     content_hash: Optional[str] = None
+    snapshot_representation: Optional[str] = None
     access_status: str = "unknown"  # success / failed / blocked / timeout / robots_denied
     error_detail: Optional[str] = None
     org_number: Optional[str] = None  # company this source was fetched for

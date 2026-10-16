@@ -17,10 +17,12 @@ show usage inside this module (and the LLM client which uses it too).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import logging
 import re
 import socket
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -32,8 +34,9 @@ import httpx
 
 from nordtrace.core.budget import BudgetExceededError, BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.models import SourceRecord, SourceType, content_hash, utcnow
+from nordtrace.core.models import SourceRecord, SourceType, utcnow
 from nordtrace.core.rate_limiter import RateLimited, RateLimiter
+from nordtrace.core.repository import Repository
 
 logger = logging.getLogger("nordtrace.gateway")
 
@@ -195,9 +198,12 @@ class RequestGateway:
     """Central HTTP client with budget + security enforcement."""
 
     def __init__(
-        self, budget: BudgetManager, cache_ttl_sec: float = 3600.0, rate_limiter: Optional[RateLimiter] = None
+        self, budget: BudgetManager, cache_ttl_sec: float = 3600.0,
+        rate_limiter: Optional[RateLimiter] = None,
+        repository: Optional[Repository] = None,
     ):
         self.budget = budget
+        self.repository = repository
         self.cache_ttl = cache_ttl_sec
         self.rate_limiter = rate_limiter or RateLimiter()
         self._cache: Dict[str, CachedResponse] = {}
@@ -344,7 +350,9 @@ class RequestGateway:
                         cached_hop, company=company, allowed_domains=allowed_domains,
                     ):
                         return record("robots_denied", "robots policy denied or unavailable")
-                return self._source_from_cache(cached, source_type, authority_tier, company, clean)
+                source = self._source_from_cache(cached, source_type, authority_tier, company, clean)
+                await self._retain(source, cached.content)
+                return source
             attempts = min(max(retries, 0), self.rate_limiter.state_for(host).policy.max_retries) + 1
             url_attempts: Dict[str, int] = {}
             for attempt in range(attempts):
@@ -380,14 +388,19 @@ class RequestGateway:
                         chain.append(current)
                         continue
                     if response.status_code == 200:
-                        hashed = content_hash(response.text)
+                        hashed = hashlib.sha256(response.content).hexdigest()
                         self._cache[clean] = CachedResponse(
                             url=clean, status_code=200, text=response.text, content_hash=hashed,
                             retrieved_at=time.time(), headers=dict(response.headers),
                             content=response.content,
                             final_url=current, redirect_chain=list(chain),
                         )
-                        return record("success", response=response, content_hash=hashed)
+                        source = record(
+                            "success", response=response, content_hash=hashed,
+                            snapshot_representation="http-response-body-v1",
+                        )
+                        await self._retain(source, response.content)
+                        return source
                     if (
                         response.status_code in _RETRY_STATUS and attempt + 1 < attempts
                         and url_attempts[current] <= hop_retry_limit
@@ -410,6 +423,8 @@ class RequestGateway:
             return record("blocked", str(error))
         except ResponseLimitError as error:
             return record("failed", str(error))
+        except sqlite3.Error:
+            return record("failed", "snapshot storage unavailable")
 
 
     def _source_from_cache(
@@ -422,6 +437,7 @@ class RequestGateway:
             authority_tier=authority_tier,
             http_status=cached.status_code,
             content_hash=cached.content_hash,
+            snapshot_representation="http-response-body-v1",
             access_status="success",
             retrieved_at=datetime.fromtimestamp(cached.retrieved_at, UTC).isoformat(),
             org_number=company,
@@ -434,6 +450,35 @@ class RequestGateway:
         return rec
 
     # ------------------------------------------------------------- content
+    async def _retain(self, source: SourceRecord, body: bytes) -> None:
+        if self.repository is not None:
+            await asyncio.to_thread(
+                self.repository.save_capture, source, body,
+                deadline=self.budget.runtime.started_at + self.budget.runtime.total_limit_sec,
+            )
+
+    def load_capture(self, source_id: str) -> CachedResponse:
+        """Offline replay of acquisition bytes with their original retrieval time.
+
+        No DNS, HTTP, cache-age refresh, extraction or new verified observation occurs.
+        """
+        if self.repository is None:
+            raise ValueError("offline replay requires a repository")
+        source, body = self.repository.read_capture(source_id)
+        headers = {"content-type": source.content_type} if source.content_type else {}
+        response = httpx.Response(source.http_status or 200, headers=headers, content=body)
+        cached = CachedResponse(
+            url=source.url or "", status_code=response.status_code, text=response.text,
+            content_hash=source.content_hash or "", content=body,
+            retrieved_at=(
+                datetime.fromisoformat(source.retrieved_at).timestamp() if source.retrieved_at else 0
+            ),
+            headers=headers, from_cache=True, final_url=source.final_url or source.url or "",
+            redirect_chain=list(source.redirect_chain),
+        )
+        self._cache[cached.url] = cached
+        return cached
+
     def get_content(self, url: str) -> Optional[CachedResponse]:
         """Return cached response for a successfully fetched URL (this run)."""
         return self._cache.get(url)

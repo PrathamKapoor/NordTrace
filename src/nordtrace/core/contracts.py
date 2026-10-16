@@ -85,14 +85,18 @@ def batch_payload(run: Any, results: list[CompanyProfile], inputs: list[dict]) -
 
 
 def write_json_atomic(path: str | Path, payload: dict) -> None:
+    body = (json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
+    write_bytes_atomic(path, body)
+
+
+def write_bytes_atomic(path: str | Path, body: bytes) -> None:
     """Flush a sibling temporary file before atomically making it visible."""
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix=destination.name + ".", suffix=".tmp", dir=destination.parent)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2, allow_nan=False)
-            handle.write("\n")
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(body)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(name, destination)

@@ -15,6 +15,7 @@ All writes are transactional. The fact ledger is the source of truth.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -188,9 +189,9 @@ class Repository:
         with self._lock:
             conn = self.conn
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version > 2:
-                raise ValueError(f"database schema {version} is newer than supported version 2")
-            if version < 2 and conn.execute(
+            if version > 3:
+                raise ValueError(f"database schema {version} is newer than supported version 3")
+            if version < 3 and conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='runs'"
             ).fetchone():
                 # SQLite backup includes committed WAL data; never overwrite a previous backup.
@@ -227,6 +228,22 @@ class Repository:
                         PRIMARY KEY (run_id, result_key)
                     );
                     PRAGMA user_version=2;
+                    COMMIT;
+                """)
+            if version < 3:
+                conn.executescript("""
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE IF NOT EXISTS snapshot_blobs (
+                        content_hash TEXT PRIMARY KEY,
+                        content BLOB NOT NULL,
+                        byte_count INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS source_captures (
+                        source_id TEXT PRIMARY KEY,
+                        content_hash TEXT NOT NULL REFERENCES snapshot_blobs(content_hash),
+                        metadata_json TEXT NOT NULL
+                    );
+                    PRAGMA user_version=3;
                     COMMIT;
                 """)
             conn.commit()
@@ -772,7 +789,78 @@ class Repository:
         ]
 
     # ------------------------------------------------------------ snapshots
+    def save_capture(self, source: SourceRecord, content: bytes, *, deadline: Optional[float] = None) -> None:
+        """Atomically retain the complete bounded response body and acquisition metadata.
+
+        These blobs are local audit material, not a licence to redistribute source data.
+        Legacy truncated text snapshots are deliberately not promoted to this store.
+        """
+        digest = hashlib.sha256(content).hexdigest()
+        if source.content_hash != digest:
+            raise ValueError("snapshot hash differs from retained response bytes")
+        if source.snapshot_representation != "http-response-body-v1":
+            raise ValueError("unsupported snapshot representation")
+        payload = source.model_dump_json()
+
+        def check_time() -> None:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError("snapshot persistence deadline exceeded")
+
+        check_time()
+        # A dedicated short-wait connection avoids the repository's 30-second busy
+        # timeout and thread-local connections lingering in an executor pool.
+        timeout = min(0.05, max(0, deadline - time.monotonic())) if deadline is not None else 0.05
+        conn = sqlite3.connect(str(self.db_path), timeout=timeout)
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("BEGIN IMMEDIATE")
+            check_time()
+            existing = conn.execute(
+                "SELECT content, byte_count FROM snapshot_blobs WHERE content_hash=?", (digest,)
+            ).fetchone()
+            if existing and (bytes(existing["content"]) != content or existing["byte_count"] != len(content)):
+                raise ValueError("existing snapshot integrity failure")
+            conn.execute(
+                "INSERT OR IGNORE INTO snapshot_blobs VALUES (?,?,?)", (digest, content, len(content))
+            )
+            previous = conn.execute(
+                "SELECT metadata_json FROM source_captures WHERE source_id=?", (source.source_id,)
+            ).fetchone()
+            if previous and previous["metadata_json"] != payload:
+                raise ValueError("source capture metadata is immutable")
+            conn.execute(
+                "INSERT OR IGNORE INTO source_captures VALUES (?,?,?)", (source.source_id, digest, payload)
+            )
+            check_time()
+            conn.commit()
+        finally:
+            conn.close()  # rolls back on any exception before commit
+
+    def read_capture(self, source_id: str) -> tuple[SourceRecord, bytes]:
+        """Read and independently verify retained bytes; never refetch missing evidence."""
+        row = self.conn.execute(
+            "SELECT c.metadata_json,c.content_hash,b.content,b.byte_count "
+            "FROM source_captures c LEFT JOIN snapshot_blobs b ON b.content_hash=c.content_hash "
+            "WHERE c.source_id=?", (source_id,)
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"source capture {source_id} is missing")
+        source = SourceRecord.model_validate_json(row["metadata_json"])
+        if row["content"] is None:
+            raise ValueError("snapshot integrity failure: missing blob")
+        body = bytes(row["content"])
+        digest = hashlib.sha256(body).hexdigest()
+        if (
+            digest != row["content_hash"] or digest != source.content_hash
+            or len(body) != row["byte_count"] or source.source_id != source_id
+            or source.snapshot_representation != "http-response-body-v1"
+        ):
+            raise ValueError("snapshot integrity failure")
+        return source, body
+
     def save_snapshot(self, url: str, content_hash: str, text: str) -> None:
+        """Legacy text store, retained for historical compatibility only."""
         with self._lock:
             self.conn.execute(
                 "INSERT OR REPLACE INTO snapshots (content_hash, url, retrieved_at, content_text) VALUES (?,?,?,?)",

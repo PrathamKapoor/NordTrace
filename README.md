@@ -6,6 +6,8 @@ The current locked install is `uv sync --frozen --extra dev --python 3.12` (uv 0
 
 The repair assignment is in progress. Older benchmark/test/readiness statements below are historical and do not establish current release acceptance. See [current verification](docs/verification.md), [requirement tracker](docs/implementation-tracker.md) and [evaluator compatibility](docs/evaluator-contract.md).
 
+Acquired HTTP responses now retain complete bounded bytes in SQLite with `http-response-body-v1` SHA-256 integrity. Inspect an existing run offline using `uv run --frozen python -m nordtrace.cli verify-snapshots RUN_ID`, and export a retained response with `uv run --frozen python -m nordtrace.cli replay-source SOURCE_ID --output data/source.bin`. These checks verify acquisition bytes, not factual support. Schema upgrades back up existing databases automatically; legacy truncated snapshots are not accepted as new captures. Keep source data local unless its specific redistribution rights permit publication.
+
 New CLI/API/batch research persists a versioned canonical result, including synthesis, errors and evidence records. Batch retains invalid inputs and maps duplicate occurrences to one normalized result. `python -m nordtrace.cli batch companies.csv --output data/results.json` writes complete envelopes atomically; exit 1 indicates a research failure, exit 2 invalid input, and exit 0 covers successful execution with honest availability states. Snapshot support/retention, transport limits, refresh correctness, independently measured coverage, locked installation and official-schema compatibility are not yet release-verified. Live tests require `pytest -m live`; default tests exclude live acquisition.
 
 # NordTrace — Norwegian Company Intelligence Agent

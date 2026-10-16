@@ -532,6 +532,16 @@ fallback to deterministic extraction when the budget would be exceeded).
 **Files:** `core/budget.py`, `core/llm.py`, `benchmark.py`.
 # Current decisions — 2026-10-16
 
+## D-032 — Retain complete response bytes and separate acquisition replay from claim proof
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: F09 reproduced with a real production pipeline under simulated HTTP: no source bytes persisted. The old unused save_snapshot helper truncates decoded text at 200k characters, while gateway hashes decoded text even for binary PDFs.
+- Decision: hash/retain the complete bounded HTTP response body with explicit `http-response-body-v1` representation, content-addressed blobs and immutable per-source acquisition metadata. Keep legacy snapshots unchanged and untrusted for new capture checks. Offline readers verify hashes/lengths before returning bytes and preserve acquisition timestamps. Byte verification explicitly does not establish claim support or replay extraction.
+- Implementation/application: schema-3 additive migration and pre-upgrade SQLite backup; Repository.save_capture/read_capture; production RequestGateway retention including robots/cache hits; load_capture and CLI verify-snapshots/replay-source. All new acquired bodies through the production gateway use this path.
+- Alternatives: calling the truncating helper cannot preserve binary/large responses; storing only hashes is not replayable; files alone would require a second atomic metadata boundary. SQLite BLOBs keep existing storage architecture and atomic capture. Exact evidence locators are a subsequent dependent correction.
+- Tradeoffs/failure modes: database size grows with distinct bodies; source rights/privacy and retention periods require source-specific decisions before publication. No captured website/PDF data is relicensed by the MIT code licence. Database contention is a failed acquisition rather than success without evidence. Capture runs off the event loop with bounded SQLite lock wait and absolute-deadline checks. A reviewer reproduced a late synchronous success; this was corrected before commit and the same reproduction now times out at 31ms with zero captures. Disk/CPU scheduling is not a real-time guarantee; broader finalization deadlines remain incomplete.
+- Verification: test_snapshots.py covers binary/non-UTF-8/large bodies, reopen/offline reads, tamper/missing refusal, cache capture, production wiring, schema-2 upgrade preservation/backup, transactional rollback and lock contention. Snapshot/contract/transport/CLI boundary: 42 passed, one upstream warning. Revisit for source retention policy, locator-backed publication, extraction replay, larger persistent datasets and full deadline/finalization work. Extends D-022 and D-026; supersedes decoded-text hashing for new gateway acquisitions only.
+
 ## D-031 — Verify the returned authoritative identifier
 
 - Date/status: 2026-10-17, accepted.

@@ -70,7 +70,7 @@ class ResearchPipeline:
     def __init__(self, repo: Repository, budget: BudgetManager):
         self.repo = repo
         self.budget = budget
-        self.gateway = RequestGateway(budget)
+        self.gateway = RequestGateway(budget, repository=repo)
         self.resolver = EntityResolver()
         self.firewall = PublicationFirewall(self.resolver)
         self.brreg = BrregAdapter(self.gateway, budget)
