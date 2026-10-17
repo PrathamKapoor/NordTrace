@@ -1,10 +1,12 @@
 # Implementation status — 2026-10-16
 
-Update 2026-10-17: full offline suite through atomic publication: 516 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
+Update 2026-10-17: full offline suite through expired-task recovery: 526 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
 
 New structured company values are projected from supported atomic identity claims. Unconverted capital, group and postal details remain unresolved; supported zero values are preserved. Raw captures remain inspectable. This safety restriction does not establish external coverage or rewrite historical profiles.
 
 Production publication commits the canonical result, current company, ledger projections, changes and terminal checkpoint together. Late failures roll them back while acquired captures remain available for inspection. A blocked refresh preserves the prior identity and records failure changes/sources. Legacy storage helpers remain compatibility interfaces; full crash recovery and hard synchronous finalization remain incomplete.
+
+Resume can finalize an expired crashed-worker lease as failed without new acquisition when its original requests/deadline/budget are unavailable. Live foreign leases stay protected; completed envelopes fence late workers. Concurrent finalizers retain the first canonical result. Wall-clock lease/heartbeat and hard storage bounds remain limitations.
 
 Batch files use UTF-8/BOM comma-separated first-column inputs. Only an exact first-record orgnr/org_number/organisation_number/organization_number/organisasjonsnummer label is a header. Blank physical lines are ignored; explicit empty and later invalid records receive terminal results. Malformed CSV/encoding fails before research. Local validation rejects unsupported explicit schema versions; unversioned legacy validation remains structural only. See [evaluator compatibility](docs/evaluator-contract.md).
 

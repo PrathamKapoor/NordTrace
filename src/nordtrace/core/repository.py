@@ -43,6 +43,10 @@ class TaskOwnershipError(RuntimeError):
     """A competing worker owns this company; it alone may publish its result."""
 
 
+class ResultAlreadyPublishedError(ValueError):
+    """An immutable canonical result won a competing publication."""
+
+
 _SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -427,17 +431,26 @@ class Repository:
         payload = json.dumps(result.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
         with self._publication_transaction():
             lease = self.conn.execute(
-                "SELECT owner FROM company_claims WHERE run_id=? AND result_key=?",
+                "SELECT owner,lease_until FROM company_claims WHERE run_id=? AND result_key=?",
                 (result.run_id, result.organisation_number),
             ).fetchone()
             if lease is not None and lease["owner"] != owner:
-                raise TaskOwnershipError("result publication belongs to another company worker")
+                now = time.time()
+                if owner is None or result.status != "failed" or lease["lease_until"] > now:
+                    raise TaskOwnershipError("result publication belongs to another company worker")
+                # A depleted/expired resume need not start acquisition to finalize
+                # a crashed task. Delete its expired lease and publish the immutable
+                # failure in this same transaction; a late worker cannot overwrite it.
+                self.conn.execute(
+                    "DELETE FROM company_claims WHERE run_id=? AND result_key=? AND owner=? AND lease_until<=?",
+                    (result.run_id, result.organisation_number, lease["owner"], now),
+                )
             existing = self.conn.execute(
                 "SELECT payload_json FROM company_results WHERE run_id=? AND result_key=?",
                 (result.run_id, result.organisation_number),
             ).fetchone()
             if existing and existing[0] != payload:
-                raise ValueError("completed research results are immutable")
+                raise ResultAlreadyPublishedError("completed research results are immutable")
             self.conn.execute(
                 "INSERT OR IGNORE INTO company_results VALUES (?,?,?)",
                 (result.run_id, result.organisation_number, payload),

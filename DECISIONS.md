@@ -1,5 +1,16 @@
 # Decision Log — NordTrace
 
+## D-051 — Finalize expired crashed tasks without fresh acquisition
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: three real runner/SQLite resume cases produced zero required envelopes after a foreign lease expired: request allowance depleted, absolute deadline expired or legacy budget unavailable. Scheduling correctly refused fresh acquisition, but publication still refused the stale owner indefinitely. A synchronized two-connection test then reproduced concurrent failure finalizers racing with different immutable payload timestamps.
+- Decision/implementation: save_result may retire an expired foreign lease only for a failed terminal envelope from an explicitly identified owner, inside the same publication/checkpoint transaction. It does not claim acquisition or change any budget. Live foreign ownership, ownerless callers and nonfailed results still cannot bypass a lease. A committed immutable result fences the late old publisher; rollback restores both the expired lease and absent result. Existing unique worker owner tokens already fence normal expired-task takeover, so no redundant generation schema is introduced.
+- Concurrency: a differing completed payload raises typed ResultAlreadyPublishedError (a ValueError). Runner failure-finalization paths adopt the actual existing canonical envelope on that specific competing-result race. Other validation/storage errors propagate; live foreign ownership remains visibly incomplete until its owner finishes or lease expires.
+- Application: depleted/expired/unknown-budget resume, cancellation/failure finalization and concurrent finalizers. Completed companies are not researched again; original counters/limits remain authoritative. No remote requests or model calls are needed for recovery.
+- Alternatives: resetting allowance merely to claim tasks violates same-run budgets; deleting a live lease risks competing work; accepting a stale available result can overwrite terminal failure. A separate generation counter adds migration complexity when unique per-worker tokens plus immutable terminal results already fence the tested lifecycle.
+- Tradeoffs/limits: existing leases use wall-clock TTL and are not inferred dead before expiry. Clock skew, renewal/heartbeats and hard synchronous storage bounds remain open. This does not claim distributed exactly-once execution or recover work whose valid acquisition allowance/lease remain unknown. Follower execution can remain incomplete while a foreign lease is live, by design.
+- Verification/revisit: test_crash_recovery.py covers three expired-lease budget conditions, repeated resume, no research calls, two concurrent finalizer budget paths, live/unowned/nonfailed refusal, rollback and late-owner fencing before/after terminal commit. Initial three cases and concurrent immutable race failed before their fixes;39crash/deadline/persistent-budget checks pass. Revisit for heartbeat/distributed clocks or changed ownership contract; extends D-041/D-044/D-050.
+
 ## D-050 — Publish company outcomes and relational projections in one transaction
 
 - Date/status: 2026-10-17, accepted.

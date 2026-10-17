@@ -26,7 +26,7 @@ from nordtrace.core.models import (
     utcnow,
 )
 from nordtrace.core.orgnr import validate_orgnr
-from nordtrace.core.repository import Repository, TaskOwnershipError
+from nordtrace.core.repository import Repository, ResultAlreadyPublishedError, TaskOwnershipError
 from nordtrace.engine.pipeline import CompanyOutcome, ResearchPipeline
 
 logger = logging.getLogger("nordtrace.runner")
@@ -87,6 +87,9 @@ class BatchRunner:
                         ), owner=owner)
                     except TaskOwnershipError:
                         pass  # A live owner's publication must not be replaced by this follower.
+                    except ResultAlreadyPublishedError:
+                        if self.repo.get_result(run.run_id, company) is None:
+                            raise
             complete = len(self.repo.get_results(run.run_id)) == len(run.companies)
             run.completed_at = utcnow().isoformat() if complete else None
             run.state = RunState.FAILED.value
@@ -112,6 +115,9 @@ class BatchRunner:
                     # A cancelled follower cannot finalize a live owner's task.
                     # This run remains inspectably incomplete until that owner finishes.
                     pass
+                except ResultAlreadyPublishedError:
+                    if self.repo.get_result(run.run_id, org) is None:
+                        raise
 
         async def acquire(org: str) -> CompanyOutcome:
             remaining = self.budget.work_time_remaining()
