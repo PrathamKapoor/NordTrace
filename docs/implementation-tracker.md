@@ -153,3 +153,5 @@ Conflict correction: competing supported observations are all withheld and retai
 | A.compatibility public example mapping | core/export.py | test_starter_projection.py plus export/input suites | verified |43targeted pass33.90s, reviewer28pass/no material findings, older100/1000 verify. Explicit local mapping preserves qualifiers and unknowns; private schema acceptance remains unverified |
 
 | X05 / 8 operational metric corrections | benchmark.py; cli.py | test_benchmark_contract.py plus CLI/input/results | verified | Final13pass16.31s, reviewer13pass15.57s/no findings; prior70adjacentpass. Logical claims/observations and historical source inventory separated. Population sampling/independent accuracy/live100 still incomplete |
+
+| X04 / X20 configuration-test process isolation | tests/unit/test_configuration.py | Fresh595-case run with explicit DB override, then isolated5-case control | verified | Fresh594pass/1environment-test fail281.48s; application precedence correct. Derivation test clears override, separate environment-precedence case passes. Full fresh rerun pending (D-057) |

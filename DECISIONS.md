@@ -1,5 +1,14 @@
 # Decision Log — NordTrace
 
+## D-057 — Isolate configuration derivation tests from process overrides
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: fresh frozen install at db04f03 installed77 packages and built the wheel, but the full suite returned594pass/1fail/8live excluded281.48s when validation explicitly set DATABASE_PATH to an isolated clone database. The derivation test disabled .env files but inherited this process override; application precedence was correct.
+- Decision/implementation: tests/unit/test_configuration.py removes DATABASE_PATH only in the test that requires it absent, and adds an independent positive control proving environment DATABASE_PATH overrides a derived DATA_DIR location. No production setting, database or precedence is changed.
+- Why/alternatives: changing the expected path to the inherited override would stop testing derivation; removing the application override would break supported configuration. Relying on the developer's unset environment would keep the suite fragile.
+- Application/limits: offline tests only. The isolated five-case run passes with DATABASE_PATH intentionally present. Full fresh-checkout verification must be rerun and reported honestly; this does not repair broader source, financial or deadline gates.
+- Verification: `.venv/Scripts/python.exe -m pytest tests/unit/test_configuration.py -q --tb=short` with DATABASE_PATH set:5passed0.80s; docs/verification.md records fresh-install context and subsequent results. Revisit when settings/aliases change. Extends D-028's configuration verification without changing semantics.
+
 ## D-056 — Canonical operational benchmarks without implicit brand discovery
 
 - Date/status: 2026-10-18, accepted.
