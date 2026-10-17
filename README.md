@@ -1,5 +1,7 @@
 # Implementation status — 2026-10-16
 
+Update 2026-10-18: batch accepts UTF-8/BOM JSONL objects with string `organisation_number` fields: `python -m nordtrace.cli batch companies.jsonl --output data/results.json`. Use `--input-format jsonl` for other filenames. Additional record fields cannot configure research or establish identity. Malformed containers fail before research; invalid identifier strings retain terminal envelopes. Output is still local canonical whole JSON; starter JSONL output compatibility remains unfinished. The public eligible universe is now downloaded and hash-verified (411,160 records); it is selection metadata, not the supplied frozen identity snapshot. See docs/evaluator-contract.md for hashes and continuing contract ambiguities.
+
 Update 2026-10-17: full offline suite through structured publication/freshness: 539 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
 
 New structured company values are projected from supported atomic identity claims. Unconverted capital, group and postal details remain unresolved; supported zero values are preserved. Raw captures remain inspectable. This safety restriction does not establish external coverage or rewrite historical profiles.

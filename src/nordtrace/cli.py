@@ -14,6 +14,7 @@ import asyncio
 import csv
 import json
 import logging
+import math
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -155,15 +156,72 @@ def _read_csv(path: str) -> List[str]:
     return orgs
 
 
+def _json_object(pairs: list[tuple[str, object]]) -> dict:
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate object key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError("non-finite JSON constant")
+
+
+def _finite_json_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("JSON number exceeds finite float range")
+    return number
+
+
+def _read_batch_inputs(path: str, input_format: str = "auto") -> List[str]:
+    """Validate the entire input container before starting any research."""
+    if input_format == "auto":
+        input_format = "jsonl" if Path(path).suffix.casefold() == ".jsonl" else "csv"
+    if input_format == "csv":
+        return _read_csv(path)
+    orgs: List[str] = []
+    try:
+        with open(path, encoding="utf-8-sig") as stream:
+            for line_number, line in enumerate(stream, 1):
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(
+                        line, object_pairs_hook=_json_object, parse_constant=_reject_json_constant,
+                        parse_float=_finite_json_float,
+                    )
+                    if not isinstance(record, dict) or not isinstance(
+                        record.get("organisation_number"), str,
+                    ):
+                        raise ValueError("expected an object with a string organisation_number")
+                    record["organisation_number"].encode("utf-8")
+                except (ValueError, RecursionError) as error:
+                    raise click.ClickException(
+                        f"Invalid JSONL line {line_number}: expected strict JSON with a string "
+                        "UTF-8 organisation_number, finite numbers and unique object keys"
+                    ) from error
+                # Other fields are selection metadata, never identity or run configuration.
+                orgs.append(record["organisation_number"])
+    except (OSError, UnicodeError) as error:
+        raise click.ClickException(f"Cannot read company input: {error}") from error
+    return orgs
+
+
 @cli.command()
 @click.argument("input_file", type=click.Path(exists=True))
+@click.option("--input-format", type=click.Choice(["auto", "csv", "jsonl"]), default="auto",
+              show_default=True, help="Auto selects JSONL for .jsonl files; otherwise CSV/TXT")
 @click.option("--concurrency", type=int, default=4)
 @click.option("--resume", "resume_run_id", type=str, default=None, help="Resume an existing run id")
 @click.option("--output", type=str, default=None)
 @click.pass_context
-def batch(ctx, input_file: str, concurrency: int, resume_run_id: Optional[str], output: Optional[str]):
-    """Batch research from a CSV/TXT file of organisation numbers."""
-    orgs = _read_csv(input_file)
+def batch(ctx, input_file: str, input_format: str, concurrency: int,
+          resume_run_id: Optional[str], output: Optional[str]):
+    """Batch research from CSV/TXT identifiers or JSONL objects."""
+    orgs = _read_batch_inputs(input_file, input_format)
     click.echo(f"{len(orgs)} inputs")
     if not orgs:
         click.echo("Nothing to research.", err=True)

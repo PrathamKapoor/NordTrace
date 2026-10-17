@@ -1,5 +1,19 @@
 # Evaluator compatibility
 
+## Primary-source recheck — 2026-10-18 (Asia/Calcutta)
+
+The four primary URLs below were retrieved again at 2026-10-17T20:44:06Z. Evaluation/source-policy bytes are unchanged; scoring remains v2 effective 2026-08-26. The challenge page now describes a 300-company interim round and explicitly says provisional scores do not qualify or declare a winner. That observation does not replace the detailed organizer-supplied execution contract. Broad “1,000+ profiles” labels still differ from the detailed 100-company local smoke/program deliverable. Numeric limits, official evaluation batch, supplied frozen identity snapshot and duplicate semantics remain unconfirmed.
+
+The [public starter](https://www.builderr.ai/signalpost-starter-kit.tar.gz) was downloaded and inspected as data, without running its code. Its OUTPUT_CONTRACT.md is an illustrative JSON example, **not a formal JSON Schema**. It calls for JSONL batch input/output, prior-snapshot input and an operations report. NordTrace now accepts JSONL input (D-053); its whole-JSON canonical output remains a local adapter. JSONL output compatibility and organizer acceptance remain unverified. No starter code was copied; no licence was assumed.
+
+The [public eligible universe](https://www.builderr.ai/signalpost-company-universe-2025.jsonl.gz) is available: 411,160 JSONL records, compressed SHA-256 `1c89710e5b01f8617e86d09fbdff4a52f2f8dbbba297e74f7164b5984f5a0384` (12,631,607 bytes), uncompressed SHA-256 `b82d6a3e7231d1759a958c282bc4366b80ec2fab8095053d8ed7fa9cd01bc838` (131,374,513 bytes). Both match the published contract. This selection dataset is **not** the supplied frozen identity snapshot or a current fact reference. Its names, website fields and normalized employee values must not become verified claims. Seeded population sampling and independent adjudication remain unfinished.
+
+Retrieval records are under ignored `data/contracts/recheck-20261018/`: manifest.json, downloads.json, starter-members.json and universe-verification.json. Evaluation SHA-256: `e9f994e2fa34750411487e9fab82dbffd55dc1bb16efe9021906b92896229d45`; source policy: `f080470ab29d5c6da243d812e35d0ae0aa3d35f5871d62dfef90422df1b8f630`; challenge: `0ca208314733da21e104df0e1f1adad4f7bcffa67b4e1f7c1550290d0b80e4c3`; guidelines: `34f944f4c298a7ed96758fd976e15d1687ff737f6ee9f8e543b7d2d23c6fe4d8`. Starter actual hash: `d48da9910ea7de07d2bf51ab265539a35fe07002a6c1ca5787df81316dfabbf6` (no independently published hash). Public learning-harness recommendations were read as methodology, never execution authority. No company research, paid call, submission or organizer contact was performed by this recheck.
+
+JSONL input policy: `.jsonl` auto-detects; `--input-format jsonl` supports other filenames. UTF-8/BOM and blank physical separators are accepted. Every record must be strict JSON with a string `organisation_number`; this string is preserved in ordered input mapping, then normalized/validated by the existing parser. Missing/non-string identifiers, malformed JSON, non-finite numbers, unpaired surrogate identifiers and duplicate keys abort the container before repository access. Invalid identifier strings receive terminal error envelopes. Extra fields cannot override identity, source policy or run limits. Duplicate occurrences retain the local shared-envelope/input-index policy below. CSV/TXT behavior remains D-048.
+
+## Earlier retrieval and continuing local policy
+
 Retrieved 2026-10-16 from the primary sources:
 
 - [Challenge](https://www.builderr.ai/challenges/signalpost)

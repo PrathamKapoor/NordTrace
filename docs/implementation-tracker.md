@@ -138,5 +138,13 @@ Conflict correction: competing supported observations are all withheld and retai
 | Dependency | Status | Concrete evidence | Independent work |
 |---|---|---|---|
 | Docker daemon | blocked | `docker info --format '{{.ServerVersion}}'`: named pipe dockerDesktopLinuxEngine absent (2026-10-16) | Windows Python 3.12 isolated checks |
-| Official schema/batch/budget/snapshot | blocked | Retrieved v2 contract describes organizer-supplied formats/resources but provides no JSON Schema or actual input assets | Explicit compatibility adapter and synthetic scale checks; acceptance unverified |
+| Official schema/batch/budget/snapshot | blocked | Oct18 recheck: public universe and illustrative starter available; formal JSON Schema, private evaluation batch, numeric limits and supplied frozen identity snapshot remain unavailable | JSONL input implemented (D-053); output compatibility and official acceptance unverified |
 | Live credentials / paid APIs | blocked | No authorization to use personal credentials or incur charges | Deterministic and transport-mocked paths; primary public docs |
+
+## Batch input and contract recheck — 2026-10-18
+
+| Requirement/finding | Owner | Verification | Status | Evidence |
+|---|---|---|---|---|
+| A.input / X19 JSONL containers were read as CSV | cli._read_batch_inputs | test_jsonl_input.py plus CLI/input/cardinality suites | verified | Eleven failures reproduced; fifteen focused cases pass, including surrogate/overflow controls. Exact ordered strings/duplicates preserved; other fields cannot override identity/configuration. Malformed containers fail before repository access. D-053 |
+| 3 / 8 public eligible universe availability | evaluation/docs | Published compressed/uncompressed hashes and streamed count | verified | 411,160 records; hashes/retrieval records in docs/evaluator-contract.md. Supersedes any earlier claim that no public universe is available. Seeded selection/adjudication not yet implemented |
+| A.export public starter JSONL output | contracts/cli | Illustrative public OUTPUT_CONTRACT.md inspected without execution | not_started | Current local whole-JSON canonical format is not the starter JSONL projection; no formal organizer JSON Schema found |
