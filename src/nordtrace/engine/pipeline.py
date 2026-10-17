@@ -198,6 +198,12 @@ class ResearchPipeline:
                     "not_found": "entity_not_found", "blocked": "registry_blocked",
                     "ambiguous": "entity_ambiguous",
                 }.get(hint, "registry_failed")
+                if src is not None:
+                    outcome.refresh_outcomes.append(RefreshOutcome.model_validate({
+                        "requested_url": src.requested_url or src.url or "", "source_id": src.source_id,
+                        "family": "identity", "state": state, "observed_at": utcnow().isoformat(),
+                        "reason": src.error_detail or outcome.error,
+                    }))
                 return outcome
             outcome.identity = ident
             # src/ev are non-None here (guaranteed by the early return above)

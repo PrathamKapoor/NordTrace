@@ -25,6 +25,7 @@ from nordtrace.core.evidence import (
     IDENTITY_PATHS,
     normalize_registry_value,
     normalize_subunit,
+    require_registry_identity_acquisition,
     resolve_pointer,
 )
 from nordtrace.core.models import (
@@ -117,6 +118,12 @@ class BrregAdapter:
             allowed_schemes=[urlsplit(url).scheme],
             allowed_origins=[f"{urlsplit(url).scheme}://{urlsplit(url).netloc}"],
         )
+        if source.access_status == "success" or source.http_status == 404:
+            try:
+                require_registry_identity_acquisition(source, org_number)
+            except ValueError as error:
+                source.error_detail = str(error)
+                return None, source, None, "ambiguous"
         if source.access_status != "success":
             hint = {
                 "failed": "failed",

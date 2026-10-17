@@ -1,5 +1,15 @@
 # Decision Log — NordTrace
 
+## D-046 — Bind registry identity authority to captured official acquisition
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: nine initial tests published a legal name from internally consistent captures on foreign/incorrect endpoints or populated company identity from a configured mirror. Three further fixtures published subunits despite a foreign canonical URL, foreign redirect hop or credentials. A declared authority tier and body identifier did not prove the asserted registry source semantics.
+- Decision/implementation: core.evidence.require_registry_identity_acquisition binds canonical/requested/final URLs and all redirect hops to official HTTPS/default443 exact target entity lookup, without credentials, query projections, fragments or control characters. BrregAdapter checks it before resolving successful identity or authoritative404 absence; snapshot publication checks it independently. Early identity outcomes explicitly retain their ambiguity/blocked/failure state in family refresh metadata instead of guessing from HTTP status. Subunit publication now inspects every URL and credentials, retaining exact parent-filter validation with blank values included.
+- Application: new live registry identity acquisition, every supported identity publication and refresh revalidation; subunit publication. Configured mirror200/404 responses remain inspectable/ambiguous and cannot leak structured identity or claim authoritative absence. Existing transport policy still blocks unsafe connections before acquisition.
+- Alternatives: trusting self-declared tier/orgnr or just the final URL leaves provenance bypasses. Treating any configured mirror as the supplied official snapshot invents a cutoff/version trust contract. Official snapshot input needs a separate explicit adapter, still unfinished.
+- Tradeoffs/limits: legitimate unofficial mirrors cannot serve as authoritative anchors, and a future official endpoint/query change requires a reviewed policy/schema update. This is provenance validation on retained acquisition metadata, not cryptographic proof against a hostile local database owner. It does not solve unsupported non-atomic structured identity fields, source rights, broad relationship scope or full historical policy versioning.
+- Verification/revisit: test_registry_authority.py has32 URL-position adversaries, mirror200/404 and explicit-default-port control. Three subunit regressions failed before correction. Registry/locator/subunit boundary87passed; scoped reviewer also87passed with no material findings. Revisit when official snapshot/evaluator contracts or registry routes change; extends D-040/D-045.
+
 ## D-045 — Record outcome reasons independently from coverage
 
 - Date/status: 2026-10-17, accepted.

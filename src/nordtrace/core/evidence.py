@@ -125,6 +125,31 @@ def _same(a: Any, b: Any) -> bool:
     )
 
 
+def require_registry_identity_acquisition(source: SourceRecord, org_number: str) -> None:
+    """Only the exact official HTTPS entity lookup establishes live registry authority.
+
+    Supplied official snapshots need a separate versioned anchor contract; a
+    configured mirror or self-declared authority tier cannot substitute for it.
+    """
+    expected_path = "/enhetsregisteret/api/enheter/" + org_number
+    urls = [source.url, source.requested_url or source.url, source.final_url or source.url,
+            *source.redirect_chain]
+    for url in urls:
+        try:
+            if not url or any(ord(char) < 32 or ord(char) == 127 for char in url):
+                raise ValueError("invalid URL")
+            parsed = urlsplit(url)
+            if (parsed.scheme != "https" or parsed.hostname != "data.brreg.no"
+                    or parsed.port not in (None, 443) or parsed.username is not None
+                    or parsed.password is not None or parsed.path.rstrip("/") != expected_path
+                    or parsed.query or parsed.fragment):
+                raise ValueError("unsupported endpoint")
+        except ValueError as error:
+            raise ValueError(
+                "registry identity acquisition requires the exact official entity endpoint"
+            ) from error
+
+
 def verify_snapshot_support(
     repo: Repository, fact: Fact, source: SourceRecord, evidence: EvidenceRecord,
 ) -> None:
@@ -156,12 +181,17 @@ def verify_snapshot_support(
     if fact.category == "locations" and fact.field == "branch":
         if source.source_type != "registry" or source.authority_tier != 0:
             raise ValueError("subunit claim requires official registry acquisition")
-        for url in (source.requested_url or source.url, source.final_url or source.url):
-            parsed = urlsplit(url or "")
+        for url in (source.url, source.requested_url or source.url, source.final_url or source.url,
+                    *source.redirect_chain):
+            if not url or any(ord(char) < 32 or ord(char) == 127 for char in url):
+                raise ValueError("subunit acquisition URL invalid")
+            parsed = urlsplit(url)
             if (parsed.scheme != "https" or parsed.hostname != "data.brreg.no"
                     or parsed.port not in (None, 443)
+                    or parsed.username is not None or parsed.password is not None or parsed.fragment
                     or parsed.path.rstrip("/") != "/enhetsregisteret/api/underenheter"
-                    or parse_qs(parsed.query).get("overordnetEnhet") != [fact.org_number]):
+                    or parse_qs(parsed.query, keep_blank_values=True).get("overordnetEnhet")
+                    != [fact.org_number]):
                 raise ValueError("subunit acquisition endpoint or parent filter differs")
         if (locator.normalization != "brreg-subunit-v1"
                 or not re.fullmatch(r"/_embedded/underenheter/(0|[1-9][0-9]*)", locator.pointer)):
@@ -177,6 +207,7 @@ def verify_snapshot_support(
         return
     if fact.category != "identity" or source.source_type != "registry" or source.authority_tier != 0:
         raise ValueError("claim predicate has no supported extraction rule")
+    require_registry_identity_acquisition(source, fact.org_number)
     subject = validate_orgnr(document.get("organisasjonsnummer", "")) if isinstance(document, dict) else None
     if subject is None or not subject.valid or subject.value != fact.org_number:
         raise ValueError("snapshot subject differs from claim subject")

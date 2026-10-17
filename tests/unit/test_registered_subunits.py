@@ -163,7 +163,9 @@ def test_partial_collection_keeps_supported_first_page_without_claiming_complete
     repo.close()
 
 
-@pytest.mark.parametrize("tamper", ["value", "item", "scope", "locator", "endpoint", "port"])
+@pytest.mark.parametrize("tamper", [
+    "value", "item", "scope", "locator", "endpoint", "port", "canonical_url", "redirect_chain", "userinfo",
+])
 def test_publication_rechecks_subunit_record_subject_and_attributes(tmp_path, monkeypatch, tamper):
     result, repo, _ = collect(tmp_path, monkeypatch, [page(0, [unit(FIRST)], total=1, pages=1)])
     source = result.sources[0]
@@ -182,9 +184,17 @@ def test_publication_rechecks_subunit_record_subject_and_attributes(tmp_path, mo
         body = repo.read_capture(source.source_id)[1]
         url = (source.url.replace("data.brreg.no", "data.brreg.no:8443")
                if tamper == "port" else "https://data.brreg.no/unrelated")
-        source = source.model_copy(update={
-            "source_id": "wrong-endpoint", "url": url, "requested_url": url, "final_url": url,
-        })
+        updates = {"source_id": "wrong-endpoint", "url": url, "requested_url": url, "final_url": url}
+        if tamper in ("canonical_url", "redirect_chain"):
+            updates = {"source_id": "wrong-chain"}
+            if tamper == "canonical_url":
+                updates["url"] = "https://untrusted.example/collection"
+            else:
+                updates["redirect_chain"] = [source.url, "https://untrusted.example/collection", source.url]
+        elif tamper == "userinfo":
+            url = source.url.replace("https://", "https://user@")
+            updates = {"source_id": "userinfo", "url": url, "requested_url": url, "final_url": url}
+        source = source.model_copy(update=updates)
         repo.save_capture(source, body)
         fact.source_id = evidence.source_id = source.source_id
     ledger = FactLedger(repository=repo)
