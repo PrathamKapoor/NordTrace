@@ -281,10 +281,14 @@ def test_reservation_commit_after_deadline_cannot_start_transport(tmp_path, monk
     from nordtrace.core.request_gateway import RequestGateway
 
     monkeypatch.setattr("nordtrace.core.request_gateway._resolve_host", lambda host: ["8.8.8.8"])
+    wall_clock, monotonic_clock = time.time, time.monotonic
+    clock_advance = [0]
+    monkeypatch.setattr(time, "time", lambda: wall_clock() + clock_advance[0])
+    monkeypatch.setattr(time, "monotonic", lambda: monotonic_clock() + clock_advance[0])
     repo = Repository(tmp_path / "slow-commit.db")
     run = ResearchRun(companies=[ORG], started_at=utcnow().isoformat())
     repo.create_run(run)
-    budget = BudgetManager(max_requests=2, max_runtime_sec=0.1)
+    budget = BudgetManager(max_requests=2, max_runtime_sec=60)
     budget.bind_run(repo, run.run_id, initialize=True)
     original = repo._budget_transaction
     delays = []
@@ -294,8 +298,11 @@ def test_reservation_commit_after_deadline_cannot_start_transport(tmp_path, monk
         with original(deadline) as connection:
             yield connection
             if not delays:
+                assert connection.execute(
+                    "SELECT request_count FROM runs WHERE run_id=?", (run.run_id,),
+                ).fetchone()[0] == 1, "Fault must occur after a real request reservation"
                 delays.append(True)
-                time.sleep(0.2)  # Inject slow durable commit, not a network delay.
+                clock_advance[0] = 61  # Both absolute clocks expire before durable commit returns.
 
     monkeypatch.setattr(repo, "_budget_transaction", slow_commit)
     calls = []
@@ -315,6 +322,7 @@ def test_reservation_commit_after_deadline_cannot_start_transport(tmp_path, monk
             await gateway.aclose()
 
     result = asyncio.run(execute())
+    assert delays == [True]
     assert calls == [] and result.access_status == "timeout"
     assert budget.requests.total_used == 1  # Conservatively charged; never refunded after uncertain commit.
     assert budget.requests.snapshot()["unstarted_reservations"] == 1

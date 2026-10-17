@@ -440,15 +440,17 @@ class RequestGateway:
                         continue
                     if response.status_code == 200:
                         hashed = hashlib.sha256(response.content).hexdigest()
-                        self._cache[clean] = CachedResponse(
-                            url=clean, status_code=200, text=response.text, content_hash=hashed,
-                            retrieved_at=time.time(), headers=dict(response.headers),
-                            content=response.content,
-                            final_url=current, redirect_chain=list(chain),
-                        )
                         source = record(
                             "success", response=response, content_hash=hashed,
                             snapshot_representation="http-response-body-v1",
+                        )
+                        assert source.retrieved_at is not None
+                        self._cache[clean] = CachedResponse(
+                            url=clean, status_code=200, text=response.text, content_hash=hashed,
+                            retrieved_at=datetime.fromisoformat(source.retrieved_at).timestamp(),
+                            headers=dict(response.headers),
+                            content=response.content,
+                            final_url=current, redirect_chain=list(chain),
                         )
                         await self._retain(source, response.content)
                         return source

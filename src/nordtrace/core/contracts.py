@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -53,10 +54,11 @@ def project_identity(
     fields = set(identity.unresolved_fields)
     updates: dict[str, Any] = {}
     if facts is not None:
-        supported = {fact.field: fact for fact in facts
-                     if fact.org_number == identity.organisation_number and fact.category == "identity"
-                     and fact.status == "PUBLISHED" and fact.subject_scope == "legal_entity"
-                     and fact.item_key is None}
+        observations = [fact for fact in facts
+                        if fact.org_number == identity.organisation_number and fact.category == "identity"
+                        and fact.status == "PUBLISHED" and fact.subject_scope == "legal_entity"
+                        and fact.item_key is None]
+        supported = {fact.field: fact for fact in observations}
         metadata = {"organisation_number", "last_verified_at", "unresolved_fields"}
         for field in CompanyIdentity.model_fields.keys() - metadata:
             if field in supported:
@@ -67,6 +69,16 @@ def project_identity(
                 if previous is not None and previous != "" and previous != "unknown":
                     fields.add(field)
                 updates[field] = "" if field == "legal_name" else "unknown" if field == "status" else None
+        timestamps = []
+        for fact in observations:
+            if fact.retrieved_at:
+                try:
+                    observed_at = datetime.fromisoformat(fact.retrieved_at)
+                except ValueError:
+                    continue
+                if observed_at.tzinfo is not None:
+                    timestamps.append((observed_at, fact.retrieved_at))
+        updates["last_verified_at"] = max(timestamps, key=lambda item: item[0])[1] if timestamps else None
     disputed_fields = set()
     for fact in conflicts:
         if fact.org_number == identity.organisation_number and fact.category == "identity":

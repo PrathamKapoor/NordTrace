@@ -346,6 +346,7 @@ class Repository:
         Captures and transport accounting are already durable acquisition records;
         publication rollback intentionally leaves them available for diagnosis.
         """
+        from nordtrace.core.contracts import project_identity
         from nordtrace.core.ledger import CitationValidator
 
         result = CompanyProfile.model_validate(result.model_dump())
@@ -355,6 +356,8 @@ class Repository:
             self.save_result(result, owner=owner)
             if existing is not None:
                 return
+            if project_identity(result.company, result.conflicts, result.facts) != result.company:
+                raise ValueError("structured identity differs from supported observations")
             validator = CitationValidator(
                 {source.source_id: source for source in result.sources},
                 {item.evidence_id: item for item in result.evidence}, self,
@@ -750,7 +753,7 @@ class Repository:
                     identity.legal_name,
                     identity.model_dump_json(),
                     first,
-                    utcnow().isoformat(),
+                    identity.last_verified_at,
                     run_id,
                 ),
             )
