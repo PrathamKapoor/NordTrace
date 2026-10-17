@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -63,8 +64,55 @@ class BundleOperations(BaseModel):
         return self
 
 
-def _json(value: Any) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")) + "\n").encode()
+def _json(value: Any, *, sort_keys: bool = False) -> bytes:
+    return (json.dumps(value, ensure_ascii=False, allow_nan=False,
+                       separators=(",", ":"), sort_keys=sort_keys) + "\n").encode()
+
+
+def _starter_example(result: CompanyProfile) -> dict:
+    """Project already validated canonical data; never grants publication authority."""
+    payload = result.model_dump(mode="json")
+    payload["canonical_schema_version"] = payload["schema_version"]
+    payload["schema_version"] = "nordtrace-starter-example-v1"
+    payload["availability"] = result.status
+    payload["run"] = {
+        "run_id": result.run_id, "started_at": result.research_metadata.started_at,
+        "completed_at": result.research_metadata.completed_at,
+        "terminal_status": "failed" if result.status == "failed" else "completed",
+    }
+    payload["claims"] = []
+    for fact in payload.pop("facts"):
+        payload["claims"].append(fact | {
+            "id": fact["claim_id"], "canonical_field": fact["field"],
+            "field": "registered_website" if (fact["category"], fact["field"]) == ("identity", "website")
+            else fact["field"],
+            "availability": "available", "confidence": fact["fact_confidence"],
+            "evidence_ids": [fact["evidence_id"]],
+        })
+    sources = {source.source_id: source for source in result.sources}
+    for item in payload["evidence"]:
+        source = sources.get(item["source_id"])
+        item.update({
+            "id": item["evidence_id"],
+            "source_url": (source.final_url or source.url) if source else None,
+            "source_class": source.source_type if source else item["source_type"],
+            "content_sha256": item["content_hash"], "claim_span": None,
+            "display_text": item["evidence_text"],
+            "support_representation": "json_pointer" if item["locator"] else "unlocated_candidate",
+        })
+    duration = result.research_metadata.duration_sec
+    payload["operations"] = {
+        "requests": None, "third_party_cost_usd": None,
+        "runtime_ms": duration * 1000 if duration is not None and math.isfinite(duration) and duration >= 0
+        else None,
+        "attribution": "per_company_requests_and_cost_not_recorded",
+        "whole_run_operations": "manifest.json#/operations",
+    }
+    payload["compatibility"] = {
+        "basis": "public starter illustrative OUTPUT_CONTRACT.md", "organizer_acceptance": "unverified",
+        "structured_evidence": "JSON pointer and raw value; claim_span is null, never a generated quote",
+    }
+    return payload
 
 
 def _validate_result(result: CompanyProfile, reader: SnapshotReader) -> None:
@@ -147,6 +195,19 @@ def export_run(
                                 if previous is not None and previous != source:
                                     raise ValueError("source ID has conflicting metadata")
                                 sources[source.source_id] = source
+                projection_digest = hashlib.sha256()
+                repeated_digest = hashlib.sha256()
+                with archive.open("starter-example.jsonl", "w", force_zip64=True) as projection:
+                    for key in run.companies:
+                        result = repo.get_result(run_id, key)
+                        if result is None:
+                            raise ValueError("canonical result disappeared during export")
+                        repeated_digest.update(_json(result.model_dump(mode="json")))
+                        body = charge(_json(_starter_example(result)))
+                        projection.write(body)
+                        projection_digest.update(body)
+                if repeated_digest.digest() != digest.digest():
+                    raise ValueError("canonical results changed during projection")
                 captures = {}
                 written = set()
                 for source_id, expected in sources.items():
@@ -165,6 +226,8 @@ def export_run(
                     "run_id": run_id, "run_state": run.state, "inputs": inputs,
                     "schema_sha256": hashlib.sha256(schema).hexdigest(),
                     "results_sha256": digest.hexdigest(), "captures": captures,
+                    "projections": {"starter-example-v1": {"path": "starter-example.jsonl",
+                                    "sha256": projection_digest.hexdigest(), "acceptance": "unverified"}},
                     "completion": {"complete": True, "input_count": len(inputs),
                                    "result_count": len(run.companies)},
                     "operations": {"scope": "whole_run", "requests": requests,
@@ -254,6 +317,27 @@ def verify_bundle(output: str | Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> 
                                       "result_count": len(keys)}:
             raise ValueError("incomplete manifest")
         allowed = {"results.jsonl", "result-schema.json", "manifest.json"}
+        if "projections" in manifest:
+            projections = manifest["projections"]
+            if set(projections) != {"starter-example-v1"}:
+                raise ValueError("unsupported projection")
+            info = projections["starter-example-v1"]
+            if info["path"] != "starter-example.jsonl" or info["acceptance"] != "unverified":
+                raise ValueError("unsupported projection metadata")
+            projection_digest = hashlib.sha256()
+            with archive.open("results.jsonl") as results, archive.open(info["path"]) as projection:
+                for line in results:
+                    actual = projection.readline()
+                    projection_digest.update(actual)
+                    expected = _starter_example(CompanyProfile.model_validate_json(line))
+                    if (not actual
+                            or _json(json.loads(actual), sort_keys=True) != _json(expected, sort_keys=True)):
+                        raise ValueError("projection differs from canonical result")
+                if projection.read(1):
+                    raise ValueError("projection has extra records")
+            if projection_digest.hexdigest() != info["sha256"]:
+                raise ValueError("projection integrity failure")
+            allowed.add(info["path"])
         allowed.update(item["path"] for item in manifest["captures"].values())
         if set(names) != allowed:
             raise ValueError("unexpected or missing bundle member")
