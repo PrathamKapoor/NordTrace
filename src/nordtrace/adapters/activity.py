@@ -1,34 +1,28 @@
-"""Activity adapter — meaningful public activity from registry signals.
+"""Legacy activity candidates from the retained official entity capture.
 
-Instead of scraping news (high risk of misattribution + request burn), this
-adapter derives *verifiable* activity facts from Tier-0 registry state:
-
-  - status transitions (bankrupt/liquidation filings are public events)
-  - registration anniversaries in various registers (MVA, Frivillig MVA, NAV)
-  - employee-count registration dates (indicates current employment data)
-  - capital changes (aksjekapital) with registration dates
-  - concern membership
-
-Every event carries its source URL and date from the registry itself —
-zero fabrication. "Recent activity" claims are limited to what the registry
-actually reports with dates.
+These candidates are withheld by publication validation: dated event semantics
+and typed activity locators remain unimplemented. No accounts payload or mutable
+URL cache may be substituted for the captured entity response.
 """
 
 from __future__ import annotations
 
+import json
 from typing import List, Optional, Tuple
 
 from nordtrace.core.budget import BudgetManager
+from nordtrace.core.evidence import require_registry_identity_acquisition, verify_capture_metadata
 from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
     Fact,
     FactStatus,
+    JsonPointerLocator,
     MatchVerdict,
     SourceRecord,
     SourceType,
-    utcnow,
 )
+from nordtrace.core.orgnr import validate_orgnr
 from nordtrace.core.request_gateway import RequestGateway
 
 
@@ -45,16 +39,26 @@ class ActivityAdapter:
     def extract_activity(
         self,
         identity: CompanyIdentity,
-        registry_payload: Optional[dict],
         source: SourceRecord,
         run_id: str,
     ) -> Tuple[List[EvidenceRecord], List[Fact]]:
         evidences: List[EvidenceRecord] = []
         facts: List[Fact] = []
-        if not registry_payload:
-            return evidences, facts
-        now = utcnow().isoformat()
+        if self.gateway.repository is None:
+            raise ValueError("Activity extraction requires a retained entity capture")
+        captured, body = self.gateway.repository.read_capture(source.source_id)
+        verify_capture_metadata(captured, source)
         org = identity.organisation_number
+        require_registry_identity_acquisition(captured, org)
+        if captured.access_status != "success":
+            raise ValueError("Activity requires a successful entity acquisition")
+        registry_payload = json.loads(body)
+        if not isinstance(registry_payload, dict):
+            raise ValueError("Activity entity capture must be an object")
+        subject = validate_orgnr(registry_payload.get("organisasjonsnummer", ""))
+        if not subject.valid or subject.value != org:
+            raise ValueError("Activity capture subject differs from target entity")
+        now = captured.retrieved_at
 
         def add_event(field: str, value: dict, text: str, date: Optional[str]):
             ev = EvidenceRecord(
@@ -65,7 +69,11 @@ class ActivityAdapter:
                 authority_tier=0,
                 retrieved_at=now,
                 published_at=date,
-                evidence_text=text,
+                evidence_text=json.dumps(registry_payload, ensure_ascii=False, sort_keys=True),
+                locator=JsonPointerLocator(pointer="", raw_value=registry_payload),
+                entity_match_details={
+                    "candidate_interpretation": text, "publication_support": "unimplemented",
+                },
                 content_hash=source.content_hash,
                 entity_verdict=MatchVerdict.VERIFIED.value,
                 org_number=org,
@@ -85,7 +93,7 @@ class ActivityAdapter:
                     published_at=date,
                     entity_verdict=MatchVerdict.VERIFIED.value,
                     fact_confidence=0.95,
-                    status=FactStatus.PUBLISHED.value,
+                    status=FactStatus.EXTRACTED.value,
                 )
             )
 

@@ -1,5 +1,14 @@
 # Decision Log — NordTrace
 
+## D-059 — Activity reads its retained entity capture
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: F22 reproduced in the production pipeline: an accounts response with a2099 registration date was supplied to activity while citing entity bytes with a2024 date; accounts404 suppressed activity despite successful entity acquisition. A shared payload variable crossed endpoint boundaries.
+- Decision/implementation: remove the payload parameter from ActivityAdapter.extract_activity. The pipeline supplies the resolved identity and entity SourceRecord; the adapter reads Repository.read_capture(source_id), checks immutable acquisition metadata, exact official entity endpoint, successful acquisition and matching checksummed subject, then parses those retained bytes. Missing/tampered/wrong-subject/nonentity captures raise explicit errors; pipeline failure handling preserves already accepted identity observations. Evidence/observation retrieval time comes from the capture, never the extraction clock or URL cache. Legacy candidates carry a JSON-root locator/raw captured document and actual JSON display; generated interpretations stay separately labelled with publication_support=unimplemented. The root locator identifies the source document and does not establish event/value support. Initial status is EXTRACTED; publication still rejects unsupported activity predicates.
+- Scope/why: source binding is necessary even while legacy activity candidates fail the existing publication gate. Loading by URL or passing another caller-managed dictionary can select accounts or a newer cached response. No extra acquisition is needed; all reads are offline. Removing the internal argument is preferable to accepting an untrusted dictionary and merely trusting its source label.
+- Alternatives/tradeoffs: reusing entity fetch cache is simpler but mutable and URL-keyed. Silent abstention on capture corruption would hide execution failure. Full typed dated-event extraction is separate work; current status/employee/capital/register candidates do not prove event semantics and remain unpublished. This decision does not claim F23, financial correctness or external coverage is repaired.
+- Verification: test_activity_capture.py reproduces wrong endpoint payload and accounts-outage dependence, verifies production pipeline extraction against entity bytes with successful/404 accounts, and rejects metadata/subject/endpoint/missing/tampered captures while ignoring poisoned URL cache. Eight cases pass; docs/verification.md records review/regression evidence. Revisit when typed activity locators and independently labelled event producers replace legacy candidates; never reintroduce caller-selected unbound payloads.
+
 ## D-058 — Fixed disjoint partitions and balanced eligible-universe samples
 
 - Date/status: 2026-10-18, accepted.

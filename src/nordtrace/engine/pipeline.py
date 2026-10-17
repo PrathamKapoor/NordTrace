@@ -154,7 +154,6 @@ class ResearchPipeline:
         outcome = CompanyOutcome(org_number=org_number, terminal_state=TerminalState.FAILED.value)
         ledger = FactLedger(repository=self.repo)
         stages: List[str] = []
-        registry_payload: Optional[dict] = None
         financials_status = "unknown"
         cancelled = False
         budget_skipped: List[str] = []
@@ -268,17 +267,6 @@ class ResearchPipeline:
                 self._trace(
                     run_id, org_number, "financials", f"registry accounts: {astatus}, {len(afacts)} facts"
                 )
-                # capture registry payload for activity adapter
-                if asrc and asrc.access_status == "success":
-                    import json
-
-                    cached = self.gateway.get_content(asrc.url or "")
-                    try:
-                        payload = json.loads(cached.text if cached else "")
-                        registry_payload = payload[0] if isinstance(payload, list) and payload else payload
-                    except ValueError:
-                        registry_payload = None
-
             # 4. website discovery + crawl (registry hjemmeside or name-derived candidates)
             if acquisition_allowed("website"):
                 w_evs, w_facts, w_sources, w_rejected, w_cov = await self.website.crawl(ident, run_id)
@@ -403,8 +391,8 @@ class ResearchPipeline:
                             )
 
             # 6. activity from registry signals
-            if registry_payload is not None and src:
-                act_evs, act_facts = self.activity.extract_activity(ident, registry_payload, src, run_id)
+            if src:
+                act_evs, act_facts = self.activity.extract_activity(ident, src, run_id)
                 for e in act_evs:
                     ledger.add_evidence(e)
                 for f in act_facts:
