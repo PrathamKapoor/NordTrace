@@ -1,7 +1,7 @@
 """Batch runner: bounded-async execution with checkpointing + resume.
 
 - bounded concurrency (default 4 companies in flight)
-- global deadline always wins (45 min); per-company soft deadline moves on
+- configured acquisition and per-company deadlines cancel cooperative work
 - checkpointing: run state in SQLite after every company; resume skips
   companies that already have a terminal state in this run
 - every company receives exactly one terminal state
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import List, Optional
 
 from nordtrace.core.budget import BudgetManager, RunBudgetUnavailable
@@ -23,18 +22,14 @@ from nordtrace.core.models import (
     ResearchMetadata,
     ResearchRun,
     RunState,
-    TerminalState,
     new_id,
     utcnow,
 )
 from nordtrace.core.orgnr import validate_orgnr
-from nordtrace.core.repository import Repository
+from nordtrace.core.repository import Repository, TaskOwnershipError
 from nordtrace.engine.pipeline import CompanyOutcome, ResearchPipeline
 
 logger = logging.getLogger("nordtrace.runner")
-
-_TERMINAL = {s.value for s in TerminalState}
-
 
 class BatchRunner:
     def __init__(self, repo: Repository, budget: Optional[BudgetManager] = None, concurrency: int = 4):
@@ -44,6 +39,7 @@ class BatchRunner:
             max_runtime_sec=settings.max_runtime_sec,
             max_cost=settings.max_api_cost_usd,
             per_company_soft_sec=settings.per_company_soft_deadline_sec,
+            finalization_reserve_sec=settings.finalization_reserve_sec,
         )
         self.concurrency = max(1, concurrency)
 
@@ -72,102 +68,164 @@ class BatchRunner:
             self.repo.save_run_inputs(run.run_id, [item.model_dump() for item in inputs])
             pending = run.companies
 
+        owner = new_id("worker")
         try:
             self.budget.bind_run(self.repo, run.run_id, initialize=resume_run_id is None)
         except RunBudgetUnavailable as error:
-            for company in pending:
+            for company in run.companies:
                 if self.repo.get_result(run.run_id, company) is None:
-                    self.repo.save_result(CompanyProfile(
-                        run_id=run.run_id, organisation_number=company, status="failed",
-                        errors=[ResearchError(code="run_budget_unavailable", message=str(error))],
-                        research_metadata=ResearchMetadata(
-                            started_at=run.started_at, completed_at=utcnow().isoformat(),
-                            request_count=run.request_count, estimated_cost_usd=run.estimated_cost_usd,
-                        ),
-                    ))
-            run.completed_at, run.state = utcnow().isoformat(), RunState.FAILED.value
+                    code = "legacy_result_unavailable" if company not in pending else "run_budget_unavailable"
+                    try:
+                        self.repo.save_result(CompanyProfile(
+                            run_id=run.run_id, organisation_number=company, status="failed",
+                            errors=[ResearchError(code=code, message=str(error))],
+                            research_metadata=ResearchMetadata(
+                                started_at=run.started_at, completed_at=utcnow().isoformat(),
+                                request_count=run.request_count, estimated_cost_usd=run.estimated_cost_usd,
+                            ),
+                        ), owner=owner)
+                    except TaskOwnershipError:
+                        pass  # A live owner's publication must not be replaced by this follower.
+            complete = len(self.repo.get_results(run.run_id)) == len(run.companies)
+            run.completed_at = utcnow().isoformat() if complete else None
+            run.state = RunState.FAILED.value
             self.repo.update_run(run)
             return self.repo.get_run(run.run_id) or run
 
         pipeline = ResearchPipeline(self.repo, self.budget)
-        owner = new_id("worker")
-        try:
-            semaphore = asyncio.Semaphore(self.concurrency)
+        pipeline.worker_owner = owner
+        interrupted = False
+        failed = False
+        semaphore = asyncio.Semaphore(self.concurrency)
 
-            async def one(org: str) -> None:
+        def failure(org: str, code: str, message: str) -> CompanyOutcome:
+            return CompanyOutcome(org_number=org, terminal_state="failed", error_code=code, error=message)
+
+        def save_if_missing(org: str, outcome: CompanyOutcome) -> None:
+            if self.repo.get_result(run.run_id, org) is None:
+                try:
+                    self.repo.save_result(build_result(
+                        outcome, run.run_id, self.budget, run.started_at or utcnow().isoformat(),
+                    ), owner=owner)
+                except TaskOwnershipError:
+                    # A cancelled follower cannot finalize a live owner's task.
+                    # This run remains inspectably incomplete until that owner finishes.
+                    pass
+
+        async def acquire(org: str) -> CompanyOutcome:
+            remaining = self.budget.work_time_remaining()
+            code = ("company_deadline_exceeded" if self.budget.configuration.per_company_sec < remaining
+                    else "deadline_exceeded")
+            task = asyncio.create_task(pipeline.research_company(org, run.run_id))
+            try:
+                done, _ = await asyncio.wait(
+                    {task}, timeout=min(self.budget.configuration.per_company_sec, remaining),
+                )
+                if done:
+                    return task.result()
+                task.cancel(code)
+                await asyncio.gather(task, return_exceptions=True)
+                return failure(org, code, "Research acquisition deadline reached.")
+            except asyncio.CancelledError:
+                task.cancel("research_cancelled")
+                await asyncio.gather(task, return_exceptions=True)
+                raise
+
+        async def one(org: str) -> None:
+            claimed = False
+            cancelled = False
+            try:
                 async with semaphore:
-                    while not self.repo.try_claim_company(
-                        run.run_id, org, owner, self.budget.runtime.time_remaining() + 60
-                    ):
-                        if self.repo.get_result(run.run_id, org):
-                            self._checkpoint(run)
-                            return
-                        if self.budget.runtime.deadline_reached():
-                            raise TimeoutError("deadline while waiting for another worker's task")
-                        await asyncio.sleep(min(0.05, self.budget.runtime.time_remaining()))
-                    company_started = time.monotonic()
-                    try:
-                        check = validate_orgnr(org)
-                        if not check.valid:
-                            outcome = CompanyOutcome(
-                                org_number=org, terminal_state=TerminalState.NOT_APPLICABLE.value,
-                                error=f"invalid organisation number: {check.reason}",
-                                error_code="invalid_organisation_number",
-                            )
-                        elif self.budget.runtime.deadline_reached():
-                            outcome = CompanyOutcome(
-                                org_number=org, terminal_state=TerminalState.FAILED.value,
-                                error="deadline reached before company started",
-                                error_code="deadline_exceeded",
-                            )
-                        elif self.budget.requests.remaining() <= 0:
-                            outcome = CompanyOutcome(
-                                org_number=org, terminal_state=TerminalState.FAILED.value,
-                                error="run request budget exhausted before company started",
-                                error_code="request_budget_exhausted",
-                            )
-                        else:
-                            outcome = await pipeline.research_company(org, run.run_id)
-                    except Exception as error:
-                        logger.exception("research failed for %s", org)
+                    check = validate_orgnr(org)
+                    if not check.valid:
                         outcome = CompanyOutcome(
-                            org_number=org, terminal_state=TerminalState.FAILED.value,
-                            error=f"{type(error).__name__}: {error}", error_code="research_failed",
+                            org_number=org, terminal_state="not_applicable",
+                            error=f"invalid organisation number: {check.reason}",
+                            error_code="invalid_organisation_number",
                         )
-                    # The pipeline normally persists its result. Orchestration errors
-                    # and providers returning outcomes must have complete envelopes too.
-                    if self.repo.get_result(run.run_id, org) is None:
-                        self.repo.save_result(build_result(
-                            outcome, run.run_id, self.budget, run.started_at or utcnow().isoformat()
-                        ))
-                    if (
-                        self.budget.runtime.company_time_exceeded(company_started)
-                        and not self.budget.runtime.deadline_reached()
-                    ):
-                        logger.info("company %s exceeded soft deadline; moving on", org)
-                    self.repo.release_company(run.run_id, org, owner)
+                    elif self.budget.work_time_remaining() <= 0:
+                        outcome = failure(org, "deadline_exceeded", "Deadline reached before company start.")
+                    elif self.budget.requests.remaining() <= 0:
+                        outcome = failure(org, "request_budget_exhausted", "Run request budget exhausted.")
+                    else:
+                        ownership_wait = asyncio.timeout(self.budget.work_time_remaining())
+                        try:
+                            async with ownership_wait:
+                                while not self.repo.try_claim_company(
+                                    run.run_id, org, owner, self.budget.runtime.time_remaining() + 60,
+                                ):
+                                    if self.repo.get_result(run.run_id, org):
+                                        return
+                                    await asyncio.sleep(min(0.05, self.budget.work_time_remaining()))
+                                claimed = True
+                        except TimeoutError:
+                            if not ownership_wait.expired():
+                                raise
+                            outcome = failure(org, "deadline_exceeded", "Deadline waiting for ownership.")
+                        else:
+                            outcome = await acquire(org)
+                    save_if_missing(org, outcome)
+            except asyncio.CancelledError:
+                cancelled = True
+                try:
+                    save_if_missing(org, failure(org, "research_cancelled", "Research execution cancelled."))
+                except Exception:
+                    logger.exception("could not retain cancelled company %s", org)
+                raise
+            except Exception as error:
+                logger.exception("research failed for %s", org)
+                save_if_missing(org, failure(org, "research_failed", f"{type(error).__name__}: {error}"))
+            finally:
+                try:
+                    if claimed:
+                        self.repo.release_company(run.run_id, org, owner)
                     self._checkpoint(run)
+                except Exception:
+                    if not cancelled:
+                        raise
+                    logger.exception("company cancellation cleanup failed for %s", org)
 
-            tasks = [asyncio.create_task(one(c)) for c in pending]
+        tasks = [asyncio.create_task(one(c)) for c in pending]
+        try:
             await asyncio.gather(*tasks)
+        except BaseException as error:
+            interrupted = isinstance(error, asyncio.CancelledError)
+            failed = not interrupted
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
         finally:
-            await pipeline.aclose()
-
-        # finalize: companies never researched (deadline) get a terminal state
-        run.completed_at = utcnow().isoformat()
-        run.state = (
-            RunState.COMPLETED.value
-            if not self.budget.runtime.deadline_reached()
-            else RunState.INTERRUPTED.value
-        )
-        run.request_count = self.budget.requests.total_used
-        run.estimated_cost_usd = round(self.budget.cost.total_used, 6)
-        for c in run.companies:
-            if c not in run.company_states:
-                # deadline hit before this company started
-                run.company_states[c] = TerminalState.FAILED.value
-        self.repo.update_run(run)
-        return run
+            try:
+                # Queued coroutines can be cancelled before entering their body.
+                # Finalize them explicitly, preserving already published envelopes.
+                code = ("research_cancelled" if interrupted
+                        else "run_failed" if failed else "deadline_exceeded")
+                for org in run.companies:
+                    if org not in pending:
+                        save_if_missing(org, failure(
+                            org, "legacy_result_unavailable", "Legacy checkpoint lacks a canonical envelope.",
+                        ))
+                    else:
+                        save_if_missing(org, failure(org, code, "Research stopped before completion."))
+                complete = len(self.repo.get_results(run.run_id)) == len(run.companies)
+                run.completed_at = utcnow().isoformat() if complete else None
+                run.state = (RunState.FAILED.value if failed else RunState.INTERRUPTED.value
+                             if interrupted or self.budget.work_time_remaining() <= 0 or not complete
+                             else RunState.COMPLETED.value)
+                self._checkpoint(run)
+            except Exception:
+                if not interrupted:
+                    raise
+                logger.exception("run cancellation finalization failed for %s", run.run_id)
+            finally:
+                try:
+                    await pipeline.aclose()
+                except Exception:
+                    if not interrupted:
+                        raise
+                    logger.exception("pipeline close failed during cancellation for %s", run.run_id)
+        return self.repo.get_run(run.run_id) or run
 
     def _checkpoint(self, run: ResearchRun) -> None:
         """Persist run state after each company (checkpointing).

@@ -248,10 +248,11 @@ class BudgetManager:
         max_runtime_sec: float = 45 * 60,
         max_cost: float = 10.0,
         per_company_soft_sec: float = 90.0,
+        finalization_reserve_sec: float = 0.0,
     ):
         self.configuration = RunConfiguration(
             max_requests=max_requests, max_runtime_sec=max_runtime_sec, max_cost_usd=max_cost,
-            per_company_sec=per_company_soft_sec,
+            per_company_sec=per_company_soft_sec, finalization_reserve_sec=finalization_reserve_sec,
         )
         self.requests: RequestBudget | PersistentRequestBudget = RequestBudget(global_limit=max_requests)
         self.runtime = RuntimeBudget(
@@ -301,14 +302,18 @@ class BudgetManager:
             )
 
     # -- gates used by the pipeline -----------------------------------------
+    def work_time_remaining(self) -> float:
+        """Acquisition stops before the optional result-finalization reserve."""
+        return max(0.0, self.runtime.time_remaining() - self.configuration.finalization_reserve_sec)
+
     def can_make_request(self) -> bool:
-        return self.requests.remaining() > 0 and not self.runtime.deadline_reached()
+        return self.requests.remaining() > 0 and self.work_time_remaining() > 0
 
     def check(self) -> None:
         """Raise if hard limits hit; pipeline catches and finalizes gracefully."""
         if self.requests.remaining() <= 0:
             raise BudgetExceededError("request budget exhausted")
-        if self.runtime.deadline_reached():
+        if self.work_time_remaining() <= 0:
             raise DeadlineReachedError("runtime deadline reached")
 
     def snapshot(self) -> Dict[str, Any]:

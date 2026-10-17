@@ -67,6 +67,7 @@ def _run_research_blocking(orgnr: str, run_id: str) -> None:
         max_runtime_sec=settings.max_runtime_sec,
         max_cost=settings.max_api_cost_usd,
         per_company_soft_sec=settings.per_company_soft_deadline_sec,
+        finalization_reserve_sec=settings.finalization_reserve_sec,
     )
     runner = BatchRunner(repo, budget)
     loop = asyncio.new_event_loop()

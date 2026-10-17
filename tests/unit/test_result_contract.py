@@ -36,7 +36,10 @@ def test_resume_only_invokes_unfinished_companies(tmp_path, monkeypatch):
     run = ResearchRun(companies=["982463718", "958973306"], started_at=utcnow().isoformat())
     repo.create_run(run)
     BudgetManager().bind_run(repo, run.run_id, initialize=True)
-    repo.mark_company_state(run.run_id, "982463718", "available")
+    repo.save_result(CompanyProfile(
+        run_id=run.run_id, organisation_number="982463718", status="available",
+        company=CompanyIdentity(organisation_number="982463718", legal_name="FIXTURE AS"),
+    ))
     calls = []
 
     async def research(self, org, run_id):

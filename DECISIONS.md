@@ -1,5 +1,25 @@
 # Decision Log — NordTrace
 
+## D-043 — Cancel cooperative acquisition and retain partial results
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: four new tests reproduced company/global overruns, cancellation with no envelopes and continued adapter work after its limit. The old per-company setting was only logged after completion. An explicit finalization reserve existed in the contract but had no effect.
+- Decision/implementation: bound runner and direct pipeline acquisition by the smaller company/run work allowance; gateway uses that same cutoff. FINALIZATION_RESERVE_SEC is explicit, defaults0 for compatibility and must leave acquisition time. Pipeline cancellation finalizes supported ledger/refresh data before propagating; timer outcomes retain specific reasons. Queue fallback preserves every locally unowned unfinished input without starting it. Provider TimeoutError remains an execution error unless the actual timer expired.
+- Application: CLI, API, batch and direct pipeline invocation; frozen budget settings survive resume. Invalid input remains not_applicable. Missing legacy terminal envelopes are explicit failures, including unknown-budget runs.
+- Alternatives: post-hoc logging cannot enforce scheduling; dropping partial ledgers loses valid evidence; classifying every TimeoutError as a deadline invents execution history. Killing a whole process would currently lose its in-memory ledger and is not substituted for cooperative cancellation.
+- Tradeoffs/limits: synchronous DNS/parsing/serialization/disk stalls still lack hard cancellation. Reserve time does not guarantee finalization on a stalled filesystem. SQLite budget lock wait increased from50ms to250ms/remaining deadline after an observed four-connection Windows contention failure; failure remains observable with no transport permission. Process-kill recovery and output-capacity reservation are separate unfinished work.
+- Verification/revisit: test_execution_deadlines.py starts with failing semantic regressions and checks real runner/pipeline persistence. Budget, canonical and API checks exercise adjacent paths. Revisit for isolated untrusted parsers, bounded storage/export and hard release runtime gates; extends D-041/D-042.
+
+## D-044 — Drain workers and enforce result ownership on interruption
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: review reproduced a cancelled follower publishing failure for a live owner, and a checkpoint exception leaving a sibling running after the runner closed its pipeline. A further fixture reproduced resource leakage when fallback result storage failed.
+- Decision/implementation: Repository.save_result checks the current company lease owner within its publication transaction. Runner passes its owner through production persistence and all fallback writes. It cancels and drains its tasks on every exceptional gather exit and releases leases in finally. Pipeline close surrounds the entire finalizer, including fallback storage. External cancellation remains the controlling exception when cleanup storage fails; those failures are logged without claiming durable output. Ordinary storage failures remain exceptions.
+- Application: concurrent run/resume workers, queued tasks and ordinary/external cancellation. A follower leaves a foreign-owned company pending rather than overwriting it. The run has no completed_at while envelopes remain missing; canonical batch cardinality checks reject a falsely complete export. The live owner can later publish its own result.
+- Alternatives: taking over on follower cancellation would cancel unrelated authorized work without coordinated run cancellation; a read-before-write ownership check races with another connection. Silently returning complete would violate input cardinality.
+- Tradeoffs/limits: a cancelled follower cannot independently guarantee all-input terminal output while another owner remains active. Hard-killed worker leases still need generation-based crash recovery; sequential legacy facts/current-company rows are not yet a fully fenced observation transaction. Unwritable storage raises an observable error and cannot promise durable envelopes.
+- Verification/revisit: follower/leader race, checkpoint-error drain, readonly-result-storage cleanup and cancellation masking in both runner/direct pipeline all failed before correction and pass afterward. Revisit with process fencing and durable task skeletons; extends D-021/D-043.
+
 ## D-041 — Freeze and restore durable run request allowances
 
 - Date/status: 2026-10-17, accepted; full cost/scheduler enforcement remains unfinished.

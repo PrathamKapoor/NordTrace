@@ -355,6 +355,12 @@ class RunConfiguration(BaseModel):
     per_company_sec: float = Field(default=90, gt=0)
     finalization_reserve_sec: float = Field(default=0, ge=0)
 
+    @model_validator(mode="after")
+    def reserve_leaves_work_time(self) -> RunConfiguration:
+        if self.finalization_reserve_sec >= self.max_runtime_sec:
+            raise ValueError("finalization reserve must be smaller than run runtime")
+        return self
+
 
 class RunBudgetState(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)

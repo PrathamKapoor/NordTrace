@@ -297,12 +297,12 @@ class RequestGateway:
         try:
             self.budget.check()
             if not self.budget.requests.try_acquire():
-                if self.budget.runtime.deadline_reached():
+                if self.budget.work_time_remaining() <= 0:
                     raise TimeoutError("shared run deadline reached during reservation")
                 raise BudgetExceededError("request budget exhausted")
             reserved = True
             client = await self._get_client()
-            if self.budget.runtime.deadline_reached():
+            if self.budget.work_time_remaining() <= 0:
                 raise TimeoutError("run deadline reached before transport")
             attempted = True
             async with client.stream(
@@ -345,7 +345,7 @@ class RequestGateway:
 
     async def fetch(self, url: str, **kwargs) -> SourceRecord:
         """Bound all waits, retries and body reads by the monotonic run deadline."""
-        remaining = self.budget.runtime.time_remaining()
+        remaining = self.budget.work_time_remaining()
         if remaining > 0:
             try:
                 async with asyncio.timeout(remaining):

@@ -37,11 +37,12 @@ class Settings(BaseSettings):
     llm_price_input_per_m: float = 0.15
     llm_price_output_per_m: float = 0.60
 
-    # --- Budgets (challenge limits) ---
+    # --- Configurable local limits; official run allowances must be supplied ---
     max_requests: int = 2000
     max_runtime_sec: int = 45 * 60
     max_api_cost_usd: float = 10.0
     per_company_soft_deadline_sec: float = 90.0
+    finalization_reserve_sec: float = Field(default=0.0, ge=0)
 
     # --- Crawler limits ---
     max_pages_per_company: int = 8

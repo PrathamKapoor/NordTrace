@@ -38,6 +38,11 @@ from nordtrace.core.models import (
     utcnow,
 )
 
+
+class TaskOwnershipError(RuntimeError):
+    """A competing worker owns this company; it alone may publish its result."""
+
+
 _SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -304,7 +309,7 @@ class Repository:
                 "DELETE FROM company_claims WHERE run_id=? AND result_key=? AND owner=?", (run_id, key, owner)
             )
 
-    def save_result(self, result: CompanyProfile) -> None:
+    def save_result(self, result: CompanyProfile, owner: Optional[str] = None) -> None:
         """Atomically publish an immutable envelope and its terminal checkpoint.
 
         No company FK: invalid, blocked and unregistered inputs remain inspectable.
@@ -314,6 +319,12 @@ class Repository:
         payload = json.dumps(result.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
         with self._lock, self.conn:
             self.conn.execute("BEGIN IMMEDIATE")
+            lease = self.conn.execute(
+                "SELECT owner FROM company_claims WHERE run_id=? AND result_key=?",
+                (result.run_id, result.organisation_number),
+            ).fetchone()
+            if lease is not None and lease["owner"] != owner:
+                raise TaskOwnershipError("result publication belongs to another company worker")
             existing = self.conn.execute(
                 "SELECT payload_json FROM company_results WHERE run_id=? AND result_key=?",
                 (result.run_id, result.organisation_number),
@@ -387,7 +398,7 @@ class Repository:
     @contextmanager
     def _budget_transaction(self, deadline_unix: float) -> Iterator[sqlite3.Connection]:
         """Short bounded lock wait; a slow writer cannot reset/overdraw a budget."""
-        wait = min(0.05, max(0, deadline_unix - time.time()))
+        wait = min(0.25, max(0, deadline_unix - time.time()))
         connection = sqlite3.connect(str(self.db_path), timeout=wait)
         connection.row_factory = sqlite3.Row
         try:

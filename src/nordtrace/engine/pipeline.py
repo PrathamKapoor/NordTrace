@@ -8,8 +8,10 @@ one terminal state.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -44,6 +46,9 @@ from nordtrace.core.request_gateway import RequestGateway
 from nordtrace.core.synthesis import build_summary
 
 logger = logging.getLogger("nordtrace.pipeline")
+_acquisition_deadline: ContextVar[Optional[tuple[asyncio.Timeout, str]]] = ContextVar(
+    "acquisition_deadline", default=None,
+)
 
 
 @dataclass
@@ -73,6 +78,7 @@ class ResearchPipeline:
 
     def __init__(self, repo: Repository, budget: BudgetManager):
         self.repo = repo
+        self.worker_owner: Optional[str] = None
         self.budget = budget
         self.gateway = RequestGateway(budget, repository=repo)
         self.resolver = EntityResolver()
@@ -109,15 +115,38 @@ class ResearchPipeline:
                 error=previous.errors[0].message if previous.errors else None,
                 error_code=previous.errors[0].code if previous.errors else None,
             )
-        outcome = await self._research_company(org_number, run_id)
+        remaining = self.budget.work_time_remaining()
+        deadline_code = ("company_deadline_exceeded" if self.budget.configuration.per_company_sec < remaining
+                         else "deadline_exceeded")
+        deadline = asyncio.timeout(min(self.budget.configuration.per_company_sec, remaining))
+        token = _acquisition_deadline.set((deadline, deadline_code))
+        try:
+            async with deadline:
+                outcome = await self._research_company(org_number, run_id)
+        except TimeoutError:
+            if not deadline.expired():
+                raise
+            # Cancellation finalization retains the real partial ledger before
+            # asyncio converts its cancellation into TimeoutError.
+            if self.repo.get_result(run_id, org_number):
+                return await self.research_company(org_number, run_id)
+            outcome = CompanyOutcome(
+                org_number=org_number, terminal_state="failed", error_code=deadline_code,
+                error="Research acquisition deadline reached.",
+            )
+        finally:
+            _acquisition_deadline.reset(token)
+        self._persist_result(outcome, run_id)
+        return outcome
+
+    def _persist_result(self, outcome: CompanyOutcome, run_id: str) -> None:
         outcome.identity = project_identity(outcome.identity, outcome.conflicts)
         if outcome.identity is not None:
             self.repo.upsert_company(outcome.identity, run_id)
         run = self.repo.get_run(run_id)
         self.repo.save_result(build_result(
             outcome, run_id, self.budget, run.started_at if run and run.started_at else utcnow().isoformat()
-        ))
-        return outcome
+        ), owner=self.worker_owner)
 
     async def _research_company(self, org_number: str, run_id: str) -> CompanyOutcome:
         started = time.monotonic()
@@ -126,6 +155,7 @@ class ResearchPipeline:
         stages: List[str] = []
         registry_payload: Optional[dict] = None
         financials_status = "unknown"
+        cancelled = False
 
         try:
             # 0. validate orgnr format (registry checks registration separately)
@@ -392,26 +422,45 @@ class ResearchPipeline:
                 f"profile completed: {outcome.terminal_state}, {len(current_facts)} published facts",
             )
 
+        except asyncio.CancelledError as cancellation:
+            cancelled = True
+            outcome.terminal_state = TerminalState.FAILED.value
+            active_deadline = _acquisition_deadline.get()
+            outcome.error_code = (active_deadline[1] if active_deadline and active_deadline[0].expired()
+                                  else "research_cancelled")
+            if cancellation.args and cancellation.args[0] in {
+                "deadline_exceeded", "company_deadline_exceeded", "research_cancelled",
+            }:
+                outcome.error_code = cancellation.args[0]
+            outcome.error = "Research interrupted; previously supported observations were retained."
+            raise
         except Exception as e:
             logger.exception("pipeline error for %s", org_number)
             outcome.terminal_state = TerminalState.FAILED.value
             outcome.error = f"{type(e).__name__}: {e}"
             self._trace(run_id, org_number, "error", str(e)[:300], "error")
         finally:
-            if ledger.sources:
-                self._finalize_ledger(outcome, ledger, run_id, financials_status)
-            apply_refresh(self.repo, outcome, run_id)
-            if outcome.changes:
-                stages.append("changes")
-            if outcome.identity is not None:
-                outcome.summary = build_summary(
-                    outcome.identity, ledger, Coverage(states=outcome.coverage), outcome.changes,
-                )
-            notice = stale_notice(outcome)
-            if notice:
-                outcome.summary = " ".join(filter(None, [outcome.summary, notice]))
-            outcome.stages = stages
-            outcome.duration_sec = time.monotonic() - started  # type: ignore
+            try:
+                if ledger.sources:
+                    self._finalize_ledger(outcome, ledger, run_id, financials_status)
+                apply_refresh(self.repo, outcome, run_id)
+                if outcome.changes:
+                    stages.append("changes")
+                if outcome.identity is not None:
+                    outcome.summary = build_summary(
+                        outcome.identity, ledger, Coverage(states=outcome.coverage), outcome.changes,
+                    )
+                notice = stale_notice(outcome)
+                if notice:
+                    outcome.summary = " ".join(filter(None, [outcome.summary, notice]))
+                outcome.stages = stages
+                outcome.duration_sec = time.monotonic() - started  # type: ignore
+                if cancelled:
+                    self._persist_result(outcome, run_id)
+            except Exception:
+                if not cancelled:
+                    raise
+                logger.exception("could not retain interrupted pipeline result for %s", org_number)
         return outcome
 
     # ------------------------------------------------------------------ helpers
