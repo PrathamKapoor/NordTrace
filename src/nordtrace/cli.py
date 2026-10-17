@@ -3,7 +3,7 @@
 python -m nordtrace research <orgnr> [--output FILE]
 python -m nordtrace batch <csv> [--concurrency N] [--resume RUN_ID]
 python -m nordtrace resume <run_id>
-python -m nordtrace benchmark [--orgnr-file FILE | --fixture]
+python -m nordtrace benchmark --orgnr-file FILE
 python -m nordtrace validate <result-file>
 python -m nordtrace serve [--port N]
 """
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hashlib
 import json
 import logging
 import math
@@ -325,31 +326,57 @@ def resume(ctx, run_id: str):
 
 @cli.command()
 @click.option(
-    "--orgnr-file", type=click.Path(exists=True), default=None, help="CSV/TXT of orgnrs to benchmark"
+    "--orgnr-file", type=click.Path(exists=True, dir_okay=False), required=True,
+    help="Supplied reproducible CSV/TXT/JSONL organisation-number sample",
 )
-@click.option("--limit", type=int, default=10, help="Max companies for live benchmark")
+@click.option("--input-format", type=click.Choice(["auto", "csv", "jsonl"]), default="auto")
+@click.option("--limit", type=click.IntRange(min=1), default=None,
+              help="Explicitly select first N input occurrences; default processes every supplied input")
 @click.option("--output", type=str, default="benchmark_result.json")
 @click.pass_context
-def benchmark(ctx, orgnr_file: Optional[str], limit: int, output: str):
-    """Benchmark harness. Uses real organisations if a file is given;
-    otherwise fetches live companies from the registry."""
+def benchmark(ctx, orgnr_file: str, input_format: str, limit: Optional[int], output: str):
+    """Measure canonical output and limits on an explicit sample; no implicit discovery."""
     from nordtrace.benchmark import BenchmarkHarness
 
+    if Path(output).resolve() == Path(orgnr_file).resolve():
+        raise click.UsageError("Report and supplied input must use different paths")
+    try:
+        with open(orgnr_file, "rb") as supplied:
+            input_hash = hashlib.file_digest(supplied, "sha256").hexdigest()
+    except OSError as error:
+        raise click.ClickException(f"Cannot hash supplied input: {error}") from error
+    orgs = _read_batch_inputs(orgnr_file, input_format)
+    if not orgs:
+        raise click.UsageError("Nothing to research")
+    supplied_count = len(orgs)
+    if limit is not None:
+        orgs = orgs[:limit]
+    try:
+        with open(orgnr_file, "rb") as supplied:
+            final_hash = hashlib.file_digest(supplied, "sha256").hexdigest()
+    except OSError as error:
+        raise click.ClickException(f"Cannot recheck supplied input: {error}") from error
+    if final_hash != input_hash:
+        raise click.ClickException("Supplied input changed during parsing; no research started")
     repo = _repo()
     harness = BenchmarkHarness(repo)
     try:
-        if orgnr_file:
-            orgs = _read_csv(orgnr_file)[:limit]
-        else:
-            click.echo("No orgnr file given — fetching live companies from Brreg search...")
-            orgs = asyncio.run(harness.fetch_live_companies(limit))
         click.echo(f"Benchmarking {len(orgs)} companies...")
         report = asyncio.run(harness.evaluate_batch(orgs))
+        results = repo.get_results(report["run_id"])
     finally:
         repo.close()
-    Path(output).write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    report["selection"] = {"supplied_input_count": supplied_count, "selected_input_count": len(orgs),
+                           "policy": "all_inputs" if limit is None else "explicit_first_n", "limit": limit,
+                           "excluded_input_indices": list(range(len(orgs), supplied_count)),
+                           "input_file_sha256": input_hash}
+    write_json_atomic(output, report)
     _print_benchmark(report)
     click.echo(f"\nReport written to {output}")
+    invalid_measurement = report["support_validation"]["failures"] or not all(
+        report["budgets"][key] for key in ("requests_ok", "cost_ok", "runtime_ok")
+    )
+    ctx.exit(1 if invalid_measurement else _result_exit_code(results))
 
 
 def _print_benchmark(report: dict) -> None:
@@ -357,8 +384,10 @@ def _print_benchmark(report: dict) -> None:
     click.echo(f"Completion: {report.get('completed')}/{report.get('batch_size')}")
     click.echo(f"Entity resolved: {report.get('entity_resolved')}/{report.get('batch_size')}")
     click.echo(f"Ambiguous: {report.get('ambiguous')} | Failed: {report.get('failed')}")
-    click.echo(f"Verified facts: {report.get('total_facts')} | Evidence: {report.get('total_evidence')}")
-    click.echo(f"Rejected sources: {report.get('total_rejected')}")
+    click.echo(f"Supported claims: {report.get('total_supported_claims')} | "
+               f"Evidence: {report.get('total_evidence')}")
+    click.echo(f"Non-registry supported claims: {report.get('total_external_supported_claims')}")
+    click.echo(f"Rejected candidates: {report.get('total_rejected')}")
     click.echo(
         f"Requests: {b.get('requests_used')}/{b.get('requests_limit')} | "
         f"Cost: ${b.get('cost_used', 0):.4f}/${b.get('cost_limit')} | "
@@ -369,8 +398,7 @@ def _print_benchmark(report: dict) -> None:
         f"cost={'OK' if b.get('cost_ok') else 'EXCEEDED'}, "
         f"runtime={'OK' if b.get('runtime_ok') else 'EXCEEDED'}"
     )
-    correctness = report.get("correctness", {})
-    click.echo(f"Correctness: {json.dumps(correctness)}")
+    click.echo("Independent accuracy: not measured (no adjudicated reference)")
 
 
 @cli.command()

@@ -1,5 +1,7 @@
 # Implementation status — 2026-10-16
 
+Benchmark correction 2026-10-18: `benchmark --orgnr-file FILE` now requires an explicit CSV/JSONL sample and processes every occurrence by default. Optional --limit records excluded indices. Completion includes all terminal envelopes; availability and supported identity resolution are separate. Registry claims cannot inflate non-registry counts, and independent accuracy/recall remain unmeasured. Old brand-based discovery is disabled; historical benchmark numbers below are not validated release measurements.
+
 Verification 2026-10-18: full572passed/8live excluded247.45s at the portable-export boundary; final telemetry correction passed33export/budget and43budget/deadline checks plus review. Ruff/mypy33sourcefiles pass. Full release gates remain incomplete; see docs/verification.md for exact scope and synthetic100/1000 artifact limitations.
 
 Portable local audit: `python -m nordtrace.cli batch companies.jsonl --bundle data/audit.zip` retains canonical JSONL envelopes, source bytes, local schema and completion manifest. Verify without database/network: `python -m nordtrace.cli verify-bundle data/audit.zip`. Export a completed run: `python -m nordtrace.cli export-run RUN_ID --output data/audit.zip`. Existing files are preserved; use a new path, distinct from --output JSON. Uncompressed capacity defaults256MiB; configure --export-max-bytes (batch) or --max-bytes (export/verify). Acquisition checkpoints remain SQLite; portable export follows terminal results. The archive also contains starter-example.jsonl, an explicitly local projection of the public example with claim references/qualifiers and structured locators. Registry-listed websites stay registered_website; structured claim_span and unmeasured per-company costs/requests remain null. Source redistribution rights and exact organizer acceptance remain unverified.
@@ -141,8 +143,8 @@ python -m nordtrace.cli batch companies.csv --concurrency 4
 # Resume an interrupted batch
 python -m nordtrace.cli resume <run_id>
 
-# Benchmark (live companies from registry search)
-python -m nordtrace.cli benchmark --limit 10
+# Operational benchmark of every supplied input (real acquisition for valid orgnrs)
+python -m nordtrace.cli benchmark --orgnr-file companies.jsonl --output data/benchmark.json
 
 # Validate a result file
 python -m nordtrace.cli validate result.json
@@ -198,7 +200,7 @@ Example output (abridged, real):
 | Live CLI research | `python -m nordtrace.cli research 982463718` | **available**, 23 facts, 13 requests, $0.00, ~20s |
 | Frontend flow | browser automation | research → identity → facts → evidence drawer → trace, all real data |
 
-### 100-company live benchmark (executed, after coverage maximization)
+### Historical pre-repair 100-company benchmark (not validated under current rules)
 
 | Metric | Result |
 |---|---|
@@ -294,8 +296,8 @@ Decision log: `DECISIONS.md` · Execution flow: `FLOW.md` · Session changes:
   alternatives, and evidence (`DECISIONS.md`).
 - **Execution flow** — function-level call chains, data lifecycle, failure
   flow, and implemented decision logic (`FLOW.md`).
-- **Reproducible benchmark** — companies fetched live at runtime; no
-  hard-coded orgnrs; fresh database per run (`BENCHMARK.md`).
+- **Operational benchmark** — explicit supplied inputs, canonical outcomes,
+  retained-support checks and whole-run telemetry; independent accuracy needs adjudicated labels.
 
 ## License
 

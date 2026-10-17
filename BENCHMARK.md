@@ -1,3 +1,7 @@
+# Superseding benchmark semantics — 2026-10-18
+
+The historical report below is preserved but is not current release evidence. D-056 removes implicit brand search and its separate budget, counts all canonical terminal envelopes as completed, requires snapshot-supported legal-name identity resolution, and separates registry output from non-registry output. Independent accuracy/recall are unmeasured. Run `python -m nordtrace.cli benchmark --orgnr-file companies.jsonl --output data/benchmark.json` on an explicit reproducible sample. Default consumes all input occurrences; explicit --limit records exclusions. See docs/verification.md and docs/implementation-tracker.md for current measurements and missing population/adjudication/live100 work.
+
 # Benchmark Methodology
 
 ## Purpose
