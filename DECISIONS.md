@@ -1,5 +1,15 @@
 # Decision Log — NordTrace
 
+## D-047 — Project company values from supported atomic claims
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: retained registry JSON containing boolean capital and share count was converted by the acquisition DTO to monetary1.0/one share without corresponding supported facts. Parser-drift fixtures also exposed unsupported employee counts and legal names through the structured company and summary even though the claim gate withheld them.
+- Decision/implementation: core.contracts.project_identity receives the published identity facts and projects only same-subject, legal-entity, scalar identity predicates. Their accepted values control the projection; absent support clears a business field and records previously populated fields as unresolved. Required legacy name/status fields use empty/unknown placeholders. Pipeline projects before the initial current-company write and final persistence; build_result applies the same rule. Synthesis obtains the legal name from the ledger, with an unresolved-name placeholder when absent.
+- Application: newly built canonical CLI/API/batch results and current company rows, including partial failures. Raw acquisition identity remains local for discovery; retained source content is unchanged. Historical envelopes remain frozen and readable under their existing schema.
+- Alternatives: trusting parsed fields bypasses locator/value verification. Adding capital facts without Decimal/currency/scale semantics would publish unsupported money. A strict new DTO validator would break historical envelope reads. These fields can be restored individually when proper typed extraction/support rules exist.
+- Tradeoffs/limits: less structured registry detail is exposed until conversion; this is publication safety, not an external-coverage gain. The helper retains its conflict-only mode for existing isolated callers without a fact list; production always supplies one. This does not complete immutable observation transactions or authenticate arbitrary caller-created Fact objects outside the production ledger.
+- Verification/revisit: test_identity_projection.py uses real pipeline acquisition, capture/locator validation and SQLite for boolean capital, supported zero, parser drift, intermediate current rows, idempotence, accepted-value precedence and frozen results. Review reproduced an independently supported municipality being cleared by missing full-address support; dependency withholding now applies to actual conflicts separately. Four projection and seven conflict cases pass. Revisit when new identity predicates acquire supported typed rules; extends D-033/D-036/D-046.
+
 ## D-046 — Bind registry identity authority to captured official acquisition
 
 - Date/status: 2026-10-17, accepted.

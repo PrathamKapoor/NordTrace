@@ -142,7 +142,7 @@ class ResearchPipeline:
         return outcome
 
     def _persist_result(self, outcome: CompanyOutcome, run_id: str) -> None:
-        outcome.identity = project_identity(outcome.identity, outcome.conflicts)
+        outcome.identity = project_identity(outcome.identity, outcome.conflicts, outcome.facts)
         if outcome.identity is not None:
             self.repo.upsert_company(outcome.identity, run_id)
         run = self.repo.get_run(run_id)
@@ -216,7 +216,11 @@ class ResearchPipeline:
             for fact in identity_facts:
                 ledger.add_fact(fact)
             self._trace(run_id, org_number, "identity", f"registry identity resolved: {ident.legal_name}")
-            self.repo.upsert_company(ident, run_id)
+            published_identity = project_identity(
+                ident, ledger.conflicting_facts(org_number), ledger.published_facts(org_number),
+            )
+            if published_identity is not None:
+                self.repo.upsert_company(published_identity, run_id)
 
             # Registered subunits are relationships, not separate target legal identities.
             if acquisition_allowed("branches"):

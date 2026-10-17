@@ -24,10 +24,11 @@ def build_summary(
 
     # 1. what the company does
     desc = _latest(ledger, org, "business_description", "description")
-    if any(fact.field == "legal_name" for fact in conflicts):
+    verified_name = _latest(ledger, org, "identity", "legal_name")
+    if verified_name is None:
         parts.append(f"Organisation {org} (legal name unresolved)")
     else:
-        parts.append(f"{identity.legal_name} (orgnr {org})")
+        parts.append(f"{verified_name.value} (orgnr {org})")
     if desc is not None and getattr(desc, "value", None):
         parts.append(f"What it does: {desc.value}")
     elif isinstance(desc, str):

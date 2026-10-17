@@ -40,8 +40,10 @@ def map_inputs(values: list[str]) -> list[InputMapping]:
     ]
 
 
-def project_identity(identity: CompanyIdentity | None, conflicts: list[Fact]) -> CompanyIdentity | None:
-    """Withhold disputed structured values without changing the acquisition anchor.
+def project_identity(
+    identity: CompanyIdentity | None, conflicts: list[Fact], facts: list[Fact] | None = None,
+) -> CompanyIdentity | None:
+    """Expose supported structured values without changing the acquisition anchor.
 
     The required legacy legal_name string uses empty string for unresolved names.
     unresolved_fields distinguishes this from a successfully verified blank value.
@@ -49,15 +51,34 @@ def project_identity(identity: CompanyIdentity | None, conflicts: list[Fact]) ->
     if identity is None:
         return None
     fields = set(identity.unresolved_fields)
+    updates: dict[str, Any] = {}
+    if facts is not None:
+        supported = {fact.field: fact for fact in facts
+                     if fact.org_number == identity.organisation_number and fact.category == "identity"
+                     and fact.status == "PUBLISHED" and fact.subject_scope == "legal_entity"
+                     and fact.item_key is None}
+        metadata = {"organisation_number", "last_verified_at", "unresolved_fields"}
+        for field in CompanyIdentity.model_fields.keys() - metadata:
+            if field in supported:
+                updates[field] = supported[field].value
+                fields.discard(field)
+            else:
+                previous = getattr(identity, field)
+                if previous is not None and previous != "" and previous != "unknown":
+                    fields.add(field)
+                updates[field] = "" if field == "legal_name" else "unknown" if field == "status" else None
+    disputed_fields = set()
     for fact in conflicts:
         if fact.org_number == identity.organisation_number and fact.category == "identity":
             if fact.field in CompanyIdentity.model_fields and fact.field != "organisation_number":
                 fields.add(fact.field)
-    if "registered_address" in fields:
+                disputed_fields.add(fact.field)
+    dependencies = fields if facts is None else disputed_fields
+    if "registered_address" in dependencies:
         fields.update(("municipality", "postal_code"))
-    if "status" in fields:
+    if "status" in dependencies:
         fields.update(("bankrupt", "under_liquidation", "deleted_date"))
-    updates: dict[str, Any] = dict.fromkeys(fields)
+    updates.update(dict.fromkeys(fields))
     if "legal_name" in fields:
         updates["legal_name"] = ""
     if "status" in fields:
@@ -83,7 +104,7 @@ def build_result(outcome: Any, run_id: str, budget: BudgetManager, started_at: s
             "blocked": "research_blocked", "not_applicable": "research_not_applicable",
             "ambiguous": "research_ambiguous", "failed": "research_failed",
         }.get(outcome.terminal_state, "unrecognized_terminal_outcome")),
-        company=project_identity(outcome.identity, getattr(outcome, "conflicts", [])),
+        company=project_identity(outcome.identity, getattr(outcome, "conflicts", []), outcome.facts),
         facts=outcome.facts, evidence=outcome.evidence,
         conflicts=getattr(outcome, "conflicts", []),
         last_known=getattr(outcome, "last_known", []),
