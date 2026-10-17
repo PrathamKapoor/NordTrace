@@ -14,12 +14,19 @@ are simply absent, and 404s produce not_found terminal states upstream.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
-from nordtrace.core.evidence import IDENTITY_PATHS, normalize_registry_value, resolve_pointer
+from nordtrace.core.evidence import (
+    IDENTITY_PATHS,
+    normalize_registry_value,
+    normalize_subunit,
+    resolve_pointer,
+)
 from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
@@ -56,6 +63,18 @@ ROLE_LABELS_NO = {
     "AREV": "revisor (godkjent)",
     "FREP": "revisor (regnskapsfører)",
 }
+
+
+@dataclass
+class BranchResult:
+    evidence: List[EvidenceRecord] = dc_field(default_factory=list)
+    facts: List[Fact] = dc_field(default_factory=list)
+    sources: List[SourceRecord] = dc_field(default_factory=list)
+    rejected: List[dict] = dc_field(default_factory=list)
+    page_states: Dict[str, str] = dc_field(default_factory=dict)
+    state: str = "not_available"
+    completeness: str = "unknown"
+    reason: str = "No subunit acquisition completed."
 
 
 def _address_line(addr: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -96,6 +115,7 @@ class BrregAdapter:
             authority_tier=0,
             allowed_domains=[urlsplit(url).hostname or ""],
             allowed_schemes=[urlsplit(url).scheme],
+            allowed_origins=[f"{urlsplit(url).scheme}://{urlsplit(url).netloc}"],
         )
         if source.access_status != "success":
             hint = {
@@ -256,6 +276,7 @@ class BrregAdapter:
             authority_tier=0,
             allowed_domains=[urlsplit(url).hostname or ""],
             allowed_schemes=[urlsplit(url).scheme],
+            allowed_origins=[f"{urlsplit(url).scheme}://{urlsplit(url).netloc}"],
         )
         if source.access_status != "success":
             return [], [], source
@@ -348,6 +369,7 @@ class BrregAdapter:
             authority_tier=0,
             allowed_domains=[urlsplit(url).hostname or ""],
             allowed_schemes=[urlsplit(url).scheme],
+            allowed_origins=[f"{urlsplit(url).scheme}://{urlsplit(url).netloc}"],
         )
         if source.access_status != "success":
             if source.http_status == 404:
@@ -445,71 +467,129 @@ class BrregAdapter:
     # ------------------------------------------------------------------ branches
     async def fetch_underenheter(
         self, org_number: str, run_id: str
-    ) -> Tuple[List[EvidenceRecord], List[Fact], Optional[SourceRecord]]:
-        """Branch units (underenheter) — locations facts."""
-        url = f"{settings.brreg_base_url}/underenheter?overordnetEnhet={org_number}&size=20"
-        source = await self.gateway.fetch(
-            url,
-            stage="locations",
-            company=org_number,
-            source_type=self.source_type,
-            authority_tier=0,
-            allowed_domains=[urlsplit(url).hostname or ""],
-            allowed_schemes=[urlsplit(url).scheme],
-        )
-        if source.access_status != "success":
-            return [], [], source
-        cached = self.gateway.get_content(source.url or "")
-        try:
-            import json
+    ) -> BranchResult:
+        """Bounded pages of explicit parent→registered-subunit relationships.
 
-            data = json.loads(cached.text if cached else "")
-        except ValueError:
-            return [], [], source
-
-        evidences: List[EvidenceRecord] = []
-        facts: List[Fact] = []
-        now = utcnow().isoformat()
-        for unit in (data.get("_embedded") or {}).get("underenheter", []):
-            u_orgnr = unit.get("organisasjonsnummer")
-            u_name = unit.get("navn", "")
-            addr = unit.get("forretningsadresse") or unit.get("postadresse") or {}
-            municipality = addr.get("kommune")
-            ev = EvidenceRecord(
-                source_id=source.source_id,
-                url=source.url,
-                source_title="Brønnøysundregistrene — Underenheter",
-                source_type=self.source_type,
-                authority_tier=0,
-                retrieved_at=source.retrieved_at,
-                evidence_text=f"Underenhet {u_name} (orgnr {u_orgnr}) i {municipality or 'ukjent kommune'}",
-                content_hash=source.content_hash,
-                entity_verdict=MatchVerdict.VERIFIED.value,
-                org_number=org_number,
-                entity_match_details={"underenhet": u_orgnr},
+        Construct page URLs ourselves; downloaded links have no execution authority.
+        Already supported records survive incomplete pagination.
+        """
+        result = BranchResult()
+        target = validate_orgnr(org_number)
+        if not target.valid:
+            result.state, result.reason = "ambiguous", "Invalid parent organisation number."
+            return result
+        seen: Dict[str, dict] = {}
+        totals = None
+        raw_count = 0
+        for number in range(settings.brreg_branch_max_pages):
+            if not self.budget.can_make_request():
+                result.state, result.reason = "blocked", "Budget/deadline stopped subunit pagination."
+                break
+            query = urlencode({"overordnetEnhet": target.value, "size": settings.brreg_branch_page_size,
+                               "page": number, "sort": "organisasjonsnummer,ASC"})
+            url = f"{settings.brreg_base_url}/underenheter?{query}"
+            source = await self.gateway.fetch(
+                url, stage="locations", company=target.value, source_type=self.source_type, authority_tier=0,
+                allowed_domains=[urlsplit(url).hostname or ""], allowed_schemes=[urlsplit(url).scheme],
+                allowed_origins=[f"{urlsplit(url).scheme}://{urlsplit(url).netloc}"],
             )
-            evidences.append(ev)
-            facts.append(
-                Fact(
-                    org_number=org_number,
-                    run_id=run_id,
-                    category="locations",
-                    field="branch",
-                    item_key=u_orgnr,
-                    subject_scope="legal_entity",  # The parent has this identified subunit.
-                    value={
-                        "orgnr": u_orgnr,
-                        "name": u_name,
-                        "municipality": municipality,
-                        "industry": (unit.get("naeringskode1") or {}).get("beskrivelse"),
-                    },
-                    normalized_value=f"{u_orgnr}:{municipality}",
-                    source_id=source.source_id,
-                    evidence_id=ev.evidence_id,
-                    retrieved_at=now,
-                    entity_verdict=MatchVerdict.VERIFIED.value,
-                    fact_confidence=0.95,
-                    status=FactStatus.PUBLISHED.value,
+            result.sources.append(source)
+            result.page_states[source.source_id] = "available"
+            if source.access_status != "success":
+                result.state = "blocked" if source.access_status in (
+                    "blocked", "robots_denied", "rate_limited",
+                ) else "failed"
+                if source.http_status in (404, 410):
+                    result.state = "not_available"
+                result.reason = source.error_detail or "Subunit page acquisition failed."
+                result.page_states[source.source_id] = result.state
+                break
+            cached = self.gateway.get_content(source.url or "")
+            try:
+                data = json.loads(cached.text if cached else "")
+                embedded = data.get("_embedded", {})
+                units = embedded.get("underenheter", [])
+                if not isinstance(units, list):
+                    raise ValueError("subunit collection must be a list")
+            except (ValueError, AttributeError):
+                result.state, result.reason = "failed", "Subunit response schema/JSON invalid."
+                result.page_states[source.source_id] = "failed"
+                break
+            raw_count += len(units)
+            metadata = data.get("page")
+            declared_size = metadata.get("size") if isinstance(metadata, dict) else None
+            if (len(units) > settings.brreg_branch_page_size or
+                    (type(declared_size) is int and declared_size > settings.brreg_branch_page_size)):
+                result.state, result.reason = "failed", "Response exceeds configured subunit page size."
+                result.page_states[source.source_id] = "failed"
+                break
+            for index, raw in enumerate(units):
+                try:
+                    value = normalize_subunit(raw)
+                    if value["parent_orgnr"] != target.value:
+                        raise ValueError("subunit record belongs to another parent")
+                except (ValueError, TypeError) as error:
+                    result.page_states[source.source_id] = "ambiguous"
+                    result.rejected.append({"source_id": source.source_id, "index": index,
+                                            "reason": str(error)})
+                    continue
+                item = value["orgnr"]
+                if item in seen:
+                    result.page_states[source.source_id] = "ambiguous"
+                    result.rejected.append({"source_id": source.source_id, "index": index,
+                                            "reason": "Repeated subunit across pagination."})
+                    if value == seen[item]:
+                        continue
+                seen[item] = value
+                evidence = EvidenceRecord(
+                    source_id=source.source_id, url=source.url,
+                    source_title="Brønnøysundregistrene — Underenheter", source_type=self.source_type,
+                    authority_tier=0, retrieved_at=source.retrieved_at,
+                    evidence_text=json.dumps(raw, ensure_ascii=False, sort_keys=True),
+                    content_hash=source.content_hash, entity_verdict=MatchVerdict.VERIFIED.value,
+                    org_number=target.value,
+                    locator=JsonPointerLocator(pointer=f"/_embedded/underenheter/{index}", raw_value=raw,
+                                               normalization="brreg-subunit-v1"),
+                    entity_match_details={"underenhet": item, "overordnetEnhet": value["parent_orgnr"]},
                 )
-            )
-        return evidences, facts, source
+                result.evidence.append(evidence)
+                result.facts.append(Fact(
+                    org_number=target.value, run_id=run_id, category="locations", field="branch",
+                    item_key=item, subject_scope="legal_entity", value=value, normalized_value=value,
+                    source_id=source.source_id, evidence_id=evidence.evidence_id,
+                    retrieved_at=source.retrieved_at, entity_verdict=MatchVerdict.VERIFIED.value,
+                    fact_confidence=0.99,
+                ))
+            metadata = data.get("page")
+            if (not isinstance(metadata, dict) or any(type(metadata.get(key)) is not int for key in (
+                "number", "size", "totalElements", "totalPages",
+            )) or metadata["number"] != number or metadata["size"] <= 0
+                    or metadata["totalPages"] < 0 or metadata["totalElements"] < 0):
+                result.state, result.reason = "failed", "Subunit pagination metadata invalid."
+                result.page_states[source.source_id] = "failed"
+                break
+            expected_pages = (metadata["totalElements"] + metadata["size"] - 1) // metadata["size"]
+            if (len(units) > metadata["size"] or
+                    metadata["totalPages"] not in ({0, 1} if expected_pages == 0 else {expected_pages})):
+                result.state, result.reason = "failed", "Subunit page counts are inconsistent."
+                result.page_states[source.source_id] = "failed"
+                break
+            current_totals = (metadata["totalElements"], metadata["totalPages"], metadata["size"])
+            if totals is not None and totals != current_totals:
+                result.state, result.reason = "ambiguous", "Subunit pagination changed during acquisition."
+                result.page_states[source.source_id] = "ambiguous"
+                break
+            totals = current_totals
+            if number + 1 >= metadata["totalPages"]:
+                if raw_count != metadata["totalElements"] or result.rejected:
+                    result.state = "ambiguous"
+                    result.reason = "Subunit collection incomplete or rejected records."
+                    break
+                result.completeness = "complete"
+                result.state = "available" if result.facts else "not_available"
+                result.reason = "All reported subunit pages traversed and parent mappings validated."
+                return result
+        else:
+            result.state, result.reason = "blocked", "Configured subunit page limit reached."
+        result.completeness = "partial" if result.sources else "unknown"
+        return result

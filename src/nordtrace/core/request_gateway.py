@@ -86,6 +86,7 @@ class SSRFError(ValueError):
 
 def validate_url(
     url: str, allowed_domains: Optional[List[str]] = None, allowed_schemes: Optional[List[str]] = None,
+    allowed_origins: Optional[List[str]] = None,
 ) -> Tuple[str, str]:
     """Validate + normalize a URL. Raises SSRFError on unsafe targets."""
     if not url or not isinstance(url, str):
@@ -100,6 +101,21 @@ def validate_url(
     host = (parsed.hostname or "").lower().strip(".")
     if not host:
         raise SSRFError("missing host")
+    try:
+        port = parsed.port
+        if port == 0:
+            raise ValueError("zero port")
+        if allowed_origins is not None:
+            default_ports = {"https": 443, "http": 80}
+            permitted = []
+            for candidate in allowed_origins:
+                origin = urlparse(candidate)
+                permitted.append((origin.scheme, origin.hostname,
+                                  origin.port or default_ports[origin.scheme]))
+            if (parsed.scheme, host, port or default_ports[parsed.scheme]) not in permitted:
+                raise SSRFError("URL origin outside source policy")
+    except (ValueError, KeyError) as error:
+        raise SSRFError(f"invalid port/origin policy: {error}") from error
     if host in _PRIVATE_HOST_HINTS:
         raise SSRFError(f"host {host!r} is blocked")
     # All numeric host forms (decimal/octal/hex IPv4) are blocked as raw IPs
@@ -127,7 +143,6 @@ def validate_url(
             raise SSRFError(f"host {host!r} outside allowed domains")
     # Normalize: lowercase scheme+host, strip fragments/default ports, keep query
     scheme = parsed.scheme.lower()
-    port = parsed.port
     default_port = {"https": 443, "http": 80}[scheme]
     netloc = f"{host}:{port}" if port and port != default_port else host
     path = parsed.path or "/"
@@ -212,7 +227,8 @@ class RequestGateway:
         self.rate_limiter = rate_limiter or RateLimiter()
         self._cache: Dict[str, CachedResponse] = {}
         self._robots: Dict[
-            tuple[str, Optional[tuple[str, ...]], Optional[tuple[str, ...]]], RobotsCacheEntry
+            tuple[str, Optional[tuple[str, ...]], Optional[tuple[str, ...]], Optional[tuple[str, ...]]],
+            RobotsCacheEntry,
         ] = {}
         self._client: Optional[httpx.AsyncClient] = None
         self._inflight: Dict[str, float] = {}
@@ -235,6 +251,7 @@ class RequestGateway:
         self, url: str, *, company: Optional[str] = None,
         allowed_domains: Optional[List[str]] = None,
         allowed_schemes: Optional[List[str]] = None,
+        allowed_origins: Optional[List[str]] = None,
     ) -> bool:
         if not settings.respect_robots:
             return True
@@ -243,6 +260,7 @@ class RequestGateway:
         key = (
             base, tuple(sorted(allowed_domains)) if allowed_domains is not None else None,
             tuple(sorted(allowed_schemes)) if allowed_schemes is not None else None,
+            tuple(sorted(allowed_origins)) if allowed_origins is not None else None,
         )
         entry = self._robots.get(key)
         if entry is None or time.time() - entry.fetched_at > self.cache_ttl:
@@ -251,6 +269,7 @@ class RequestGateway:
                 robots_url, stage="robots", company=company, max_bytes=128 * 1024,
                 retries=0, respect_robots=False, allowed_domains=allowed_domains,
                 allowed_schemes=allowed_schemes,
+                allowed_origins=allowed_origins,
             )
             parser = robotparser.RobotFileParser()
             cached = self.get_content(robots_url)
@@ -336,6 +355,7 @@ class RequestGateway:
         max_bytes: Optional[int] = None, cache_ttl_override: Optional[float] = None,
         respect_robots: bool = False, allowed_domains: Optional[List[str]] = None, retries: int = 2,
         allowed_schemes: Optional[List[str]] = None,
+        allowed_origins: Optional[List[str]] = None,
     ) -> SourceRecord:
         self.budget.check()
         chain: List[str] = []
@@ -351,17 +371,18 @@ class RequestGateway:
             )
 
         try:
-            clean, host = validate_url(url, allowed_domains, allowed_schemes)
+            clean, host = validate_url(url, allowed_domains, allowed_schemes, allowed_origins)
             url = current = clean
             chain = [clean]
             ttl = self.cache_ttl if cache_ttl_override is None else cache_ttl_override
             cached = self._cache.get(clean)
             if cached and cached.age_sec() < ttl:
                 for cached_hop in cached.redirect_chain or [clean]:
-                    validate_url(cached_hop, allowed_domains, allowed_schemes)
+                    validate_url(cached_hop, allowed_domains, allowed_schemes, allowed_origins)
                     if respect_robots and not await self._robots_allows(
                         cached_hop, company=company, allowed_domains=allowed_domains,
                         allowed_schemes=allowed_schemes,
+                        allowed_origins=allowed_origins,
                     ):
                         return record("robots_denied", "robots policy denied or unavailable")
                 source = self._source_from_cache(cached, source_type, authority_tier, company, clean)
@@ -373,10 +394,13 @@ class RequestGateway:
                 current = clean
                 chain = [clean]
                 for hop in range(settings.max_redirects + 1):
-                    current, hop_host = validate_url(current, allowed_domains, allowed_schemes)
+                    current, hop_host = validate_url(
+                        current, allowed_domains, allowed_schemes, allowed_origins,
+                    )
                     if respect_robots and not await self._robots_allows(
                         current, company=company, allowed_domains=allowed_domains,
                         allowed_schemes=allowed_schemes,
+                        allowed_origins=allowed_origins,
                     ):
                         return record("robots_denied", "robots policy denied or unavailable")
                     try:
@@ -398,7 +422,7 @@ class RequestGateway:
                         if not location or hop == settings.max_redirects:
                             return record("failed", "redirect limit reached or missing Location", response)
                         current, _ = validate_url(
-                            urljoin(current, location), allowed_domains, allowed_schemes
+                            urljoin(current, location), allowed_domains, allowed_schemes, allowed_origins
                         )
                         if current in chain:
                             return record("failed", "redirect loop", response)

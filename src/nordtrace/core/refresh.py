@@ -36,8 +36,12 @@ def apply_refresh(repo: Repository, outcome: CompanyOutcome, run_id: str) -> Non
     current_sources = {source.source_id: source for source in outcome.sources}
     supported_sources = {fact.source_id for fact in outcome.facts}
     conflicting_sources = {fact.source_id for fact in outcome.conflicts}
+    producer_outcomes = {item.source_id: item for item in outcome.refresh_outcomes if item.source_id}
     attempts = []
     for source in current_sources.values():
+        if source.source_id in producer_outcomes:
+            attempts.append(producer_outcomes[source.source_id])
+            continue
         state = {"blocked": "blocked", "robots_denied": "blocked", "not_found": "not_available",
                  "discovered": "not_available"}.get(source.access_status, "failed")
         if source.http_status in (404, 410):
@@ -57,6 +61,11 @@ def apply_refresh(repo: Repository, outcome: CompanyOutcome, run_id: str) -> Non
             "source_id": source.source_id, "state": state, "observed_at": now, "reason": reason,
         }))
     outcome.refresh_outcomes = attempts
+    for attempt in attempts:
+        if outcome.coverage.get(attempt.family) in (None, "not_found", "not_available"):
+            outcome.coverage[attempt.family] = (
+                "not_available" if attempt.state == "available" else attempt.state
+            )
     previous = repo.previous_result(outcome.org_number, run_id)
     previous_facts = []
     if previous is not None:

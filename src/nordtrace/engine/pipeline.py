@@ -172,6 +172,33 @@ class ResearchPipeline:
             self._trace(run_id, org_number, "identity", f"registry identity resolved: {ident.legal_name}")
             self.repo.upsert_company(ident, run_id)
 
+            # Registered subunits are relationships, not separate target legal identities.
+            if self.budget.can_make_request():
+                branches = await self.brreg.fetch_underenheter(org_number, run_id)
+                for source in branches.sources:
+                    ledger.add_source(source)
+                for item in branches.evidence:
+                    ledger.add_evidence(item)
+                for fact in branches.facts:
+                    ledger.add_fact(fact)
+                completeness, reason = branches.completeness, branches.reason
+                if any(fact.status != FactStatus.PUBLISHED.value for fact in branches.facts):
+                    completeness = "partial"
+                    reason = "Some subunit observations failed publication or conflict validation."
+                for source in branches.sources:
+                    page_state = branches.page_states[source.source_id]
+                    if any(fact.status != FactStatus.PUBLISHED.value for fact in branches.facts
+                           if fact.source_id == source.source_id):
+                        page_state = "ambiguous"
+                    outcome.refresh_outcomes.append(RefreshOutcome.model_validate({
+                        "requested_url": source.requested_url or source.url or "", "family": "locations",
+                        "source_id": source.source_id, "state": page_state, "completeness": completeness,
+                        "observed_at": utcnow().isoformat(), "reason": reason,
+                    }))
+                outcome.rejected.extend(branches.rejected)
+                stages.append("branches")
+                self._trace(run_id, org_number, "branches", reason)
+
             # 2. roles (leadership)
             if self.budget.can_make_request():
                 rev_evs, role_facts, rsrc = await self.brreg.fetch_roles(org_number, run_id)

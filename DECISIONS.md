@@ -1,5 +1,25 @@
 # Decision Log — NordTrace
 
+## D-039 — Paginated, parent-verified registered subunits
+
+- Date/status: 2026-10-17, accepted; representative external recall remains unmeasured.
+- Problem/evidence: branch adapter had no pipeline caller, returned only one page, ignored explicit overordnetEnhet and used postal/incorrect address semantics. Pipeline/foreign-parent fixtures failed before repair. Primary schema-v2 docs and one bounded public request confirmed zero-based pages and beliggenhetsadresse.
+- Decision/implementation: pipeline acquires bounded constructed pages, registers every source and retains accepted records through incomplete acquisition. BranchResult separates evidence, facts, pages, rejection reasons and completeness. Raw parent/unit identifiers are validated; brreg-subunit-v1 supplies normalized registered relationship attributes with exact record JSON pointers. Snapshot support binds official HTTPS/default443 endpoint, parent query, raw record, stable unit key and legal-entity scope.
+- Application: identity-anchored Brreg subunits. The parent has a registered subunit; registration alone does not establish a separate legal entity or an active workplace. Missing physical fields do not borrow postal/target municipality. Closure dates remain source dates rather than inferred status.
+- Alternatives: following untrusted next links can escape source policy; a single-source tuple cannot retain multiple page snapshots. Query filters alone do not prove every returned record belongs to the target. Copying target fields manufactures identity corroboration.
+- Tradeoffs/limits: local page bounds can leave partial collections; concurrent registry updates can prevent stable totals. Reported pagination completeness is a traversal result, not an atomic registry cutoff or permission to infer removal. No generic source-disappearance producer is introduced. Live evidence is one limited company, not representative recall or the required100-company smoke.
+- Verification: synthetic schema fixtures exercise complete/partial pages, empty collection, foreign/missing parents, exact snapshots, value/key/scope/endpoint tampering and malformed bounds. Four counted live registry requests returned identity plus three registered subunits with independent transport count4 and zero declared API cost; artifacts remain ignored under data/verification-runs. Revisit with official snapshot input, removal support and representative evaluation; extends D-034/D-035/D-037.
+
+## D-040 — Exact registry origins and requested record bounds
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: review reproduced two records overriding configured page size1 via response metadata, and an alternate-port redirect publishing as official registry evidence. Three targeted regressions failed before correction.
+- Decision/implementation: validate the requested record bound before iterating, refusing oversized count/declared size. Gateway allowed_origins binds scheme/hostname/effective port at initial, redirect, cache and nested robots boundaries. Brreg declares the configured origin for every registry request. Branch publication additionally binds official HTTPS/default443 origin.
+- Application: all Brreg acquisition origin constraints and subunit extraction bounds. Default-port normalization is allowed; alternate-port hops are blocked before connection. Generic website acquisition keeps its documented broader policy unless an origin restriction is supplied.
+- Alternatives: host/scheme-only checks let other services on the same hostname inherit authority; trusting pagination metadata permits untrusted responses to raise configured processing limits. A publication-only rejection would still make the prohibited request.
+- Tradeoffs/limits: configured registry mirrors do not automatically qualify as official branch evidence. Generic CPU/DNS/finalization bounds and model transport accounting remain separate unfinished work.
+- Verification: registry alternate-port fixture now makes one connection; fabricated alternate-port capture cannot publish; requested-size fixture rejects before emitting facts. Fresh/permissive-cached robots preserve origin policy. Revisit on intentional provider-origin migration; extends D-026/D-034.
+
 ## D-037 — Unconfirmed refresh preserves last-known support
 
 - Date/status: 2026-10-17, accepted; affirmative removal production remains unfinished.

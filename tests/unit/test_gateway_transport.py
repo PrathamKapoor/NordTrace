@@ -172,13 +172,17 @@ def test_robots_unavailable_fails_closed(monkeypatch):
 
 
 @pytest.mark.parametrize("prime_permissive_cache", [False, True])
-def test_robots_redirects_and_cache_obey_source_scheme_policy(monkeypatch, prime_permissive_cache):
+@pytest.mark.parametrize("policy", ["scheme", "origin"])
+def test_robots_redirects_and_cache_obey_source_policy(monkeypatch, prime_permissive_cache, policy):
     calls = []
 
     def respond(request):
         calls.append(str(request.url))
-        if request.url.path == "/robots.txt" and request.url.scheme == "https":
-            return httpx.Response(302, headers={"location": "http://public.example/robots.txt"})
+        if (request.url.path == "/robots.txt" and request.url.scheme == "https"
+                and request.url.port in (None, 443)):
+            destination = ("http://public.example/robots.txt" if policy == "scheme"
+                           else "https://public.example:8443/robots.txt")
+            return httpx.Response(302, headers={"location": destination})
         return httpx.Response(
             200, text="User-agent: *\nAllow: /" if request.url.path == "/robots.txt" else "page"
         )
@@ -193,7 +197,9 @@ def test_robots_redirects_and_cache_obey_source_scheme_policy(monkeypatch, prime
                 calls.clear()
             before = budget.requests.total_used
             source = await gw.fetch(
-                "https://public.example/page", respect_robots=True, retries=0, allowed_schemes=["https"]
+                "https://public.example/page", respect_robots=True, retries=0,
+                **({"allowed_schemes": ["https"]} if policy == "scheme"
+                   else {"allowed_origins": ["https://public.example"]}),
             )
             assert budget.requests.total_used - before == len(calls)
             return source
@@ -203,6 +209,7 @@ def test_robots_redirects_and_cache_obey_source_scheme_policy(monkeypatch, prime
     source = asyncio.run(execute())
     assert source.access_status == "robots_denied"
     assert not any(url.startswith("http://") or url.endswith("/page") for url in calls)
+    assert not any(":8443" in url for url in calls)
     assert budget.requests.total_used == (3 if prime_permissive_cache else 1)
 
 

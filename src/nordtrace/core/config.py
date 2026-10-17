@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     brreg_base_url: str = "https://data.brreg.no/enhetsregisteret/api"
     brreg_regnskap_url: str = "https://data.brreg.no/regnskapsregisteret/regnskap"
     brreg_timeout: float = 20.0
+    brreg_branch_page_size: int = Field(default=20, ge=1, le=100)
+    brreg_branch_max_pages: int = Field(default=10, ge=1, le=100)
 
     # --- NAV jobs ---
     nav_job_search_url: str = "https://arbeidsplassen.nav.no/stillinger/api/search"

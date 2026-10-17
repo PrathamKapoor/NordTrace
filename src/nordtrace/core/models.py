@@ -177,7 +177,9 @@ class JsonPointerLocator(BaseModel):
     kind: Literal["json_pointer"] = "json_pointer"
     pointer: str
     raw_value: Any
-    normalization: Literal["identity", "brreg-address-v1", "brreg-website-v1", "brreg-status-v1"] = "identity"
+    normalization: Literal[
+        "identity", "brreg-address-v1", "brreg-website-v1", "brreg-status-v1", "brreg-subunit-v1",
+    ] = "identity"
 
 
 class EvidenceRecord(BaseModel):

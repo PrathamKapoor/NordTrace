@@ -6,7 +6,7 @@ import json
 import re
 from datetime import date, datetime
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from nordtrace.core.models import EvidenceRecord, Fact, SourceRecord
 from nordtrace.core.orgnr import validate_orgnr
@@ -55,6 +55,8 @@ def resolve_pointer(document: Any, pointer: str) -> Any:
 def normalize_registry_value(raw: Any, normalization: str) -> Any:
     if normalization == "identity":
         return raw
+    if normalization == "brreg-subunit-v1":
+        return normalize_subunit(raw)
     if normalization == "brreg-address-v1" and isinstance(raw, dict):
         return " ".join(str(part) for part in [
             " ".join(raw.get("adresse") or []), raw.get("postnummer"), raw.get("poststed"),
@@ -80,6 +82,40 @@ def normalize_registry_value(raw: Any, normalization: str) -> Any:
             return "active"
         return "unknown"
     raise ValueError("normalization incompatible with source value")
+
+
+def normalize_subunit(raw: Any) -> dict:
+    """Schema-v2 subunit relationship, preserving physical-address scope."""
+    if not isinstance(raw, dict):
+        raise ValueError("subunit must be an object")
+    org = validate_orgnr(raw.get("organisasjonsnummer", ""))
+    parent = validate_orgnr(raw.get("overordnetEnhet", ""))
+    if not org.valid or not parent.valid or org.value == parent.value:
+        raise ValueError("subunit and explicit parent identifiers must be distinct valid orgnrs")
+    name = raw.get("navn")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("subunit name missing or invalid")
+    address = raw.get("beliggenhetsadresse")
+    industry = raw.get("naeringskode1")
+    address = {} if address is None else address
+    industry = {} if industry is None else industry
+    if not isinstance(address, dict) or not isinstance(industry, dict):
+        raise ValueError("subunit address/industry schema mismatch")
+    lines = address.get("adresse", [])
+    if not isinstance(lines, list) or any(not isinstance(line, str) for line in lines):
+        raise ValueError("subunit address lines invalid")
+    value = {"orgnr": org.value, "parent_orgnr": parent.value, "name": name,
+             "physical_address": " ".join(lines) or None, "municipality": address.get("kommune"),
+             "postal_code": address.get("postnummer"), "postal_area": address.get("poststed"),
+             "industry": industry.get("beskrivelse"), "closure_date": raw.get("nedleggelsesdato"),
+             "deleted_date": raw.get("slettedato")}
+    if any(item is not None and not isinstance(item, str) for item in value.values()):
+        raise ValueError("subunit attributes must be strings or unknown")
+    for field in ("closure_date", "deleted_date"):
+        date_value = value[field]
+        if isinstance(date_value, str):
+            date.fromisoformat(date_value)
+    return value
 
 
 def _same(a: Any, b: Any) -> bool:
@@ -117,6 +153,28 @@ def verify_snapshot_support(
     raw = resolve_pointer(document, locator.pointer)
     if not _same(raw, locator.raw_value):
         raise ValueError("locator raw value differs from snapshot")
+    if fact.category == "locations" and fact.field == "branch":
+        if source.source_type != "registry" or source.authority_tier != 0:
+            raise ValueError("subunit claim requires official registry acquisition")
+        for url in (source.requested_url or source.url, source.final_url or source.url):
+            parsed = urlsplit(url or "")
+            if (parsed.scheme != "https" or parsed.hostname != "data.brreg.no"
+                    or parsed.port not in (None, 443)
+                    or parsed.path.rstrip("/") != "/enhetsregisteret/api/underenheter"
+                    or parse_qs(parsed.query).get("overordnetEnhet") != [fact.org_number]):
+                raise ValueError("subunit acquisition endpoint or parent filter differs")
+        if (locator.normalization != "brreg-subunit-v1"
+                or not re.fullmatch(r"/_embedded/underenheter/(0|[1-9][0-9]*)", locator.pointer)):
+            raise ValueError("subunit locator must select the exact collection record")
+        value = normalize_subunit(raw)
+        if (value["parent_orgnr"] != fact.org_number or fact.item_key != value["orgnr"]
+                or fact.subject_scope != "legal_entity"):
+            raise ValueError("subunit parent, item or relationship scope differs")
+        if not _same(fact.value, value) or not _same(fact.normalized_value, value):
+            raise ValueError("subunit attributes differ from captured record")
+        if evidence.evidence_text != json.dumps(raw, ensure_ascii=False, sort_keys=True):
+            raise ValueError("subunit evidence display differs from located record")
+        return
     if fact.category != "identity" or source.source_type != "registry" or source.authority_tier != 0:
         raise ValueError("claim predicate has no supported extraction rule")
     subject = validate_orgnr(document.get("organisasjonsnummer", "")) if isinstance(document, dict) else None

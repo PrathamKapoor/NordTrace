@@ -85,7 +85,8 @@ def test_matching_registry_identifier_resolves_the_actual_returned_name():
 
 @pytest.mark.parametrize("destination", [
     "https://unrelated.example/entity", "http://data.brreg.no/enhetsregisteret/api/enheter/982463718",
-], ids=["foreign-authority", "tls-downgrade"])
+    "https://data.brreg.no:8443/enhetsregisteret/api/enheter/982463718",
+], ids=["foreign-authority", "tls-downgrade", "alternate-port"])
 def test_registry_cannot_delegate_authority_to_an_unrelated_redirect(tmp_path, monkeypatch, destination):
     import httpx
 
