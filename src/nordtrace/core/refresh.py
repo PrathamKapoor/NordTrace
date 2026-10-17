@@ -103,8 +103,6 @@ def apply_refresh(repo: Repository, outcome: CompanyOutcome, run_id: str) -> Non
                 ))
                 attempted_urls.add(url)
     outcome.changes = detect_changes(outcome.org_number, run_id, previous_facts, outcome.facts)
-    if outcome.changes:
-        repo.insert_changes(outcome.changes)
     if outcome.last_known:
         outcome.unknowns.append(
             f"{len(outcome.last_known)} last-known observations were not reconfirmed; no removal established."

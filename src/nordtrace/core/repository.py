@@ -309,6 +309,114 @@ class Repository:
                 "DELETE FROM company_claims WHERE run_id=? AND result_key=? AND owner=?", (run_id, key, owner)
             )
 
+    @contextmanager
+    def _publication_transaction(self) -> Iterator[None]:
+        """One outer commit for the canonical envelope and its relational views."""
+        with self._lock:
+            if getattr(self._local, "publishing", False):
+                yield
+                return
+            if self.conn.in_transaction:
+                raise RuntimeError("publication cannot adopt an unrelated open transaction")
+            self.conn.execute("BEGIN IMMEDIATE")
+            self._local.publishing = True
+            try:
+                yield
+                self.conn.commit()
+            except BaseException:
+                self.conn.rollback()
+                raise
+            finally:
+                self._local.publishing = False
+
+    def _commit_if_standalone(self) -> None:
+        if not getattr(self._local, "publishing", False):
+            self.conn.commit()
+
+    def publish_result(
+        self, result: CompanyProfile, observations: Optional[List[Fact]] = None,
+        owner: Optional[str] = None,
+    ) -> None:
+        """Publish a supported production result and all projections atomically.
+
+        Captures and transport accounting are already durable acquisition records;
+        publication rollback intentionally leaves them available for diagnosis.
+        """
+        from nordtrace.core.ledger import CitationValidator
+
+        result = CompanyProfile.model_validate(result.model_dump())
+        with self._publication_transaction():
+            existing = self.get_result(result.run_id, result.organisation_number)
+            # Check ownership/immutability before changing any projection.
+            self.save_result(result, owner=owner)
+            if existing is not None:
+                return
+            validator = CitationValidator(
+                {source.source_id: source for source in result.sources},
+                {item.evidence_id: item for item in result.evidence}, self,
+            )
+            for fact in result.facts + result.conflicts + result.last_known:
+                valid, reason = validator.validate(fact)
+                if not valid:
+                    raise ValueError(f"publication support for {fact.fact_id}: {reason}")
+            if result.company is None and self.get_company(result.organisation_number) is None:
+                # No fabricated identity row to satisfy legacy projection FKs.
+                # The complete failure sources/evidence remain in the envelope.
+                return
+            if result.company is not None:
+                self.upsert_company(result.company, result.run_id)
+            sources = []
+            for source in result.sources:
+                row = self.conn.execute("SELECT * FROM sources WHERE source_id=?", (source.source_id,)).fetchone()
+                if row is None:
+                    sources.append(source)
+                elif self._row_to_source(row) != source:
+                    raise ValueError("stored source ID cannot be reused with different metadata")
+            self.insert_sources_bulk(sources, result.run_id, result.organisation_number)
+            evidence = []
+            for item in result.evidence:
+                row = self.conn.execute("SELECT * FROM evidence WHERE evidence_id=?", (item.evidence_id,)).fetchone()
+                if row is None:
+                    evidence.append(item)
+                elif self._row_to_evidence(row) != item:
+                    raise ValueError("stored evidence ID cannot be reused with different content")
+            self.insert_evidence_bulk(evidence)
+            expected = {fact.fact_id: fact for fact in result.facts + result.conflicts}
+            observed = list(observations) if observations is not None else list(expected.values())
+            represented = {}
+            new_observations = []
+            for fact in observed:
+                if fact.org_number != result.organisation_number or fact.run_id != result.run_id:
+                    raise ValueError("observation subject/run differs from publication")
+                if fact.fact_id in represented:
+                    raise ValueError("duplicate observation ID in publication")
+                represented[fact.fact_id] = fact
+                if fact.status in (FactStatus.PUBLISHED.value, FactStatus.CONFLICT.value):
+                    if expected.get(fact.fact_id) != fact:
+                        raise ValueError("observation projection differs from canonical publication")
+                row = self.conn.execute("SELECT * FROM facts WHERE fact_id=?", (fact.fact_id,)).fetchone()
+                if row is None:
+                    new_observations.append(fact)
+                elif self._row_to_fact(row) != fact:
+                    raise ValueError("stored observation ID cannot be reused with different content")
+            if any(represented.get(key) != fact for key, fact in expected.items()):
+                raise ValueError("canonical observation missing from publication")
+            self.insert_facts_bulk(new_observations)
+            new_changes = []
+            change_ids = set()
+            for change in result.changes:
+                if change.org_number != result.organisation_number or change.run_id != result.run_id:
+                    raise ValueError("change subject/run differs from publication")
+                if change.change_id in change_ids:
+                    raise ValueError("duplicate change ID in publication")
+                change_ids.add(change.change_id)
+                row = self.conn.execute("SELECT * FROM changes WHERE change_id=?", (change.change_id,)).fetchone()
+                if row is None:
+                    new_changes.append(change)
+                elif self._row_to_change(row) != change:
+                    raise ValueError("stored change ID cannot be reused with different content")
+            self.insert_changes(new_changes)
+
     def save_result(self, result: CompanyProfile, owner: Optional[str] = None) -> None:
         """Atomically publish an immutable envelope and its terminal checkpoint.
 
@@ -317,8 +425,7 @@ class Repository:
         """
         result = CompanyProfile.model_validate(result.model_dump())
         payload = json.dumps(result.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
-        with self._lock, self.conn:
-            self.conn.execute("BEGIN IMMEDIATE")
+        with self._publication_transaction():
             lease = self.conn.execute(
                 "SELECT owner FROM company_claims WHERE run_id=? AND result_key=?",
                 (result.run_id, result.organisation_number),
@@ -634,7 +741,7 @@ class Repository:
                     run_id,
                 ),
             )
-            self.conn.commit()
+            self._commit_if_standalone()
 
     def get_company(self, org_number: str) -> Optional[CompanyIdentity]:
         row = self.conn.execute(
@@ -720,7 +827,7 @@ class Repository:
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     rows,
                 )
-            self.conn.commit()
+            self._commit_if_standalone()
 
     def get_sources(self, org_number: str, run_id: Optional[str] = None) -> List[SourceRecord]:
         q = "SELECT * FROM sources WHERE org_number=?"
@@ -829,7 +936,7 @@ class Repository:
                     for e in evidence
                 ],
             )
-            self.conn.commit()
+            self._commit_if_standalone()
 
     def insert_facts_bulk(self, facts: Iterable[Fact]) -> None:
         with self._lock:
@@ -864,7 +971,7 @@ class Repository:
                     for f in facts
                 ],
             )
-            self.conn.commit()
+            self._commit_if_standalone()
 
     def get_facts(
         self, org_number: str, run_id: Optional[str] = None, statuses: Optional[List[str]] = None
@@ -905,7 +1012,7 @@ class Repository:
                     for c in changes
                 ],
             )
-            self.conn.commit()
+            self._commit_if_standalone()
 
     def get_changes(self, org_number: str, limit: int = 100) -> List[ChangeRecord]:
         rows = self.conn.execute(

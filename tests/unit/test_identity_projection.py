@@ -68,10 +68,7 @@ def test_company_projection_withholds_unbacked_fields_and_preserves_supported_ze
 
     outcome = asyncio.run(execute())
     assert len(intermediate_rows) == 1
-    current = intermediate_rows[0]
-    assert current.share_capital is None and current.number_of_shares is None
-    assert current.employee_count == (None if corruption == "employee_count" else 0)
-    assert current.legal_name == ("" if corruption == "legal_name" else "FIXTURE AS")
+    assert intermediate_rows[0] is None, "A company row must remain unpublished until the atomic commit"
     result = repo.get_result(run.run_id, ORG)
     if corruption == "legal_name":
         assert result.company.legal_name == ""

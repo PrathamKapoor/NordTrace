@@ -58,6 +58,7 @@ class CompanyOutcome:
     status_reason: Optional[str] = None
     identity: Optional[CompanyIdentity] = None
     facts: List[Fact] = field(default_factory=list)
+    observations: List[Fact] = field(default_factory=list)
     conflicts: List[Fact] = field(default_factory=list)
     last_known: List[Fact] = field(default_factory=list)
     refresh_outcomes: List[RefreshOutcome] = field(default_factory=list)
@@ -143,12 +144,10 @@ class ResearchPipeline:
 
     def _persist_result(self, outcome: CompanyOutcome, run_id: str) -> None:
         outcome.identity = project_identity(outcome.identity, outcome.conflicts, outcome.facts)
-        if outcome.identity is not None:
-            self.repo.upsert_company(outcome.identity, run_id)
         run = self.repo.get_run(run_id)
-        self.repo.save_result(build_result(
+        self.repo.publish_result(build_result(
             outcome, run_id, self.budget, run.started_at if run and run.started_at else utcnow().isoformat()
-        ), owner=self.worker_owner)
+        ), observations=outcome.observations, owner=self.worker_owner)
 
     async def _research_company(self, org_number: str, run_id: str) -> CompanyOutcome:
         started = time.monotonic()
@@ -216,12 +215,6 @@ class ResearchPipeline:
             for fact in identity_facts:
                 ledger.add_fact(fact)
             self._trace(run_id, org_number, "identity", f"registry identity resolved: {ident.legal_name}")
-            published_identity = project_identity(
-                ident, ledger.conflicting_facts(org_number), ledger.published_facts(org_number),
-            )
-            if published_identity is not None:
-                self.repo.upsert_company(published_identity, run_id)
-
             # Registered subunits are relationships, not separate target legal identities.
             if acquisition_allowed("branches"):
                 branches = await self.brreg.fetch_underenheter(org_number, run_id)
@@ -523,16 +516,12 @@ class ResearchPipeline:
         evidence_ids = {item.evidence_id for item in evidence}
         facts = [entry.fact for entry in ledger.all_entries()
                  if entry.fact.source_id in source_ids and entry.fact.evidence_id in evidence_ids]
+        outcome.observations = facts
         outcome.facts = ledger.published_facts(org)
         outcome.conflicts = ledger.conflicting_facts(org)
         outcome.evidence = evidence
         outcome.sources = sources
         outcome.coverage = self._coverage_from(ledger, org, accounts_status).states
-        self.repo.insert_sources_bulk(sources, run_id, org)
-        if evidence:
-            self.repo.insert_evidence_bulk(evidence)
-        if facts:
-            self.repo.insert_facts_bulk(facts)
 
     def _coverage_from(self, ledger: FactLedger, org_number: str, accounts_status: str) -> Coverage:
         cov = Coverage()
