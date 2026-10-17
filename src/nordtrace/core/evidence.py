@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from nordtrace.core.models import EvidenceRecord, Fact, SourceRecord
 from nordtrace.core.orgnr import validate_orgnr
-from nordtrace.core.repository import Repository
+
+
+class SnapshotReader(Protocol):
+    def read_capture(self, source_id: str) -> tuple[SourceRecord, bytes]: ...
 
 # These paths express the public Enhetsregisteret schema, not evaluator rules.
 IDENTITY_PATHS: dict[str, tuple[tuple[str, ...], str]] = {
@@ -150,10 +153,7 @@ def require_registry_identity_acquisition(source: SourceRecord, org_number: str)
             ) from error
 
 
-def verify_snapshot_support(
-    repo: Repository, fact: Fact, source: SourceRecord, evidence: EvidenceRecord,
-) -> None:
-    captured, body = repo.read_capture(source.source_id)
+def verify_capture_metadata(captured: SourceRecord, source: SourceRecord) -> None:
     for field in (
         "url", "requested_url", "final_url", "redirect_chain", "source_type", "org_number",
         "content_hash", "content_type", "http_status", "snapshot_representation", "retrieved_at",
@@ -161,6 +161,13 @@ def verify_snapshot_support(
     ):
         if getattr(captured, field) != getattr(source, field):
             raise ValueError("acquisition metadata disagrees with captured source")
+
+
+def verify_snapshot_support(
+    repo: SnapshotReader, fact: Fact, source: SourceRecord, evidence: EvidenceRecord,
+) -> None:
+    captured, body = repo.read_capture(source.source_id)
+    verify_capture_metadata(captured, source)
     if evidence.content_hash != captured.content_hash:
         raise ValueError("evidence does not identify the retained snapshot")
     if not captured.retrieved_at or datetime.fromisoformat(captured.retrieved_at).tzinfo is None:

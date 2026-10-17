@@ -193,6 +193,16 @@ class CostBudget:
             }
 
 
+def request_telemetry_snapshot(telemetry: Dict[str, Any], used: int, limit: int) -> Dict[str, Any]:
+    """Recompute derived counters from one durable reservation/outcome snapshot."""
+    return telemetry | {
+        "total_used": used, "limit": limit, "remaining": limit - used,
+        "transport_operations": telemetry.get("successful", 0) + telemetry.get("failed", 0),
+        "unresolved_reservations": used - telemetry.get("successful", 0)
+        - telemetry.get("failed", 0) - telemetry.get("unstarted_reservations", 0),
+    }
+
+
 class PersistentRequestBudget:
     """Same request gate, with cross-process durable reservations before transport."""
 
@@ -231,12 +241,7 @@ class PersistentRequestBudget:
 
     def snapshot(self) -> Dict[str, Any]:
         state, used, _ = self.repo.get_run_budget(self.run_id)
-        return state.telemetry | {
-            "total_used": used, "limit": self.global_limit, "remaining": self.global_limit - used,
-            "transport_operations": state.telemetry.get("successful", 0) + state.telemetry.get("failed", 0),
-            "unresolved_reservations": used - state.telemetry.get("successful", 0)
-            - state.telemetry.get("failed", 0) - state.telemetry.get("unstarted_reservations", 0),
-        }
+        return request_telemetry_snapshot(state.telemetry, used, self.global_limit)
 
 
 class BudgetManager:

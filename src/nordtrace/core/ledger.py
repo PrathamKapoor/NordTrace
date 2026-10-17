@@ -17,7 +17,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Tuple
 
 from nordtrace.core.changes import assertions_differ
-from nordtrace.core.evidence import verify_snapshot_support
+from nordtrace.core.evidence import SnapshotReader, verify_snapshot_support
 from nordtrace.core.models import (
     EvidenceRecord,
     Fact,
@@ -41,7 +41,7 @@ class CitationValidator:
 
     def __init__(
         self, sources: Dict[str, SourceRecord], evidence_index: Dict[str, EvidenceRecord],
-        repository: Optional[Repository] = None,
+        repository: Optional[SnapshotReader] = None,
     ):
         self.sources = sources
         self.evidence_index = evidence_index

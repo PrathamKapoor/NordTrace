@@ -12,6 +12,8 @@ Retrieval records are under ignored `data/contracts/recheck-20261018/`: manifest
 
 JSONL input policy: `.jsonl` auto-detects; `--input-format jsonl` supports other filenames. UTF-8/BOM and blank physical separators are accepted. Every record must be strict JSON with a string `organisation_number`; this string is preserved in ordered input mapping, then normalized/validated by the existing parser. Missing/non-string identifiers, malformed JSON, non-finite numbers, unpaired surrogate identifiers and duplicate keys abort the container before repository access. Invalid identifier strings receive terminal error envelopes. Extra fields cannot override identity, source policy or run limits. Duplicate occurrences retain the local shared-envelope/input-index policy below. CSV/TXT behavior remains D-048.
 
+Local portable export (D-054): batch --bundle and export-run produce nordtrace-audit-bundle-v1 ZIPs with canonical results.jsonl, retained bytes, schema and complete manifest. verify-bundle checks installed local schema, required whole-run accounting, hashes, locators and value support offline. Input occurrence mapping remains in the manifest. This closes portable canonical retention; it does not implement the starter flattened claims/evidence example or validate private organizer acceptance. Research checkpoints remain SQLite, not a partially published JSONL file.
+
 ## Earlier retrieval and continuing local policy
 
 Retrieved 2026-10-16 from the primary sources:

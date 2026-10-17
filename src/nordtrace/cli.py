@@ -16,6 +16,7 @@ import json
 import logging
 import math
 import sys
+import zipfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -24,6 +25,7 @@ import click
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
 from nordtrace.core.contracts import batch_payload, build_result, write_bytes_atomic, write_json_atomic
+from nordtrace.core.export import DEFAULT_MAX_BYTES, export_run, verify_bundle
 from nordtrace.core.models import CompanyProfile
 from nordtrace.core.repository import Repository
 from nordtrace.engine.runner import BatchRunner
@@ -72,6 +74,34 @@ def replay_source(source_id: str, output: str):
         raise click.ClickException(str(error)) from error
     finally:
         repo.close()
+
+
+@cli.command("export-run")
+@click.argument("run_id")
+@click.option("--output", required=True, type=click.Path(dir_okay=False))
+@click.option("--max-bytes", type=click.IntRange(min=1), default=DEFAULT_MAX_BYTES, show_default=True)
+def export_run_command(run_id: str, output: str, max_bytes: int):
+    """Export complete durable canonical JSONL results and retained bytes offline."""
+    repo = _repo()
+    try:
+        manifest = export_run(repo, run_id, output, max_bytes=max_bytes)
+    except (OSError, ValueError, KeyError) as error:
+        raise click.ClickException(str(error)) from error
+    finally:
+        repo.close()
+    click.echo(json.dumps({"run_id": run_id, "output": output, "completion": manifest["completion"]}))
+
+
+@cli.command("verify-bundle")
+@click.argument("bundle", type=click.Path(exists=True, dir_okay=False))
+@click.option("--max-bytes", type=click.IntRange(min=1), default=DEFAULT_MAX_BYTES, show_default=True)
+def verify_bundle_command(bundle: str, max_bytes: int):
+    """Verify portable canonical evidence offline without opening a database."""
+    try:
+        manifest = verify_bundle(bundle, max_bytes=max_bytes)
+    except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile) as error:
+        raise click.ClickException(str(error)) from error
+    click.echo(json.dumps({"run_id": manifest["run_id"], "completion": manifest["completion"]}))
 
 
 @cli.command("verify-snapshots")
@@ -217,10 +247,15 @@ def _read_batch_inputs(path: str, input_format: str = "auto") -> List[str]:
 @click.option("--concurrency", type=int, default=4)
 @click.option("--resume", "resume_run_id", type=str, default=None, help="Resume an existing run id")
 @click.option("--output", type=str, default=None)
+@click.option("--bundle", type=click.Path(dir_okay=False), default=None,
+              help="Also export portable canonical JSONL, snapshots and manifest as a ZIP")
+@click.option("--export-max-bytes", type=click.IntRange(min=1), default=DEFAULT_MAX_BYTES, show_default=True)
 @click.pass_context
 def batch(ctx, input_file: str, input_format: str, concurrency: int,
-          resume_run_id: Optional[str], output: Optional[str]):
+          resume_run_id: Optional[str], output: Optional[str], bundle: Optional[str], export_max_bytes: int):
     """Batch research from CSV/TXT identifiers or JSONL objects."""
+    if bundle and output and Path(bundle).resolve() == Path(output).resolve():
+        raise click.UsageError("Bundle and JSON output must use different paths")
     orgs = _read_batch_inputs(input_file, input_format)
     click.echo(f"{len(orgs)} inputs")
     if not orgs:
@@ -232,6 +267,11 @@ def batch(ctx, input_file: str, input_format: str, concurrency: int,
         run = asyncio.run(runner.run_batch(orgs, resume_run_id=resume_run_id))
         results = repo.get_results(run.run_id)
         payload = batch_payload(run, results, repo.get_run_inputs(run.run_id))
+        if bundle:
+            try:
+                export_run(repo, run.run_id, bundle, max_bytes=export_max_bytes)
+            except (OSError, ValueError, KeyError) as error:
+                raise click.ClickException(f"Research retained; bundle export failed: {error}") from error
     finally:
         repo.close()
     counts: dict = {}
