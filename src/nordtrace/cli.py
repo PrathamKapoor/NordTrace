@@ -30,6 +30,7 @@ from nordtrace.core.export import DEFAULT_MAX_BYTES, export_run, verify_bundle
 from nordtrace.core.models import CompanyProfile
 from nordtrace.core.repository import Repository
 from nordtrace.engine.runner import BatchRunner
+from nordtrace.sampling import PUBLIC_SHA256, PUBLIC_UNCOMPRESSED_SHA256, sample_universe
 
 
 def _repo() -> Repository:
@@ -75,6 +76,31 @@ def replay_source(source_id: str, output: str):
         raise click.ClickException(str(error)) from error
     finally:
         repo.close()
+
+
+@cli.command("sample-universe")
+@click.argument("source", type=click.Path(exists=True, dir_okay=False))
+@click.option("--output", required=True, type=click.Path(file_okay=False))
+@click.option("--seed", required=True)
+@click.option("--development-size", type=click.IntRange(min=0), default=100, show_default=True)
+@click.option("--held-out-size", type=click.IntRange(min=0), default=100, show_default=True)
+@click.option("--expected-sha256", default=PUBLIC_SHA256, show_default=True)
+@click.option("--expected-uncompressed-sha256", default=PUBLIC_UNCOMPRESSED_SHA256, show_default=True)
+@click.option("--max-uncompressed-bytes", type=click.IntRange(min=1), default=256 * 1024 * 1024)
+def sample_universe_command(source: str, output: str, seed: str, development_size: int, held_out_size: int,
+                            expected_sha256: str, expected_uncompressed_sha256: str,
+                            max_uncompressed_bytes: int):
+    """Select disjoint reproducible metadata samples offline; no company research."""
+    try:
+        manifest = sample_universe(
+            source, output, seed=seed, development_size=development_size, held_out_size=held_out_size,
+            expected_sha256=expected_sha256, expected_uncompressed_sha256=expected_uncompressed_sha256,
+            max_uncompressed_bytes=max_uncompressed_bytes,
+        )
+    except (OSError, EOFError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    click.echo(json.dumps({"output": output, "source_record_count": manifest["source_record_count"],
+                           "splits": {split: info["count"] for split, info in manifest["splits"].items()}}))
 
 
 @cli.command("export-run")

@@ -1,304 +1,106 @@
-# Implementation status — 2026-10-16
+# NordTrace
 
-Benchmark correction 2026-10-18: `benchmark --orgnr-file FILE` now requires an explicit CSV/JSONL sample and processes every occurrence by default. Optional --limit records excluded indices. Completion includes all terminal envelopes; availability and supported identity resolution are separate. Registry claims cannot inflate non-registry counts, and independent accuracy/recall remain unmeasured. Old brand-based discovery is disabled; historical benchmark numbers below are not validated release measurements.
+Norwegian company research with retained evidence. Implementation is **in progress**. Current publication supports exact registry identity fields and parent-verified subunit relationships. Website, roles, NAV, activity and financial candidates remain withheld until their producers satisfy the typed support checks. External coverage gains, independent factual accuracy and a real 100-company smoke run are not established.
 
-Verification 2026-10-18: full572passed/8live excluded247.45s at the portable-export boundary; final telemetry correction passed33export/budget and43budget/deadline checks plus review. Ruff/mypy33sourcefiles pass. Full release gates remain incomplete; see docs/verification.md for exact scope and synthetic100/1000 artifact limitations.
+## Install
 
-Portable local audit: `python -m nordtrace.cli batch companies.jsonl --bundle data/audit.zip` retains canonical JSONL envelopes, source bytes, local schema and completion manifest. Verify without database/network: `python -m nordtrace.cli verify-bundle data/audit.zip`. Export a completed run: `python -m nordtrace.cli export-run RUN_ID --output data/audit.zip`. Existing files are preserved; use a new path, distinct from --output JSON. Uncompressed capacity defaults256MiB; configure --export-max-bytes (batch) or --max-bytes (export/verify). Acquisition checkpoints remain SQLite; portable export follows terminal results. The archive also contains starter-example.jsonl, an explicitly local projection of the public example with claim references/qualifiers and structured locators. Registry-listed websites stay registered_website; structured claim_span and unmeasured per-company costs/requests remain null. Source redistribution rights and exact organizer acceptance remain unverified.
+Verified on Windows with Python 3.12.5 and a fresh virtual environment:
 
-Update 2026-10-18: batch accepts UTF-8/BOM JSONL objects with string `organisation_number` fields: `python -m nordtrace.cli batch companies.jsonl --output data/results.json`. Use `--input-format jsonl` for other filenames. Additional record fields cannot configure research or establish identity. Malformed containers fail before research; invalid identifier strings retain terminal envelopes. Default output stays canonical whole JSON; --bundle adds canonical and starter-example JSONL with retained bytes. Exact organizer compatibility remains unverified. The public eligible universe is now downloaded and hash-verified (411,160 records); it is selection metadata, not the supplied frozen identity snapshot. See docs/evaluator-contract.md for hashes and continuing contract ambiguities.
-
-Update 2026-10-17: full offline suite through structured publication/freshness: 539 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
-
-New structured company values are projected from supported atomic identity claims. Unconverted capital, group and postal details remain unresolved; supported zero values are preserved. Raw captures remain inspectable. This safety restriction does not establish external coverage or rewrite historical profiles.
-
-Production publication commits the canonical result, current company, ledger projections, changes and terminal checkpoint together. Late failures roll them back while acquired captures remain available for inspection. A blocked refresh preserves the prior identity and records failure changes/sources. Legacy storage helpers remain compatibility interfaces; full crash recovery and hard synchronous finalization remain incomplete.
-
-Resume can finalize an expired crashed-worker lease as failed without new acquisition when its original requests/deadline/budget are unavailable. Live foreign leases stay protected; completed envelopes fence late workers. Concurrent finalizers retain the first canonical result. Wall-clock lease/heartbeat and hard storage bounds remain limitations.
-
-Publication rechecks structured company values against supported claims. Identity verification time comes from retained identity observations, including in the company index and cache hits; parsing/completion time does not imply a new fetch. Unknown observation times remain unknown. Individual source/claim timestamps explain each field's age; historical profiles retain their recorded semantics.
-
-Batch files use UTF-8/BOM comma-separated first-column inputs. Only an exact first-record orgnr/org_number/organisation_number/organization_number/organisasjonsnummer label is a header. Blank physical lines are ignored; explicit empty and later invalid records receive terminal results. Malformed CSV/encoding fails before research. Local validation rejects unsupported explicit schema versions; unversioned legacy validation remains structural only. See [evaluator compatibility](docs/evaluator-contract.md).
-
-The current locked install is `uv sync --frozen --extra dev --python 3.12` (uv 0.12.5). Run commands with `uv run --frozen python -m nordtrace.cli ...`. Website attachment now checks operator contradictions before matching, preserves footer identity text and uses an offline public suffix list. Complex group/brand relationships remain under repair.
-
-The repair assignment is in progress. Older benchmark/test/readiness statements below are historical and do not establish current release acceptance. See [current verification](docs/verification.md), [requirement tracker](docs/implementation-tracker.md) and [evaluator compatibility](docs/evaluator-contract.md).
-
-Publication requires snapshot-backed locators in production. Registry identity now requires the exact official HTTPS entity endpoint across canonical/requested/final URLs and every redirect; configured mirrors cannot establish identity or authoritative absence. Supplied official snapshot input remains unfinished. Atomic registry identity and parent-verified registered subunits have supported JSON pointers and explicit normalization. Other extraction families are withheld until their support rules are converted; their existing extractors do not establish working external coverage. Invalid employee counts and missing status flags remain unknown. This is an incomplete repair, not a release-ready competition entry.
-
-Subunit acquisition is wired into research with bounded pagination. Set BRREG_BRANCH_PAGE_SIZE and BRREG_BRANCH_MAX_PAGES explicitly when needed (defaults20/10); every page consumes the same supplied request/time allowance. Partial pages keep their supported observations, and registered subunits are distinguished from separate legal entities and active workplaces. A limited live registry check returned identity plus three subunits with four independently counted requests; representative recall and the required100-company smoke are still unverified.
-
-Results expose stable `claim_id` values separately from historical `fact_id`/`observation_id`. Period, source item and subject scope distinguish collections. Conflicting observations are withheld together and retained in `conflicts`; disputed structured identity values are cleared with `unresolved_fields`. Source outages and incomplete extraction preserve revalidated observations in `last_known`, separate from current facts and with original evidence/timestamps. Automatic disappearance/expiry detection remains unfinished: missing observations never establish removal. External-family publication remains under repair.
-
-Canonical results record `status_reason` separately from family coverage. Completed exact-company research is available even with identity-only information; registry deletion stays a legal status. Budget/headroom-skipped acquisition is failed with its explicit reason and retained supported claims. Source gaps remain visible. Older envelopes without a reason remain unknown; no historical reason is invented. This corrects status semantics and does not establish a coverage gain.
-
-Historical API views use `GET /companies/ORGNR?run_id=RUN_ID`. Frozen canonical results include current/last-known/conflicting observations and per-source refresh outcomes. Schema6 backs up existing databases and records publication ordering without fabricating old history.
-
-CLI/API/batch now freeze the effective run configuration and durably reserve requests before transport. Resume restores the original request allowance and deadline; changing process defaults cannot grant a fresh budget. A legacy run without recoverable limits returns explicit failures without new acquisition. Telemetry distinguishes completed HTTP operations, charged reservations that never started, and unresolved reservations after interruption/storage failure. Repeating resume on a failed run returns a failure exit code. Cooperative acquisition now stops at per-company/run cutoffs and retains supported partial results. Set FINALIZATION_RESERVE_SEC explicitly to stop acquisition before total runtime (default0); PER_COMPANY_SOFT_DEADLINE_SEC retains its historical name but now cancels acquisition. Cancelling a follower preserves another worker's live task and leaves that run visibly incomplete until its owner finishes. Model cost reservations, synchronous parsing/storage bounds, output capacity and crash recovery remain unfinished.
-
-Acquired HTTP responses now retain complete bounded bytes in SQLite with `http-response-body-v1` SHA-256 integrity. Inspect an existing run offline using `uv run --frozen python -m nordtrace.cli verify-snapshots RUN_ID`, and export a retained response with `uv run --frozen python -m nordtrace.cli replay-source SOURCE_ID --output data/source.bin`. These checks verify acquisition bytes, not factual support. Schema upgrades back up existing databases automatically; legacy truncated snapshots are not accepted as new captures. Keep source data local unless its specific redistribution rights permit publication.
-
-New CLI/API/batch research persists a versioned canonical result, including synthesis, errors and evidence records. Batch retains invalid inputs and maps duplicate occurrences to one normalized result. `python -m nordtrace.cli batch companies.csv --output data/results.json` writes complete envelopes atomically; exit 1 indicates a research failure, exit 2 invalid input, and exit 0 covers successful execution with honest availability states. Snapshot support/retention, transport limits, refresh correctness, independently measured coverage, locked installation and official-schema compatibility are not yet release-verified. Live tests require `pytest -m live`; default tests exclude live acquisition.
-
-# NordTrace — Norwegian Company Intelligence Agent
-
-> Evidence-backed research agent for Norwegian companies, built on public
-> registries and permitted sources. Every published fact is traceable to its
-> source. No fabricated data.
-
----
-
-## What it does
-
-Give it a Norwegian organisation number and it will:
-
-1. Validate the number (format + modulus-11 checksum).
-2. Resolve the canonical identity from **Brønnøysundregistrene** (live API).
-3. Retrieve real public information:
-   - registry entity (name, form, status, address, NACE, capital, employees)
-   - board/management roles
-   - annual accounts (revenue, result, assets, equity, liabilities, currency, period)
-   - branch units
-   - the company's own website (description, contact, careers, news)
-   - job postings from **NAV Arbeidsplassen**
-   - dated registry activity events
-4. Verify every fact belongs to the target company (deterministic matching).
-5. Reject wrong-company candidates and record the rejection.
-6. Attach evidence (URL, content hash, retrieval date, entity verdict) to every fact.
-7. Detect changes between runs and preserve history.
-8. Respect budgets: 2,000 requests / 45 min / $10 declared API cost.
-9. Persist everything to SQLite and expose it via REST API + dashboard.
-
----
-
-## Architecture
-
-```
-Organisation number
-   ↓  validation (mod11 checksum)
-Canonical Entity Resolution        ← Brreg enheter (live)
-   ↓  verified identity
-Source Discovery                   ← registry hjemmeside, regnskap, NAV, branches
-   ↓
-Structured Data Acquisition        ← RequestGateway (budget/SSRF/robots/cache)
-   ↓
-Fact Extraction                    ← deterministic parsing (registry JSON, PDF text)
-   ↓
-Entity Verification                ← signal-based resolver + publication firewall
-   ↓
-Evidence Validation                ← citation validator (fact→evidence→source chain)
-   ↓
-Fact Ledger                        ← SQLite, the source of truth
-   ↓
-Change Detection                   ← fact-slot diff vs previous runs
-   ↓
-Evidence-Grounded Synthesis        ← summary from verified facts only
-   ↓
-Final Company Profile              ← API + dashboard
+```powershell
+uv sync --frozen --extra dev --python 3.12
 ```
 
-The LLM is **optional** (disabled without `LLM_API_KEY`; cost stays $0.00) and
-never the source of truth for identity, URLs, financial values, or dates.
+The package declares Python >=3.11; other runtimes/Linux/container execution are unverified. For a noneditable installation, add `--no-editable` to the same command. Dependencies and build tools are pinned through uv.lock/pyproject.toml. No model key is needed. The optional model helper has no production extraction or synthesis callers.
 
----
+Fresh locked verification at `8aa7e06`: 596 offline tests passed, 8 live checks excluded, one upstream Starlette warning, 264.01 seconds. Ruff, mypy, wheel build, installed CLI/export/validation and dashboard resources passed. The subsequent sampler has separate checks and population-selection evidence in [verification](docs/verification.md). Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
 
-## Installation
+## Research and inspect
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate            # Windows (Git Bash: source .venv/Scripts/activate)
-pip install -e .
+```powershell
+.venv/Scripts/python.exe -m nordtrace.cli research 982463718 --output data/profile.json
+.venv/Scripts/python.exe -m nordtrace.cli batch companies.jsonl --output data/results.json --bundle data/audit.zip
+.venv/Scripts/python.exe -m nordtrace.cli verify-bundle data/audit.zip
+.venv/Scripts/python.exe -m nordtrace.cli serve
 ```
 
-Requires Python 3.11+ (developed and tested on 3.13).
+The server defaults to `127.0.0.1:8000`; the dashboard is `/dashboard`. Intended use is local research. Public serving/access controls, evidence-drawer spans and the full UI review remain unfinished.
 
-## Environment variables
-
-Copy `.env.example` → `.env`. All optional; defaults work for public registry access:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `LLM_API_KEY` | *(empty)* | Optional LLM key — system degrades to deterministic extraction without it |
-| `LLM_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible endpoint |
-| `LLM_MODEL` | `gpt-4o-mini` | Model for optional extraction/synthesis polish |
-| `MAX_REQUESTS` | `2000` | Hard global request limit |
-| `MAX_RUNTIME_SEC` | `2700` | Hard global runtime limit (45 min) |
-| `MAX_API_COST_USD` | `10.0` | Declared external API cost limit |
-| `MAX_PAGES_PER_COMPANY` | `8` | Crawler page cap |
-| `DATA_DIR` | `./data` | SQLite storage |
-
-No secrets are committed. `.env` is gitignored.
-
----
-
-## One-command execution
-
-```bash
-# Single company (live research, ~20s, ~13 requests, $0.00)
-python -m nordtrace.cli research 982463718
-
-# Batch from CSV (one orgnr per line or with header)
-python -m nordtrace.cli batch companies.csv --concurrency 4
-
-# Resume an interrupted batch
-python -m nordtrace.cli resume <run_id>
-
-# Operational benchmark of every supplied input (real acquisition for valid orgnrs)
-python -m nordtrace.cli benchmark --orgnr-file companies.jsonl --output data/benchmark.json
-
-# Validate a result file
-python -m nordtrace.cli validate result.json
-
-# Check database integrity (FKs, duplicates, orphans, contamination)
-python -m nordtrace.cli validate-db
-
-# REST API + dashboard
-python -m nordtrace.cli serve          # http://127.0.0.1:8000/dashboard
-```
-
-Example input: `982463718` (Telenor ASA — live-verified).
-
-Example output (abridged, real):
+CSV/TXT uses first-column identifiers with an optional exact header. JSONL uses UTF-8 objects, one per record:
 
 ```json
-{
-  "run_id": "run_7b5c37f5…",
-  "organisation_number": "982463718",
-  "status": "available",
-  "company": { "legal_name": "TELENOR ASA", "organisation_form": "ASA", "status": "active",
-               "municipality": "BÆRUM", "industry_code": "61.100",
-               "website": "https://www.telenor.no/", "employee_count": 374 },
-  "facts": [ { "category": "financials", "field": "revenue", "value": 678000000.0,
-               "currency": "NOK", "reporting_period": "FY2024",
-               "source_id": "src_…", "evidence_id": "ev_…", "entity_verdict": "VERIFIED" } ],
-  "changes": [],
-  "summary": "TELENOR ASA (orgnr 982463718) …",
-  "sources": [ { "url": "https://data.brreg.no/enhetsregisteret/api/enheter/982463718",
-                 "authority_tier": 0, "access_status": "success", "content_hash": "…" } ],
-  "coverage": { "identity": "found", "business_description": "found", "industry": "found",
-                "financials": "found", "leadership": "found", "jobs": "found",
-                "recent_activity": "found" },
-  "research_metadata": { "request_count": 13, "estimated_cost_usd": 0.0,
-                         "duration_sec": 18.2, "stages_executed": ["validation","identity",
-                         "roles","financials","website","jobs","activity","changes","synthesis"] }
-}
+{"organisation_number":"982463718"}
 ```
 
----
+Additional fields are selection metadata and cannot establish identity, configure research or change budgets. `.jsonl` selects JSONL automatically; use `--input-format jsonl` for another filename. Malformed containers fail before research. Invalid identifier strings receive terminal error envelopes. Duplicate normalized numbers share one result and an ordered input mapping preserves every occurrence; this local duplicate policy still needs organizer confirmation.
 
-## Test results (actual, 2026-10-01)
+CLI exit 0 means execution completed with honest availability states; exit 1 indicates research failure, support-check failure or benchmark budget overrun; exit 2 indicates invalid inputs. Failure takes precedence when a batch also contains invalid inputs. Unknown business values are not zero-filled.
 
-| Suite | Command | Result |
-|---|---|---|
-| Unit tests (241 tests) | `pytest tests/unit` | **228 passed** |
-| Live integration (9 tests) | `pytest tests/integration -m live` | **9 passed** (E2E, refresh, budget attack, concurrency, resume, contamination, 100-sim, resume@37, 1s deadline) |
-| Lint | `ruff check src/ tests/` | **0 errors** |
-| Type check | `mypy src/nordtrace` | **0 errors in 29 source files** |
-| Docker build | `docker build -t nordtrace .` | **built** (image `nordtrace:latest`) |
-| Docker run | `docker run --rm nordtrace python -m nordtrace.cli research 982463718` | **available**, 23 facts, 13 requests, $0.00, 20.4s |
-| Docker API | container health + dashboard | **200 OK** (`/health`, `/`, `/dashboard`) |
-| Live CLI research | `python -m nordtrace.cli research 982463718` | **available**, 23 facts, 13 requests, $0.00, ~20s |
-| Frontend flow | browser automation | research → identity → facts → evidence drawer → trace, all real data |
+## Limits, storage and resume
 
-### Historical pre-repair 100-company benchmark (not validated under current rules)
+Copy `.env.example` to `.env` only when needed. Settings load from the launch directory; secrets and generated artifacts are ignored by Git.
 
-| Metric | Result |
+| Setting | Behavior |
 |---|---|
-| Companies attempted | 100 |
-| `available` | 88 |
-| `not_available` | 12 (no registry website / no accounts — honest, not fabricated) |
-| Entity resolution | **100/100** |
-| Verified facts | **1,420** (v2 baseline: 1,179 — +241 via coverage pass) |
-| Evidence records | 662 |
-| Rejected sources | 437 (tighter firewall + more candidates) |
-| Requests | **1,506 / 2,000** |
-| Runtime | **469.8s / 2,700s** |
-| Cost | **$0.0000 / $10.00** (deterministic extraction; LLM disabled without key) |
-| facts/request | 0.94 |
-| NAV during run | IP-level 429 block → circuit breaker opened, jobs degraded gracefully; registry rate_limited → BLOCKED terminal state (v3 regression: 92 FAILED → fixed → 0 FAILED) |
+| `DATA_DIR` | Defaults to the runtime directory's data folder; derives DATA_DIR/nordtrace.db |
+| `DATABASE_PATH` | Explicit override of the derived database path |
+| `MAX_REQUESTS` | Local default 2000; attempted redirects/retries/robots are reserved before transport |
+| `MAX_RUNTIME_SEC` | Local default 2700; cooperative acquisition cutoff, not a hard bound on synchronous storage/parsing |
+| `FINALIZATION_RESERVE_SEC` | Explicit acquisition headroom for finalization, default 0 |
+| `PER_COMPANY_SOFT_DEADLINE_SEC` | Historical name for a limit that now cancels company acquisition |
+| `MAX_API_COST_USD` | Local default 10; deterministic production makes no paid model calls |
 
-See `docs/BENCHMARK_ANALYSIS.md` (bottlenecks), `docs/COVERAGE_GAP_ANALYSIS.md`
-(measured failure modes per category) and `docs/COVERAGE_IMPROVEMENT_REPORT.md`
-(before/after) for details.
+These defaults are **not confirmed organizer budgets**. Supply the actual limits for a run; do not extrapolate a 100-company allowance to larger batches. Atomic model-cost reservations and some hard deadline/output guards remain incomplete.
 
----
+```powershell
+.venv/Scripts/python.exe -m nordtrace.cli resume RUN_ID
+.venv/Scripts/python.exe -m nordtrace.cli export-run RUN_ID --output data/recovered-audit.zip
+.venv/Scripts/python.exe -m nordtrace.cli verify-snapshots RUN_ID
+.venv/Scripts/python.exe -m nordtrace.cli replay-source SOURCE_ID --output data/source.bin
+```
 
-## What requires credentials
+SQLite retains immutable canonical envelopes, observations, captures and checkpoints. Resume restores consumed allowances and the original deadline, skips completed inputs and does not grant a fresh allowance. Missing legacy accounting produces explicit failures/unknown counters. Existing databases receive backed-up additive migrations; legacy history is not silently rewritten as newly verified.
 
-- **LLM extraction/synthesis polish**: needs `LLM_API_KEY`. Without it the
-  system uses deterministic extraction only (which is what all measured results
-  above reflect — $0.00 cost).
-- Everything else (Brreg, NAV, company websites) is public and keyless.
+Audit ZIPs contain canonical results.jsonl, retained raw content-addressed bytes, a local schema, a completion manifest and starter-example.jsonl. The latter is a documented projection of the public starter example, **not private organizer acceptance**. Registry-listed websites remain registered_website; structured evidence uses JSON pointers/raw values with null claim_span, and unknown per-company request/cost attribution remains null. Whole-run telemetry is in the manifest. Offline verification checks hashes, metadata, locators, supported values and exact correspondence.
 
-## Known limitations
+Existing ZIP destinations are preserved. Export capacity defaults to 256 MiB of uncompressed payload; use `--export-max-bytes` for batch or `--max-bytes` for export/verify. Portable artifacts appear after all terminal envelopes exist; acquisition checkpoints remain SQLite. Snapshot rights are source-specific and do not imply redistribution permission. Historical results are frozen; source outages preserve last-known values and do not prove retraction. Full extraction replay, affirmative removal/expiry and conditional 304 refresh remain incomplete.
 
-See `LIMITATIONS.md`. Key points:
+## Reproducible evaluation inputs
 
-- Annual accounts come from the public regnskapsregisteret endpoint (the
-  latest filed year; companies with custom layouts — banks, insurers — may be
-  unavailable → reported as `not_available`, never fabricated).
-- PDF financial extraction works on text-based PDFs; scanned/image PDFs are
-  reported as extraction-failed honestly.
-- NAV job postings carry employer names without orgnr → entity verification
-  is name/municipality-based; ambiguous postings are rejected, not merged.
-- Website discovery uses the registry `hjemmeside` field; companies without a
-  registered website get conservative name-derived candidates that must pass
-  identity verification (or are rejected).
-- No general news search (no keyless provider implemented); "recent activity"
-  comes from dated registry signals only.
+The public eligible universe is selection metadata, separate from the organizer's supplied frozen identity snapshot/private batch. Download it to a local data folder, then verify and select:
 
----
+```powershell
+New-Item -ItemType Directory -Force data | Out-Null
+Invoke-WebRequest -Uri 'https://www.builderr.ai/signalpost-company-universe-2025.jsonl.gz' -OutFile data/universe.jsonl.gz
+.venv/Scripts/python.exe -m nordtrace.cli sample-universe data/universe.jsonl.gz --output data/samples --seed nordtrace-eligible-evaluation-2026-10-18
+.venv/Scripts/python.exe -m nordtrace.cli benchmark --orgnr-file data/samples/development.jsonl --output data/benchmark.json
+```
 
-## Documentation
+The sampler verifies published compressed/uncompressed hashes and writes development.jsonl, held_out.jsonl and manifest.json. Default is 100 per partition; use `--development-size 1000 --held-out-size 1000` for larger nested samples. Fixed seeded partitions prevent cases moving from held-out into development. Unknown employee metadata stays unknown. Balanced rare-stratum oversampling is disclosed; it is not a population recall estimate. Consume only a complete manifest; failed publication can leave partial files without one. Existing directories/locks are refused.
 
-| File | Purpose |
-|---|---|
-| `README.md` | This file |
-| `ARCHITECTURE.md` | System architecture |
-| `METHODOLOGY.md` | Evidence pipeline + methodology |
-| `SOURCES.md` | Source tiers (all verified live) |
-| `EVIDENCE_MODEL.md` | Evidence structure + publication rules |
-| `ENTITY_RESOLUTION.md` | Identity matching + firewall |
-| `REFRESH_MODEL.md` | Change detection + refresh |
-| `COST_MODEL.md` | Cost tracking design |
-| `BENCHMARK.md` | Benchmark methodology |
-| `docs/BENCHMARK_ANALYSIS.md` | 100-company run: bottlenecks + coverage |
-| `docs/COVERAGE_GAP_ANALYSIS.md` | Measured failure modes per category |
-| `docs/COVERAGE_IMPROVEMENT_REPORT.md` | Before/after metrics |
-| `LIMITATIONS.md` | Known limitations |
-| `AUDIT.md` | Forensic audit of prior claims (2026-09-29) |
-| `VERIFICATION_REPORT.md` | Actual verification commands + results (2026-10-01) |
+Actual local samples from all 411,160 eligible records cover 38 of 41 metadata strata per partition, explicitly recording the gaps. Their files, hashes, seed, source lines, populations and quotas are retained under ignored data/evaluation-samples/. **These are input samples, not researched profiles or a live smoke-test report.** See [BENCHMARK.md](BENCHMARK.md) for selection evidence and limitations.
 
----
+Benchmark requires supplied inputs and processes all occurrences by default. Explicit `--limit N` records exclusions. Completed envelopes, availability, supported identity resolution, logical claims, corroborating observations and retained source-record inventory are separate measures. Registry output cannot inflate non-registry counts. Independent precision/recall/financial accuracy remain null without adjudicated references; no official score is computed.
 
-## Git / Authorship
+## Verify and follow the implementation
 
-Historical submission candidate (2026-10-02): `136d7ce`. This is not the current repair release. No new submission is authorized or claimed; use `git rev-parse HEAD` for the exact local checkout and consult docs/implementation-tracker.md for remaining gates.
+```powershell
+.venv/Scripts/python.exe -m pytest -q --tb=short
+.venv/Scripts/python.exe -m ruff check src tests
+.venv/Scripts/python.exe -m mypy src/nordtrace
+```
 
-All commits: `PrathamKapoor <prathamkapoor027@gmail.com>`. No AI/model
-collaborator attribution in repository history.
+Default tests exclude live checks. `pytest -m live` opts into external access and must be assessed separately; deterministic fixtures do not establish live accuracy.
 
-Decision log: `DECISIONS.md` · Execution flow: `FLOW.md` · Session changes:
-`MODEL_CHANGES.md` · Verification: `VERIFICATION_REPORT.md` · Readiness:
-`SUBMISSION_READINESS.md`.
+- [Implementation tracker](docs/implementation-tracker.md): requirements, F01–F28, status and remaining gates.
+- [Verification](docs/verification.md): exact commands, failures, scoped passes, artifacts and limitations.
+- [Evaluator contract](docs/evaluator-contract.md): retrieved versions/hashes, unresolved limits/schema/duplicate rules.
+- [FLOW.md](FLOW.md) and [DECISIONS.md](DECISIONS.md): actual call chains and material decisions.
+- [SOURCES.md](SOURCES.md): access, attribution, retention and source-specific rights.
 
-### Engineering transparency
+Core stack remains Python, Click, FastAPI/Pydantic, httpx and SQLite. The production path is input validation → exact entity acquisition → candidate acquisition through the gateway → retained snapshot/locator validation → stable claim/conflict ledger → outage-safe refresh/synthesis → atomic canonical publication → CLI/API/bundle. Only supported producers publish. Financial semantics/table extraction, external producers, full UI evidence inspection, hard synchronous bounds and representative independent accuracy remain open.
 
-- **Deterministic core** — every extracted fact comes from deterministic code
-  (registry JSON paths, PDF key-line regexes, segment-based page
-  classification); no LLM in the critical path ($0.00 in every measured run).
-- **Evidence-first publication** — a fact is published only after five
-  citation checks (source retrieved, evidence present, entity VERIFIED/LIKELY,
-  org match); rejections are logged and visible.
-- **Adaptive research** — coverage assessment after core stages; targeted
-  top-ups only for missing high-value categories, budget/time-gated.
-- **Decision log** — 20 documented engineering decisions with rationale,
-  alternatives, and evidence (`DECISIONS.md`).
-- **Execution flow** — function-level call chains, data lifecycle, failure
-  flow, and implemented decision logic (`FLOW.md`).
-- **Operational benchmark** — explicit supplied inputs, canonical outcomes,
-  retained-support checks and whole-run telemetry; independent accuracy needs adjudicated labels.
+Earlier feature claims and live numbers are preserved in Git (`git show 8aa7e06:README.md`) and the historical section of BENCHMARK.md; they are superseded by the current verification record. No remote push, PR, deployment, email or submission has been performed.
 
-## License
+## Licence
 
-MIT
+Project code: [MIT](LICENSE). See [NOTICE.md](NOTICE.md) and SOURCES.md for dependency/data distinctions. Downloaded source material is not automatically MIT.
