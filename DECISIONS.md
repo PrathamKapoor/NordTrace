@@ -1,5 +1,15 @@
 # Decision Log — NordTrace
 
+## D-048 — Preserve invalid input records and reject unknown explicit schemas
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: CSV substring detection silently skipped orgbad and every later org-prefixed value, even after a valid first input. Explicit unsupported result versions passed permissive unversioned checks. Malformed quotes could merge records and begin research; non-object result JSON raised exceptions instead of validation errors.
+- Decision/implementation: cli._read_csv treats only the first nonblank CSV record as a possible header, requiring an exact case-insensitive first-cell label: orgnr, org_number, organisation_number, organization_number or organisasjonsnummer. UTF-8/BOM and strict comma-separated parsing finish before repository/research access. Blank physical lines are separators; explicit empty/whitespace cells remain invalid inputs. Later header-like strings and invalid values remain in ordered input mapping. validate_result rejects every explicit version except string1.1 and returns a diagnostic for non-object JSON; only absent schema_version selects legacy structural validation.
+- Application: CLI batch CSV/TXT ingestion and local single-result validation. Repeated normalized/invalid keys still share an envelope with every input occurrence mapped separately under D-021. This is a documented local adapter policy; official CSV/header/duplicate schema acceptance remains unverified.
+- Alternatives: heuristic header guesses silently change the required batch; dropping invalid rows hides failures. Treating an unknown version as legacy invents compatibility. No automatic dialect sniffing is added: comma-separated first-column input remains the supported interface.
+- Tradeoffs/limits: a reserved first-record label is always a header; there is no explicit headerless override. Malformed encoding/CSV aborts import before research rather than inventing record boundaries. Missing-version legacy validation remains intentionally weaker and is not snapshot-support or official-evaluator validation. Full current1.1 validation also checks structure/references, not retained bytes.
+- Verification/revisit: test_input_validation.py has23 cases, including real CLI invalid/duplicate/empty export cardinality and malformed input before repository access. Initial14cases and five non-object cases failed before correction; input/CLI/contract46passed, independently reviewed. Revisit when organizer input/schema or additional dialect requirements are supplied.
+
 ## D-047 — Project company values from supported atomic claims
 
 - Date/status: 2026-10-17, accepted.

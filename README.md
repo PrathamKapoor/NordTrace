@@ -4,6 +4,8 @@ Update 2026-10-17: latest committed full offline suite: 472 passed, 8 live desel
 
 New structured company values are projected from supported atomic identity claims. Unconverted capital, group and postal details remain unresolved; supported zero values are preserved. Raw captures remain inspectable. This safety restriction does not establish external coverage or rewrite historical profiles.
 
+Batch files use UTF-8/BOM comma-separated first-column inputs. Only an exact first-record orgnr/org_number/organisation_number/organization_number/organisasjonsnummer label is a header. Blank physical lines are ignored; explicit empty and later invalid records receive terminal results. Malformed CSV/encoding fails before research. Local validation rejects unsupported explicit schema versions; unversioned legacy validation remains structural only. See [evaluator compatibility](docs/evaluator-contract.md).
+
 The current locked install is `uv sync --frozen --extra dev --python 3.12` (uv 0.12.5). Run commands with `uv run --frozen python -m nordtrace.cli ...`. Website attachment now checks operator contradictions before matching, preserves footer identity text and uses an offline public suffix list. Complex group/brand relationships remain under repair.
 
 The repair assignment is in progress. Older benchmark/test/readiness statements below are historical and do not establish current release acceptance. See [current verification](docs/verification.md), [requirement tracker](docs/implementation-tracker.md) and [evaluator compatibility](docs/evaluator-contract.md).

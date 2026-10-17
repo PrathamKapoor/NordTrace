@@ -23,6 +23,8 @@ Local adapter clarification (2026-10-17): version1.1 adds optional status_reason
 
 ## Implementation plan
 
+Local input/validation clarification (2026-10-17, D-048): batch files use UTF-8 (optional BOM), comma-separated first-column records. An exact first nonblank record label orgnr, org_number, organisation_number, organization_number or organisasjonsnummer (case-insensitive) is a header. Blank physical lines are separators; explicit empty fields are invalid supplied inputs. Later labels and invalid org-prefixed strings are preserved. Malformed CSV/encoding fails before research instead of guessing boundaries. Input indices count data records after these rules. This policy is local and still needs organizer compatibility confirmation. Single-result validation supports explicit string schema_version1.1 only; absent versions retain legacy shallow structural checks. Unknown/null/numeric explicit versions fail. Structural validation does not independently verify retained snapshot content or establish official acceptance.
+
 Execute inline, following the user's dependency order and using targeted failing tests before behavior changes:
 
 1. Add validated result/error/run-input contracts alongside existing models. Persist immutable complete results, including no-identity outcomes, with an additive backed-up migration. Route research, batch and API views through this representation. Verify failure cardinality, duplicates and frozen history.

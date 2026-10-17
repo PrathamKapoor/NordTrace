@@ -136,19 +136,22 @@ def research(ctx, org_number: str, output: Optional[str]):
 
 
 def _read_csv(path: str) -> List[str]:
+    """Read first-column inputs; only an exact first-record label is a header."""
     orgs: List[str] = []
-    with open(path, encoding="utf-8-sig") as f:
-        sample = f.read(2048)
-        f.seek(0)
-        has_header = "org" in sample.lower().split(",")[0] if sample else False
-        reader = csv.reader(f)
-        for row in reader:
-            if not row:
-                continue
-            val = row[0].strip()
-            if has_header and val.lower().startswith("org"):
-                continue
-            orgs.append(val)
+    headers = {"orgnr", "org_number", "organisation_number", "organization_number", "organisasjonsnummer"}
+    first_record = True
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            for row in csv.reader(f, strict=True):
+                if not row:  # Physical blank lines are separators, not supplied empty fields.
+                    continue
+                val = row[0].strip()
+                is_header = first_record and val.casefold() in headers
+                first_record = False
+                if not is_header:
+                    orgs.append(val)
+    except (OSError, UnicodeError, csv.Error) as error:
+        raise click.ClickException(f"Cannot read company input: {error}") from error
     return orgs
 
 

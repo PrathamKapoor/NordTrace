@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from typing import Any, List
 
 _REQUIRED_TOP = ["run_id", "organisation_number", "status"]
 _VALID_STATUS = {"available", "not_available", "blocked", "not_applicable", "ambiguous", "failed"}
 _ORGNR_RE = re.compile(r"^\d{9}$")
 
 
-def validate_result(data: Dict[str, Any]) -> List[str]:
+def validate_result(data: Any) -> List[str]:
+    if not isinstance(data, dict):
+        return ["result must be a JSON object"]
+    if "schema_version" in data and data["schema_version"] != "1.1":
+        return [f"unsupported schema_version: {data['schema_version']!r}; expected '1.1'"]
     if data.get("schema_version") == "1.1":
         from pydantic import ValidationError
 
