@@ -20,8 +20,9 @@ import json
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 from nordtrace.core.models import (
     ChangeRecord,
@@ -31,6 +32,7 @@ from nordtrace.core.models import (
     Fact,
     FactStatus,
     ResearchRun,
+    RunBudgetState,
     SourceRecord,
     TraceEvent,
     utcnow,
@@ -382,6 +384,92 @@ class Repository:
         with self._lock, self.conn:
             self.conn.execute("INSERT INTO run_inputs VALUES (?,?)", (run_id, json.dumps(inputs)))
 
+    @contextmanager
+    def _budget_transaction(self, deadline_unix: float) -> Iterator[sqlite3.Connection]:
+        """Short bounded lock wait; a slow writer cannot reset/overdraw a budget."""
+        wait = min(0.05, max(0, deadline_unix - time.time()))
+        connection = sqlite3.connect(str(self.db_path), timeout=wait)
+        connection.row_factory = sqlite3.Row
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            yield connection
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def get_run_budget(self, run_id: str) -> tuple[RunBudgetState, int, float]:
+        row = self.conn.execute(
+            "SELECT budget_json,request_count,estimated_cost_usd FROM runs WHERE run_id=?", (run_id,),
+        ).fetchone()
+        if row is None or row["budget_json"] is None:
+            raise ValueError("original run budget is unavailable")
+        return RunBudgetState.model_validate_json(row["budget_json"]), row["request_count"], row["estimated_cost_usd"]
+
+    def initialize_run_budget(
+        self, run_id: str, state: RunBudgetState, used: int = 0, cost: float = 0,
+    ) -> None:
+        with self._budget_transaction(state.deadline_unix) as connection:
+            row = connection.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            if row is None:
+                raise ValueError("run not found")
+            if row["budget_json"] is not None:
+                return  # First initializer is authoritative; never replace a run's limits.
+            if row["request_count"] or row["estimated_cost_usd"] or json.loads(row["company_states_json"]):
+                raise ValueError("original budget unknown for a run that already has work")
+            connection.execute(
+                "UPDATE runs SET budget_json=?,request_count=?,estimated_cost_usd=? WHERE run_id=?",
+                (state.model_dump_json(), used, cost, run_id),
+            )
+
+    def reserve_run_requests(self, run_id: str, n: int, elapsed: float) -> bool:
+        state, _, _ = self.get_run_budget(run_id)
+        with self._budget_transaction(state.deadline_unix) as connection:
+            row = connection.execute("SELECT budget_json,request_count FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            state = RunBudgetState.model_validate_json(row["budget_json"])
+            now = time.time()
+            if (now >= state.deadline_unix or now < state.last_seen_unix - 0.01
+                    or max(elapsed, state.elapsed_floor_sec) >= state.configuration.max_runtime_sec
+                    or row["request_count"] + n > state.configuration.max_requests):
+                return False
+            state.elapsed_floor_sec = max(state.elapsed_floor_sec, elapsed)
+            state.last_seen_unix = now
+            connection.execute(
+                "UPDATE runs SET request_count=request_count+?,budget_json=? WHERE run_id=?",
+                (n, state.model_dump_json(), run_id),
+            )
+            return True
+
+    def record_run_transport(
+        self, run_id: str, success: bool, retry: bool, started: bool = True, **labels: Optional[str],
+    ) -> None:
+        state, _, _ = self.get_run_budget(run_id)
+        with self._budget_transaction(state.deadline_unix) as connection:
+            row = connection.execute("SELECT budget_json FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            state = RunBudgetState.model_validate_json(row["budget_json"])
+            key = "unstarted_reservations" if not started else ("successful" if success else "failed")
+            state.telemetry[key] = state.telemetry.get(key, 0) + 1
+            state.telemetry["retries"] = state.telemetry.get("retries", 0) + int(retry and started)
+            for label, value in labels.items():
+                if value and started:
+                    counts = state.telemetry.setdefault("by_" + label, {})
+                    counts[value] = counts.get(value, 0) + 1
+            connection.execute("UPDATE runs SET budget_json=? WHERE run_id=?", (state.model_dump_json(), run_id))
+
+    def checkpoint_run_budget(self, run_id: str, elapsed: float, cost: float) -> None:
+        state, _, _ = self.get_run_budget(run_id)
+        with self._budget_transaction(state.deadline_unix) as connection:
+            row = connection.execute("SELECT budget_json FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            state = RunBudgetState.model_validate_json(row["budget_json"])
+            state.elapsed_floor_sec = max(state.elapsed_floor_sec, elapsed)
+            state.last_seen_unix = max(state.last_seen_unix, time.time())
+            connection.execute(
+                "UPDATE runs SET budget_json=?,estimated_cost_usd=MAX(estimated_cost_usd,?) WHERE run_id=?",
+                (state.model_dump_json(), cost, run_id),
+            )
+
     def get_run_inputs(self, run_id: str) -> List[dict]:
         row = self.conn.execute("SELECT inputs_json FROM run_inputs WHERE run_id=?", (run_id,)).fetchone()
         return json.loads(row[0]) if row else []
@@ -421,7 +509,8 @@ class Repository:
                 states[result[0]] = json.loads(result[1])["status"]
             run.company_states = states
             self.conn.execute(
-                "UPDATE runs SET completed_at=?, state=?, request_count=?, estimated_cost_usd=?, companies_json=?, company_states_json=? WHERE run_id=?",
+                "UPDATE runs SET completed_at=?, state=?, request_count=MAX(request_count,?), "
+                "estimated_cost_usd=MAX(estimated_cost_usd,?), companies_json=?, company_states_json=? WHERE run_id=?",
                 (
                     run.completed_at,
                     run.state,

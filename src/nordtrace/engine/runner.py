@@ -14,10 +14,20 @@ import logging
 import time
 from typing import List, Optional
 
-from nordtrace.core.budget import BudgetManager
+from nordtrace.core.budget import BudgetManager, RunBudgetUnavailable
 from nordtrace.core.config import settings
 from nordtrace.core.contracts import build_result, map_inputs
-from nordtrace.core.models import ResearchRun, RunState, TerminalState, new_id, utcnow
+from nordtrace.core.models import (
+    CompanyProfile,
+    ResearchError,
+    ResearchMetadata,
+    ResearchRun,
+    RunState,
+    TerminalState,
+    new_id,
+    utcnow,
+)
+from nordtrace.core.orgnr import validate_orgnr
 from nordtrace.core.repository import Repository
 from nordtrace.engine.pipeline import CompanyOutcome, ResearchPipeline
 
@@ -62,6 +72,23 @@ class BatchRunner:
             self.repo.save_run_inputs(run.run_id, [item.model_dump() for item in inputs])
             pending = run.companies
 
+        try:
+            self.budget.bind_run(self.repo, run.run_id, initialize=resume_run_id is None)
+        except RunBudgetUnavailable as error:
+            for company in pending:
+                if self.repo.get_result(run.run_id, company) is None:
+                    self.repo.save_result(CompanyProfile(
+                        run_id=run.run_id, organisation_number=company, status="failed",
+                        errors=[ResearchError(code="run_budget_unavailable", message=str(error))],
+                        research_metadata=ResearchMetadata(
+                            started_at=run.started_at, completed_at=utcnow().isoformat(),
+                            request_count=run.request_count, estimated_cost_usd=run.estimated_cost_usd,
+                        ),
+                    ))
+            run.completed_at, run.state = utcnow().isoformat(), RunState.FAILED.value
+            self.repo.update_run(run)
+            return self.repo.get_run(run.run_id) or run
+
         pipeline = ResearchPipeline(self.repo, self.budget)
         owner = new_id("worker")
         try:
@@ -80,11 +107,24 @@ class BatchRunner:
                         await asyncio.sleep(min(0.05, self.budget.runtime.time_remaining()))
                     company_started = time.monotonic()
                     try:
-                        if self.budget.runtime.deadline_reached():
+                        check = validate_orgnr(org)
+                        if not check.valid:
+                            outcome = CompanyOutcome(
+                                org_number=org, terminal_state=TerminalState.NOT_APPLICABLE.value,
+                                error=f"invalid organisation number: {check.reason}",
+                                error_code="invalid_organisation_number",
+                            )
+                        elif self.budget.runtime.deadline_reached():
                             outcome = CompanyOutcome(
                                 org_number=org, terminal_state=TerminalState.FAILED.value,
                                 error="deadline reached before company started",
                                 error_code="deadline_exceeded",
+                            )
+                        elif self.budget.requests.remaining() <= 0:
+                            outcome = CompanyOutcome(
+                                org_number=org, terminal_state=TerminalState.FAILED.value,
+                                error="run request budget exhausted before company started",
+                                error_code="request_budget_exhausted",
                             )
                         else:
                             outcome = await pipeline.research_company(org, run.run_id)
@@ -132,6 +172,7 @@ class BatchRunner:
     def _checkpoint(self, run: ResearchRun) -> None:
         """Persist run state after each company (checkpointing).
         Reads fresh state from the DB so mark_company_state isn't clobbered."""
+        self.budget.checkpoint()
         run.request_count = self.budget.requests.total_used
         run.estimated_cost_usd = round(self.budget.cost.total_used, 6)
         fresh = self.repo.get_run(run.run_id)

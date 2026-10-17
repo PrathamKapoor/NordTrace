@@ -346,17 +346,39 @@ class Coverage(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class RunConfiguration(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, strict=True)
+
+    max_requests: int = Field(ge=0)
+    max_runtime_sec: float = Field(gt=0)
+    max_cost_usd: float = Field(ge=0)
+    per_company_sec: float = Field(default=90, gt=0)
+    finalization_reserve_sec: float = Field(default=0, ge=0)
+
+
+class RunBudgetState(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    version: Literal[1] = 1
+    configuration: RunConfiguration
+    deadline_unix: float
+    elapsed_floor_sec: float = Field(default=0, ge=0)
+    last_seen_unix: float
+    telemetry: Dict[str, Any] = Field(default_factory=dict)
+
+
 class ResearchMetadata(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     duration_sec: Optional[float] = None
     request_count: int = 0
-    request_budget: int = 2000
+    request_budget: Optional[int] = None
     estimated_cost_usd: float = 0.0
-    cost_budget_usd: float = 10.0
+    cost_budget_usd: Optional[float] = None
     time_remaining_sec: Optional[float] = None
     stages_executed: List[str] = Field(default_factory=list)
     llm_calls: int = 0
+    run_configuration: Optional[RunConfiguration] = None
 
 
 class ResearchError(BaseModel):

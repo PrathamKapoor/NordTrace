@@ -1,12 +1,9 @@
-"""Budget manager: requests, runtime, cost.
+"""Configured run allowances, with durable request reservations and resume.
 
-Hard limits:
-- 2,000 outbound requests per run
-- 45 minutes per run (global deadline; per-company soft deadline)
-- $10 declared external API cost
-
-All outbound HTTP goes through RequestGateway, which consults these budgets.
-No component may bypass the gateway.
+The numeric constructor defaults are local development settings, not confirmed
+organizer budgets. CLI/API/batch freeze their actual configuration per run.
+Production acquisition uses RequestGateway. The dormant model helper's cost
+reservations/transport remain unfinished; research does not call that helper.
 """
 
 from __future__ import annotations
@@ -14,7 +11,12 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+from nordtrace.core.models import RunBudgetState, RunConfiguration
+
+if TYPE_CHECKING:
+    from nordtrace.core.repository import Repository
 
 
 class BudgetExceededError(RuntimeError):
@@ -23,6 +25,10 @@ class BudgetExceededError(RuntimeError):
 
 class DeadlineReachedError(RuntimeError):
     """Raised when the global runtime deadline is hit."""
+
+
+class RunBudgetUnavailable(ValueError):
+    """A run's original allowance cannot be recovered without inventing limits."""
 
 
 @dataclass
@@ -37,10 +43,13 @@ class RequestBudget:
     failed: int = 0
     successful: int = 0
     retries: int = 0
+    unstarted: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def try_acquire(self, n: int = 1) -> bool:
         """Atomically reserve n requests. Returns False if it would exceed the limit."""
+        if type(n) is not int or n <= 0:
+            raise ValueError("request reservation must be a positive integer")
         with self._lock:
             if self.total_used + n > self.global_limit:
                 return False
@@ -58,8 +67,12 @@ class RequestBudget:
         domain: Optional[str] = None,
         stage: Optional[str] = None,
         company: Optional[str] = None,
+        started: bool = True,
     ) -> None:
         with self._lock:
+            if not started:
+                self.unstarted += 1
+                return
             if success:
                 self.successful += 1
             else:
@@ -84,6 +97,9 @@ class RequestBudget:
                 "retries": self.retries,
                 "by_domain": dict(self.by_domain),
                 "by_stage": dict(self.by_stage),
+                "transport_operations": self.successful + self.failed,
+                "unstarted_reservations": self.unstarted,
+                "unresolved_reservations": self.total_used - self.successful - self.failed - self.unstarted,
             }
 
 
@@ -177,6 +193,52 @@ class CostBudget:
             }
 
 
+class PersistentRequestBudget:
+    """Same request gate, with cross-process durable reservations before transport."""
+
+    def __init__(self, repo: Repository, run_id: str, runtime: RuntimeBudget, limit: int):
+        self.repo, self.run_id, self.runtime = repo, run_id, runtime
+        self.global_limit = limit
+
+    @property
+    def total_used(self) -> int:
+        return self.repo.get_run_budget(self.run_id)[1]
+
+    def remaining(self) -> int:
+        return max(0, self.global_limit - self.total_used)
+
+    def try_acquire(self, n: int = 1) -> bool:
+        if type(n) is not int or n <= 0:
+            raise ValueError("request reservation must be a positive integer")
+        acquired = self.repo.reserve_run_requests(self.run_id, n, self.runtime.elapsed_sec())
+        if not acquired:
+            state, _, _ = self.repo.get_run_budget(self.run_id)
+            if (state.elapsed_floor_sec >= state.configuration.max_runtime_sec
+                    or time.time() >= state.deadline_unix):
+                self.runtime.started_at = min(
+                    self.runtime.started_at, time.monotonic() - self.runtime.total_limit_sec,
+                )
+        return acquired
+
+    def record_outcome(
+        self, success: bool, retry: bool = False, domain: Optional[str] = None,
+        stage: Optional[str] = None, company: Optional[str] = None,
+        started: bool = True,
+    ) -> None:
+        self.repo.record_run_transport(
+            self.run_id, success, retry, started=started, domain=domain, stage=stage, company=company,
+        )
+
+    def snapshot(self) -> Dict[str, Any]:
+        state, used, _ = self.repo.get_run_budget(self.run_id)
+        return state.telemetry | {
+            "total_used": used, "limit": self.global_limit, "remaining": self.global_limit - used,
+            "transport_operations": state.telemetry.get("successful", 0) + state.telemetry.get("failed", 0),
+            "unresolved_reservations": used - state.telemetry.get("successful", 0)
+            - state.telemetry.get("failed", 0) - state.telemetry.get("unstarted_reservations", 0),
+        }
+
+
 class BudgetManager:
     """Facade bundling the three budgets for a single run."""
 
@@ -187,11 +249,56 @@ class BudgetManager:
         max_cost: float = 10.0,
         per_company_soft_sec: float = 90.0,
     ):
-        self.requests = RequestBudget(global_limit=max_requests)
+        self.configuration = RunConfiguration(
+            max_requests=max_requests, max_runtime_sec=max_runtime_sec, max_cost_usd=max_cost,
+            per_company_sec=per_company_soft_sec,
+        )
+        self.requests: RequestBudget | PersistentRequestBudget = RequestBudget(global_limit=max_requests)
         self.runtime = RuntimeBudget(
             total_limit_sec=max_runtime_sec, per_company_soft_sec=per_company_soft_sec
         )
         self.cost = CostBudget(limit=max_cost)
+        self._repository: Optional[Repository] = None
+        self._run_id: Optional[str] = None
+
+    def bind_run(self, repo: Repository, run_id: str, initialize: bool = False) -> None:
+        if self._run_id is not None and self._run_id != run_id:
+            raise RunBudgetUnavailable("a budget manager cannot be reused for a different run")
+        try:
+            if initialize:
+                now = time.time()
+                state = RunBudgetState(
+                    configuration=self.configuration, deadline_unix=now + self.runtime.time_remaining(),
+                    elapsed_floor_sec=self.runtime.elapsed_sec(), last_seen_unix=now,
+                    telemetry=self.requests.snapshot(),
+                )
+                repo.initialize_run_budget(run_id, state, self.requests.total_used, self.cost.total_used)
+            saved, _, spent = repo.get_run_budget(run_id)
+            now = time.time()
+            if now < saved.last_seen_unix - 0.01:
+                raise ValueError("wall clock moved backwards; deadline cannot be safely restored")
+            self.configuration = saved.configuration
+            remaining = max(0, min(
+                saved.deadline_unix - now,
+                self.configuration.max_runtime_sec - saved.elapsed_floor_sec,
+            ))
+            self.runtime.total_limit_sec = self.configuration.max_runtime_sec
+            self.runtime.per_company_soft_sec = self.configuration.per_company_sec
+            self.runtime.started_at = time.monotonic() - (self.runtime.total_limit_sec - remaining)
+            self.cost.limit = self.configuration.max_cost_usd
+            self.cost.total_used = max(self.cost.total_used, spent)
+            self.requests = PersistentRequestBudget(
+                repo, run_id, self.runtime, self.configuration.max_requests,
+            )
+            self._repository, self._run_id = repo, run_id
+        except ValueError as error:
+            raise RunBudgetUnavailable(str(error)) from error
+
+    def checkpoint(self) -> None:
+        if self._repository is not None and self._run_id is not None:
+            self._repository.checkpoint_run_budget(
+                self._run_id, self.runtime.elapsed_sec(), self.cost.total_used,
+            )
 
     # -- gates used by the pipeline -----------------------------------------
     def can_make_request(self) -> bool:

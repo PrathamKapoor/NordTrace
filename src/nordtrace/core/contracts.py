@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.models import (
@@ -22,17 +22,8 @@ from nordtrace.core.models import (
     ResearchMetadata,
     utcnow,
 )
+from nordtrace.core.models import RunConfiguration as RunConfiguration
 from nordtrace.core.orgnr import validate_orgnr
-
-
-class RunConfiguration(BaseModel):
-    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-
-    max_requests: int = Field(ge=0)
-    max_runtime_sec: float = Field(gt=0)
-    max_cost_usd: float = Field(ge=0)
-    per_company_sec: float = Field(default=90, gt=0)
-    finalization_reserve_sec: float = Field(default=1, ge=0)
 
 
 class InputMapping(BaseModel):
@@ -103,6 +94,7 @@ def build_result(outcome: Any, run_id: str, budget: BudgetManager, started_at: s
             estimated_cost_usd=round(budget.cost.total_used, 6), cost_budget_usd=budget.cost.limit,
             time_remaining_sec=round(budget.runtime.time_remaining(), 3),
             stages_executed=outcome.stages, llm_calls=budget.cost.calls,
+            run_configuration=budget.configuration,
         ),
         last_researched_at=completed,
     )

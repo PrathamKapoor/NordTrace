@@ -291,14 +291,20 @@ class RequestGateway:
     ) -> httpx.Response:
         token = await self.rate_limiter.acquire(host)
         attempted = False
+        reserved = False
         successful = False
         rate_limited = False
         try:
             self.budget.check()
             if not self.budget.requests.try_acquire():
+                if self.budget.runtime.deadline_reached():
+                    raise TimeoutError("shared run deadline reached during reservation")
                 raise BudgetExceededError("request budget exhausted")
-            attempted = True
+            reserved = True
             client = await self._get_client()
+            if self.budget.runtime.deadline_reached():
+                raise TimeoutError("run deadline reached before transport")
+            attempted = True
             async with client.stream(
                 "GET", url, follow_redirects=False,
                 headers={"User-Agent": settings.user_agent, "Accept": "*/*", "Accept-Encoding": "identity"},
@@ -324,14 +330,18 @@ class RequestGateway:
                     request=httpx.Request("GET", url),
                 )
         finally:
-            if attempted:
-                self.budget.requests.record_outcome(
-                    successful, retry=retry, domain=host, stage=stage, company=company,
-                )
-            if successful:
-                token.record_success()
-            else:
-                token.record_failure(rate_limited=rate_limited)
+            try:
+                if reserved:
+                    self.budget.requests.record_outcome(
+                        successful, retry=retry, domain=host, stage=stage, company=company, started=attempted,
+                    )
+            finally:
+                if not attempted:
+                    token.cancel()
+                elif successful:
+                    token.record_success()
+                else:
+                    token.record_failure(rate_limited=rate_limited)
 
     async def fetch(self, url: str, **kwargs) -> SourceRecord:
         """Bound all waits, retries and body reads by the monotonic run deadline."""
@@ -465,7 +475,7 @@ class RequestGateway:
         except ResponseLimitError as error:
             return record("failed", str(error))
         except sqlite3.Error:
-            return record("failed", "snapshot storage unavailable")
+            return record("failed", "request accounting or snapshot storage unavailable")
 
 
     def _source_from_cache(

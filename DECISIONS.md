@@ -1,5 +1,25 @@
 # Decision Log — NordTrace
 
+## D-041 — Freeze and restore durable run request allowances
+
+- Date/status: 2026-10-17, accepted; full cost/scheduler enforcement remains unfinished.
+- Problem/evidence: replacement workers used fresh default budgets; unknown legacy usage could be ignored, and stale run updates could lower counters. Initial four budget regressions failed. Completed/pending fixture runs lacked declared original budgets, so scheduler fixtures now seed explicit known allowances.
+- Decision/implementation: RunConfiguration is a validated model re-exported through contracts for compatibility. Version1 RunBudgetState freezes effective limits, absolute deadline, elapsed floor and telemetry in existing runs.budget_json; no DDL/history rewrite is needed. CLI/batch and API background jobs bind this state before work. PersistentRequestBudget reserves requests in short cross-connection SQLite transactions before network; counts remain consumed after crash. Resume restores original limits and known consumption, excluding any larger replacement defaults. Unknown legacy limits produce honest failure envelopes and no fresh acquisition.
+- Application: CLI/API/batch. Standalone low-level gateway/pipeline callers can explicitly bind a run; unbound budgets remain in-memory and do not claim durable resume. Invalid inputs do not need a transport allowance. Published metadata carries effective configuration; unknown original limits are null. Existing canonical envelopes remain unchanged.
+- Alternatives: checkpoint-only accounting loses requests after crash; in-process locks do not protect independent workers. Inferring old limits from current defaults silently grants a new allowance. Replacing the database or rewriting legacy history is unnecessary.
+- Tradeoffs/limits: reservation writes add I/O; an interrupted reservation stays conservatively charged. SQLite lock waits are bounded to50ms/remaining deadline, but complete publication/parsing/DNS/finalization bounds are not yet established. Recorded cost is restored, but optional model cost reservations and cross-process aggregation remain unfinished; production model callers are disabled. Wall-clock regression refuses unsafe deadline restoration. Default numeric limits remain local, not organizer-authorized values.
+- Verification: test_persistent_budgets.py exercises replacement settings, four independent connections, consumed/expired/legacy runs, shared elapsed exhaustion, gateway redirect/cache counts and repeated CLI failures. Synthetic100/1000 invalid inputs preserve exact envelopes. Revisit with externally supplied evaluator limits, shared model reservations and hard scheduler finalization; extends D-021/D-022/D-038.
+
+## D-042 — Fence transport after reservation and always release permits
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: durable accounting introduced a fallible write before rate-token release. Review reproduced a stranded domain semaphore after a telemetry lock error. A delayed reservation commit also let HTTP start after the deadline. Repeated no-pending CLI resume initially returned0 for a stored failure.
+- Decision/implementation: gateway releases rate tokens in nested finally regardless of accounting success, rechecks the deadline immediately before transport and separates started HTTP operations from known unstarted and unresolved charged reservations. RateLimitToken.cancel releases unused capacity without blaming source health. CLI uses one result-derived exit policy, including the no-pending path.
+- Application: all gateway calls, durable or in-memory, and research/batch/resume CLI reporting. Reservations are not automatically refunded after uncertain persistence.
+- Alternatives: releasing only after successful bookkeeping deadlocks shared-source work; relying on asyncio.timeout alone misses synchronous commit delay. Treating a locally cancelled request as a failed source can trip unrelated circuit breakers. A successful resume exit with stored execution failures hides programmatic errors.
+- Tradeoffs/limits: late synchronous storage can consume wall time; the fence prevents a subsequent HTTP connection but does not claim real-time disk guarantees. Unresolved telemetry is explicit after failed writes. Outer task cancellation/finalization and paid model transport remain separate work.
+- Verification: writer-contention and slow-commit regressions failed before correction; actual gateway transport/rate tests pass. The late commit makes zero HTTP operations while preserving one charged unstarted reservation. Revisit on transport/accounting changes; extends D-026/D-041.
+
 ## D-039 — Paginated, parent-verified registered subunits
 
 - Date/status: 2026-10-17, accepted; representative external recall remains unmeasured.

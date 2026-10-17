@@ -35,6 +35,7 @@ def test_resume_only_invokes_unfinished_companies(tmp_path, monkeypatch):
     repo = Repository(tmp_path / "resume.db")
     run = ResearchRun(companies=["982463718", "958973306"], started_at=utcnow().isoformat())
     repo.create_run(run)
+    BudgetManager().bind_run(repo, run.run_id, initialize=True)
     repo.mark_company_state(run.run_id, "982463718", "available")
     calls = []
 
@@ -208,6 +209,7 @@ def test_concurrent_resume_does_not_repeat_work_or_corrupt_checkpoint(tmp_path, 
     repo = Repository(tmp_path / "concurrent.db")
     run = ResearchRun(companies=["982463718"], started_at=utcnow().isoformat())
     repo.create_run(run)
+    BudgetManager().bind_run(repo, run.run_id, initialize=True)
     calls = []
 
     async def acquire(self, org, run_id):

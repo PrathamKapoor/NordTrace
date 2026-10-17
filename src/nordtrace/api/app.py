@@ -100,6 +100,7 @@ async def start_research(req: ResearchRequest, background: BackgroundTasks):
     repo = get_repo()
     run = ResearchRun(started_at=utcnow().isoformat(), companies=[orgnr], requested_by="api")
     repo.create_run(run)
+    BatchRunner(repo).budget.bind_run(repo, run.run_id, initialize=True)
     background.add_task(_run_research_blocking, orgnr, run.run_id)
     return {"run_id": run.run_id, "organisation_number": orgnr, "status": "started"}
 
@@ -290,6 +291,7 @@ async def start_batch(req: BatchRequest, background: BackgroundTasks):
     run = ResearchRun(started_at=utcnow().isoformat(), companies=companies, requested_by="api")
     repo.create_run(run)
     repo.save_run_inputs(run.run_id, [item.model_dump() for item in inputs])
+    BatchRunner(repo).budget.bind_run(repo, run.run_id, initialize=True)
 
     def run_batch_blocking():
         runner = BatchRunner(repo, concurrency=req.concurrency)

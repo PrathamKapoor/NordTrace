@@ -23,6 +23,7 @@ import click
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
 from nordtrace.core.contracts import batch_payload, build_result, write_bytes_atomic, write_json_atomic
+from nordtrace.core.models import CompanyProfile
 from nordtrace.core.repository import Repository
 from nordtrace.engine.runner import BatchRunner
 
@@ -33,6 +34,14 @@ def _repo() -> Repository:
 
 def _result_json(outcome, run_id: str, budget: BudgetManager, started_at: str) -> dict:
     return build_result(outcome, run_id, budget, started_at).model_dump(mode="json")
+
+
+def _result_exit_code(results: List[CompanyProfile]) -> int:
+    if any(result.status == "failed" for result in results):
+        return 1
+    if any(error.code == "invalid_organisation_number" for result in results for error in result.errors):
+        return 2
+    return 0
 
 
 @click.group()
@@ -123,10 +132,7 @@ def research(ctx, org_number: str, output: Optional[str]):
         click.echo(f"\nSummary: {result.summary}")
     for error in result.errors:
         click.echo(f"{error.code}: {error.message}", err=True)
-    if result.status == "failed":
-        ctx.exit(1)
-    if any(error.code == "invalid_organisation_number" for error in result.errors):
-        ctx.exit(2)
+    ctx.exit(_result_exit_code([result]))
 
 
 def _read_csv(path: str) -> List[str]:
@@ -173,18 +179,20 @@ def batch(ctx, input_file: str, concurrency: int, resume_run_id: Optional[str], 
     click.echo(f"Run {run.run_id}: state={run.state}")
     for state, n in sorted(counts.items()):
         click.echo(f"  {state}: {n}")
+    request_limit = (
+        "unknown" if any(error.code == "run_budget_unavailable"
+                         for result in results for error in result.errors)
+        else str(runner.budget.requests.global_limit)
+    )
     click.echo(
-        f"Requests: {run.request_count}/{settings.max_requests} | "
+        f"Requests: {run.request_count}/{request_limit} | "
         f"Cost: ${run.estimated_cost_usd:.4f} | "
         f"Time: {run.completed_at and 'done'}"
     )
     if output:
         write_json_atomic(output, payload)
         click.echo(f"Complete results written to {output}")
-    if any(result.status == "failed" for result in results):
-        ctx.exit(1)
-    if any(error.code == "invalid_organisation_number" for result in results for error in result.errors):
-        ctx.exit(2)
+    ctx.exit(_result_exit_code(results))
 
 
 @cli.command()
@@ -201,14 +209,17 @@ def resume(ctx, run_id: str):
     click.echo(f"Run {run_id}: {len(run.company_states)} finished, {len(unfinished)} unfinished")
     if not unfinished:
         click.echo("Nothing to resume.")
+        results = repo.get_results(run_id)
         repo.close()
-        return
+        ctx.exit(_result_exit_code(results))
     runner = BatchRunner(repo)
     try:
         run2 = asyncio.run(runner.run_batch(unfinished, resume_run_id=run_id))
+        results = repo.get_results(run_id)
     finally:
         repo.close()
     click.echo(f"Resumed: {len(run2.company_states)} companies now have terminal states")
+    ctx.exit(_result_exit_code(results))
 
 
 @cli.command()

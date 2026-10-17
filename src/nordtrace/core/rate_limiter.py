@@ -164,6 +164,12 @@ class RateLimitToken:
             self._release()
             self._done = True
 
+    def cancel(self) -> None:
+        """Release an unused permit without blaming a source for local failure."""
+        if not self._done:
+            self._release()
+            self._done = True
+
     def record_failure(self, rate_limited: bool = False) -> None:
         if not self._done:
             self.state.record_failure(rate_limited)
