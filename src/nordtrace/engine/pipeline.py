@@ -20,7 +20,7 @@ from nordtrace.adapters.brreg import BrregAdapter
 from nordtrace.adapters.nav_jobs import NavJobsAdapter
 from nordtrace.adapters.pdf_pipeline import PdfFinancialPipeline
 from nordtrace.adapters.website import WebsiteAdapter
-from nordtrace.core.budget import BudgetManager
+from nordtrace.core.budget import BudgetExceededError, BudgetManager, DeadlineReachedError
 from nordtrace.core.contracts import build_result, project_identity
 from nordtrace.core.entity import EntityResolver, PublicationFirewall
 from nordtrace.core.ledger import FactLedger
@@ -55,6 +55,7 @@ _acquisition_deadline: ContextVar[Optional[tuple[asyncio.Timeout, str]]] = Conte
 class CompanyOutcome:
     org_number: str
     terminal_state: str
+    status_reason: Optional[str] = None
     identity: Optional[CompanyIdentity] = None
     facts: List[Fact] = field(default_factory=list)
     conflicts: List[Fact] = field(default_factory=list)
@@ -104,7 +105,8 @@ class ResearchPipeline:
         previous = self.repo.get_result(run_id, org_number)
         if previous:
             return CompanyOutcome(
-                org_number=org_number, terminal_state=previous.status, identity=previous.company,
+                org_number=org_number, terminal_state=previous.status, status_reason=previous.status_reason,
+                identity=previous.company,
                 facts=previous.facts, conflicts=previous.conflicts,
                 last_known=previous.last_known, refresh_outcomes=previous.refresh_outcomes,
                 previous_run_id=previous.previous_run_id,
@@ -156,6 +158,13 @@ class ResearchPipeline:
         registry_payload: Optional[dict] = None
         financials_status = "unknown"
         cancelled = False
+        budget_skipped: List[str] = []
+
+        def acquisition_allowed(stage: str) -> bool:
+            if self.budget.can_make_request():
+                return True
+            budget_skipped.append(stage)
+            return False
 
         try:
             # 0. validate orgnr format (registry checks registration separately)
@@ -170,6 +179,7 @@ class ResearchPipeline:
             self._trace(run_id, org_number, "validation", f"organisation number accepted ({org_number})")
 
             # 1. canonical identity from registry
+            self.budget.check()
             ident, src, ev, hint = await self.brreg.fetch_entity(org_number, run_id)
             stages.append("identity")
             if hint != "found" or ident is None or src is None or ev is None:
@@ -203,7 +213,7 @@ class ResearchPipeline:
             self.repo.upsert_company(ident, run_id)
 
             # Registered subunits are relationships, not separate target legal identities.
-            if self.budget.can_make_request():
+            if acquisition_allowed("branches"):
                 branches = await self.brreg.fetch_underenheter(org_number, run_id)
                 for source in branches.sources:
                     ledger.add_source(source)
@@ -230,7 +240,7 @@ class ResearchPipeline:
                 self._trace(run_id, org_number, "branches", reason)
 
             # 2. roles (leadership)
-            if self.budget.can_make_request():
+            if acquisition_allowed("roles"):
                 rev_evs, role_facts, rsrc = await self.brreg.fetch_roles(org_number, run_id)
                 if rsrc:
                     ledger.add_source(rsrc)
@@ -242,7 +252,7 @@ class ResearchPipeline:
                 self._trace(run_id, org_number, "roles", f"{len(role_facts)} roles extracted")
 
             # 3. financials from registry accounts
-            if self.budget.can_make_request():
+            if acquisition_allowed("financials"):
                 aev, afacts, asrc, astatus = await self.brreg.fetch_accounts(org_number, run_id)
                 if asrc:
                     ledger.add_source(asrc)
@@ -267,7 +277,7 @@ class ResearchPipeline:
                         registry_payload = None
 
             # 4. website discovery + crawl (registry hjemmeside or name-derived candidates)
-            if self.budget.can_make_request():
+            if acquisition_allowed("website"):
                 w_evs, w_facts, w_sources, w_rejected, w_cov = await self.website.crawl(ident, run_id)
                 for s in w_sources:
                     ledger.add_source(s)
@@ -276,6 +286,8 @@ class ResearchPipeline:
                 for f in w_facts:
                     ledger.add_fact(f, None, None)
                 for r in w_rejected:
+                    if r.get("code") == "acquisition_budget_limited":
+                        budget_skipped.append("website")
                     r2 = dict(r)
                     r2["url"] = r.get("url")
                     outcome.rejected.append(r2)
@@ -293,7 +305,7 @@ class ResearchPipeline:
                 )
 
             # 5. jobs (NAV)
-            if self.budget.can_make_request():
+            if acquisition_allowed("jobs"):
                 j_evs, j_facts, j_src, j_rejected = await self.jobs.fetch_jobs(ident, run_id)
                 if j_src:
                     ledger.add_source(j_src)
@@ -311,7 +323,7 @@ class ResearchPipeline:
             # 5b. adaptive top-ups: coverage assessment + targeted additional research
             # value-of-request heuristic: prioritize high-value missing categories
             # over low-probability random search; stop when marginal value is low
-            if self.budget.can_make_request():
+            if acquisition_allowed("adaptive"):
                 cov_now = self._coverage_from(ledger, org_number, financials_status)
                 missing = [
                     c
@@ -341,6 +353,8 @@ class ResearchPipeline:
                         for f in top_facts:
                             ledger.add_fact(f, None, None)
                         for r in top_rejected:
+                            if r.get("code") == "acquisition_budget_limited":
+                                budget_skipped.append("adaptive_business")
                             outcome.rejected.append(r)
                         stages.append("adaptive_business")
                         self._trace(
@@ -353,7 +367,7 @@ class ResearchPipeline:
                     # financials: try PDF documents discovered on the website
                     if (
                         "financials" in missing
-                        and self.budget.can_make_request()
+                        and acquisition_allowed("adaptive_financials")
                         and self.budget.runtime.should_start_expensive_operation(15)
                     ):
                         pdf_sources = [
@@ -404,10 +418,24 @@ class ResearchPipeline:
             outcome.facts = current_facts
             outcome.conflicts = ledger.conflicting_facts(org_number)
 
-            # 9. terminal state from coverage
-            outcome.terminal_state = self._terminal_state(coverage, ident)
+            # Exact registry resolution completed. Coverage is a separate axis;
+            # neither sparse external information nor deletion means inapplicability.
+            outcome.terminal_state = TerminalState.AVAILABLE.value
+            outcome.status_reason = "research_completed"
             if outcome.conflicts:
                 outcome.terminal_state = TerminalState.AMBIGUOUS.value
+                outcome.status_reason = "conflicting_supported_observations"
+            if budget_skipped:
+                outcome.terminal_state = TerminalState.FAILED.value
+                outcome.error_code = (
+                    "deadline_exceeded" if self.budget.work_time_remaining() <= 0
+                    else "request_budget_exhausted" if self.budget.requests.remaining() <= 0
+                    else "acquisition_budget_limited"
+                )
+                outcome.status_reason = outcome.error_code
+                outcome.error = (
+                    "Run limit prevented acquisition stages: " + ", ".join(dict.fromkeys(budget_skipped))
+                )
             # 10. synthesis (deterministic; LLM optional)
             outcome.unknowns = self._unknowns(coverage)
             if outcome.conflicts:
@@ -432,11 +460,19 @@ class ResearchPipeline:
                 "deadline_exceeded", "company_deadline_exceeded", "research_cancelled",
             }:
                 outcome.error_code = cancellation.args[0]
+            outcome.status_reason = outcome.error_code
             outcome.error = "Research interrupted; previously supported observations were retained."
             raise
+        except (BudgetExceededError, DeadlineReachedError) as error:
+            outcome.terminal_state = TerminalState.FAILED.value
+            outcome.status_reason = outcome.error_code = (
+                "deadline_exceeded" if isinstance(error, DeadlineReachedError) else "request_budget_exhausted"
+            )
+            outcome.error = str(error)
         except Exception as e:
             logger.exception("pipeline error for %s", org_number)
             outcome.terminal_state = TerminalState.FAILED.value
+            outcome.status_reason = outcome.error_code = "research_failed"
             outcome.error = f"{type(e).__name__}: {e}"
             self._trace(run_id, org_number, "error", str(e)[:300], "error")
         finally:
@@ -523,18 +559,6 @@ class ResearchPipeline:
                 category = "industry"
             cov.set(category, "ambiguous")
         return cov
-
-    def _terminal_state(self, coverage: Coverage, ident: Optional[CompanyIdentity]) -> str:
-        if ident is None:
-            return TerminalState.NOT_AVAILABLE.value
-        if ident.status == "deleted":
-            return TerminalState.NOT_APPLICABLE.value
-        found = coverage.found_count()
-        if found >= 3:
-            return TerminalState.AVAILABLE.value
-        if found >= 1:
-            return TerminalState.NOT_AVAILABLE.value  # identity + little else
-        return TerminalState.NOT_AVAILABLE.value
 
     def _unknowns(self, coverage: Coverage) -> List[str]:
         labels = {

@@ -192,6 +192,10 @@ class WebsiteAdapter:
         home_text: Optional[str] = None
         for cand in self.candidate_urls(identity):
             if self.budget.requests.remaining() < 6:
+                rejected.append({
+                    "url": cand["url"], "code": "acquisition_budget_limited",
+                    "reason": "Website discovery skipped: fewer than six request reservations remain.",
+                })
                 break
             src = await self.gateway.fetch(
                 cand["url"],
@@ -279,12 +283,16 @@ class WebsiteAdapter:
         ordered = sorted(scored.items(), key=lambda kv: -kv[1])
         crawled_pages = 0
         for link, _prio in ordered:
+            if link == home_url:
+                continue
             if crawled_pages >= settings.max_pages_per_company:
                 break
             if self.budget.requests.remaining() < 4:
+                rejected.append({
+                    "url": link, "code": "acquisition_budget_limited",
+                    "reason": "Internal page skipped: fewer than four request reservations remain.",
+                })
                 break
-            if link == home_url:
-                continue
             src = await self.gateway.fetch(
                 link,
                 stage="website_crawl",

@@ -138,15 +138,21 @@ def test_direct_pipeline_deadline_preserves_supported_partial_ledger(tmp_path, m
 
 def test_finalization_reserve_stops_acquisition_while_time_remains(tmp_path, monkeypatch):
     repo = Repository(tmp_path / "reserve.db")
+    cancelled_with_remaining = []
 
     async def slow(self, org, run_id):
-        await asyncio.sleep(1)
-        return CompanyOutcome(org_number=org, terminal_state="available")
+        try:
+            await asyncio.sleep(1)
+            return CompanyOutcome(org_number=org, terminal_state="available")
+        except asyncio.CancelledError:
+            # Measure the acquisition cutoff, before synchronous result storage.
+            cancelled_with_remaining.append(self.budget.runtime.time_remaining())
+            raise
 
     monkeypatch.setattr(ResearchPipeline, "research_company", slow)
     budget = BudgetManager(max_runtime_sec=0.5, per_company_soft_sec=3, finalization_reserve_sec=0.3)
     run = asyncio.run(BatchRunner(repo, budget).run_batch(ORGS[:1]))
-    assert budget.runtime.time_remaining() > 0.15
+    assert cancelled_with_remaining and cancelled_with_remaining[0] > 0.15
     assert repo.get_result(run.run_id, ORGS[0]).errors[0].code == "deadline_exceeded"
     assert run.state == "interrupted"
     repo.close()

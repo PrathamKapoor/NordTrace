@@ -78,6 +78,7 @@ class BatchRunner:
                     try:
                         self.repo.save_result(CompanyProfile(
                             run_id=run.run_id, organisation_number=company, status="failed",
+                            status_reason=code,
                             errors=[ResearchError(code=code, message=str(error))],
                             research_metadata=ResearchMetadata(
                                 started_at=run.started_at, completed_at=utcnow().isoformat(),

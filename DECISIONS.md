@@ -1,5 +1,15 @@
 # Decision Log — NordTrace
 
+## D-045 — Record outcome reasons independently from coverage
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: initial nine assertions reproduced identity-only success labelled not_available, deleted entity research labelled not_applicable, and absent persisted reasons. Further regressions reproduced budget-truncated success, generic reasons for direct depleted/expired execution and an adapter headroom skip labelled completed despite no website request.
+- Decision/implementation: completed exact registry resolution produces available independently of family counts. Deletion is a legal status rather than an invented eligibility exclusion. Conflicts remain ambiguous; failed/interrupted execution preserves supported partial claims. Pipeline acquisition guards and website headroom diagnostics explicitly record unfinished work and typed budget/deadline reasons. Website's existing six/four-request thresholds remain unchanged in this unit. Ignored homepage self-links are excluded before headroom diagnostics; paired fixtures show identical eight-request acquisition with/without that link.
+- Contract/application: optional status_reason is additive to the local1.1 adapter. build_result records the actual reason; CLI/API/batch read the same immutable canonical result. Existing missing reasons stay unknown/null and historical payloads are not rewritten. Private organizer schema acceptance remains unverified. A completed result with source gaps does not claim broad coverage or independent accuracy.
+- Alternatives: family-count thresholds conflate sparse information with failed research; automatically excluding deleted companies invents a contract rule. Inferring old reasons from present claims changes history. Reporting skipped adapter work as completed hides resource limits.
+- Tradeoffs/limits: available rates may change because their previous meaning was defective; this is not a recall/precision improvement and historical benchmark figures are not comparable as completion metrics. Broad per-family completeness and legacy benchmark metrics still require repair. The retained website headroom heuristic can leave allowance unused and needs measured scheduling work.
+- Verification/revisit: production pipeline snapshots, historical HTTP selection, canonical batch export, six-state serializer and budget/headroom fixtures in test_outcome_semantics.py fail before correction and pass afterward. Adjacent cancellation, conflict, rate, subunit and API checks exercise integration. Revisit when explicit official eligibility/status schema or source-scheduler measurements are supplied; extends D-021/D-043/D-044.
+
 ## D-043 — Cancel cooperative acquisition and retain partial results
 
 - Date/status: 2026-10-17, accepted.

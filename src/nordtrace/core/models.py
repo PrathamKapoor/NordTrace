@@ -411,6 +411,7 @@ class CompanyProfile(BaseModel):
     run_id: str
     organisation_number: str
     status: str = TerminalState.NOT_AVAILABLE.value
+    status_reason: Optional[str] = Field(default=None, min_length=1)
     company: Optional[CompanyIdentity] = None
     facts: List[Fact] = Field(default_factory=list)
     conflicts: List[Fact] = Field(default_factory=list)

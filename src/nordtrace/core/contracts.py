@@ -78,6 +78,11 @@ def build_result(outcome: Any, run_id: str, budget: BudgetManager, started_at: s
         ))
     return CompanyProfile(
         run_id=run_id, organisation_number=outcome.org_number, status=outcome.terminal_state,
+        status_reason=(getattr(outcome, "error_code", None) or getattr(outcome, "status_reason", None) or {
+            "available": "research_completed", "not_available": "information_not_available",
+            "blocked": "research_blocked", "not_applicable": "research_not_applicable",
+            "ambiguous": "research_ambiguous", "failed": "research_failed",
+        }.get(outcome.terminal_state, "unrecognized_terminal_outcome")),
         company=project_identity(outcome.identity, getattr(outcome, "conflicts", [])),
         facts=outcome.facts, evidence=outcome.evidence,
         conflicts=getattr(outcome, "conflicts", []),

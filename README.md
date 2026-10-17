@@ -1,6 +1,6 @@
 # Implementation status — 2026-10-16
 
-Update 2026-10-17: local full offline suite: 419 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
+Update 2026-10-17: local full offline suite: 434 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
 
 The current locked install is `uv sync --frozen --extra dev --python 3.12` (uv 0.12.5). Run commands with `uv run --frozen python -m nordtrace.cli ...`. Website attachment now checks operator contradictions before matching, preserves footer identity text and uses an offline public suffix list. Complex group/brand relationships remain under repair.
 
@@ -11,6 +11,8 @@ Publication requires snapshot-backed locators in production. Atomic registry ide
 Subunit acquisition is wired into research with bounded pagination. Set BRREG_BRANCH_PAGE_SIZE and BRREG_BRANCH_MAX_PAGES explicitly when needed (defaults20/10); every page consumes the same supplied request/time allowance. Partial pages keep their supported observations, and registered subunits are distinguished from separate legal entities and active workplaces. A limited live registry check returned identity plus three subunits with four independently counted requests; representative recall and the required100-company smoke are still unverified.
 
 Results expose stable `claim_id` values separately from historical `fact_id`/`observation_id`. Period, source item and subject scope distinguish collections. Conflicting observations are withheld together and retained in `conflicts`; disputed structured identity values are cleared with `unresolved_fields`. Source outages and incomplete extraction preserve revalidated observations in `last_known`, separate from current facts and with original evidence/timestamps. Automatic disappearance/expiry detection remains unfinished: missing observations never establish removal. External-family publication remains under repair.
+
+Canonical results record `status_reason` separately from family coverage. Completed exact-company research is available even with identity-only information; registry deletion stays a legal status. Budget/headroom-skipped acquisition is failed with its explicit reason and retained supported claims. Source gaps remain visible. Older envelopes without a reason remain unknown; no historical reason is invented. This corrects status semantics and does not establish a coverage gain.
 
 Historical API views use `GET /companies/ORGNR?run_id=RUN_ID`. Frozen canonical results include current/last-known/conflicting observations and per-source refresh outcomes. Schema6 backs up existing databases and records publication ordering without fabricating old history.
 

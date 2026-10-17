@@ -19,6 +19,8 @@ No machine-readable evaluator schema, sample official input, duplicate policy or
 
 The page contains broad scale labels alongside detailed growing-batch requirements. Its final event is advertised as October 21 while the contract says revisions close October 18, 2026; these describe different events and do not authorize submission. No organizer contact or submission is performed. Recheck these sources before an actual submission.
 
+Local adapter clarification (2026-10-17): version1.1 adds optional status_reason, unknown/null for historical results lacking a recorded reason. New canonical serialization records actual execution/availability reasons rather than deriving status from family counts. Successful exact-registry resolution may be available with sparse external coverage; deleted legal status is not an assumed eligibility exclusion. Actual acquisition skipped for request/deadline/headroom limits is failed with retained partial evidence. This local interpretation needs validation against the still-unavailable organizer schema and is not a claimed official rule.
+
 ## Implementation plan
 
 Execute inline, following the user's dependency order and using targeted failing tests before behavior changes:
