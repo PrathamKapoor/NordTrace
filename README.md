@@ -1,6 +1,6 @@
 # Implementation status — 2026-10-16
 
-Update 2026-10-17: latest committed full offline suite: 472 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
+Update 2026-10-17: full offline suite for input/projection/budget-lock corrections: 503 passed, 8 live deselected. DATA_DIR controls DATA_DIR/nordtrace.db; DATABASE_PATH overrides it. Defaults/.env use the launch directory. Wheels include dashboard HTML/licences. CI is committed locally with no hosted evidence. Docker execution is unverified (daemon unavailable). Production extraction/synthesis is deterministic; optional model helper callers are unimplemented.
 
 New structured company values are projected from supported atomic identity claims. Unconverted capital, group and postal details remain unresolved; supported zero values are preserved. Raw captures remain inspectable. This safety restriction does not establish external coverage or rewrite historical profiles.
 

@@ -397,12 +397,27 @@ class Repository:
 
     @contextmanager
     def _budget_transaction(self, deadline_unix: float) -> Iterator[sqlite3.Connection]:
-        """Short bounded lock wait; a slow writer cannot reset/overdraw a budget."""
-        wait = min(0.25, max(0, deadline_unix - time.time()))
-        connection = sqlite3.connect(str(self.db_path), timeout=wait)
+        """Retry only lock acquisition, bounded by one second and the run deadline."""
+        lock_deadline = time.monotonic() + min(1.0, max(0, deadline_unix - time.time()))
+        connection = sqlite3.connect(str(self.db_path), timeout=0)
         connection.row_factory = sqlite3.Row
         try:
-            connection.execute("BEGIN IMMEDIATE")
+            while True:
+                remaining = min(lock_deadline - time.monotonic(), deadline_unix - time.time())
+                wait_ms = int(min(0.25, max(0, remaining)) * 1000)
+                connection.execute(f"PRAGMA busy_timeout={wait_ms}")
+                try:
+                    connection.execute("BEGIN IMMEDIATE")
+                    break
+                except sqlite3.OperationalError as error:
+                    code = getattr(error, "sqlite_errorcode", None)
+                    if (code is None or code & 0xFF not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+                            or time.monotonic() >= lock_deadline or time.time() >= deadline_unix):
+                        raise
+                    # No caller body has executed. Never replay mutations or commits.
+                    connection.rollback()
+                    time.sleep(min(0.01, max(0, lock_deadline - time.monotonic()),
+                                   max(0, deadline_unix - time.time())))
             yield connection
             connection.commit()
         except BaseException:

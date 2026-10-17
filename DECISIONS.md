@@ -1,5 +1,15 @@
 # Decision Log — NordTrace
 
+## D-049 — Recover bounded transient budget-writer contention
+
+- Date/status: 2026-10-17, accepted.
+- Problem/evidence: the corrected projection full regression hit a real four-connection budget reservation failure: BEGIN IMMEDIATE exhausted its250ms busy wait although no allowance was overspent. An isolated retry passed. A new deterministic fixture holds a real SQLite writer until the first busy timeout, reproducing the failure without manufacturing an exception.
+- Decision/implementation: Repository._budget_transaction retries only SQLITE_BUSY/SQLITE_LOCKED during BEGIN IMMEDIATE, including extended error codes. Each busy wait is at most250ms; cumulative acquisition uses both a one-second monotonic ceiling and the supplied absolute run deadline, with a short bounded backoff. After acquiring, the caller body executes once and commit errors propagate; body/commit mutations are never retried. Other errors propagate immediately with rollback/close.
+- Application: shared budget initialization, request reservation, telemetry and budget checkpoint lock acquisition. Request reservation still checks original limits/deadline inside the transaction and commits before HTTP. No fresh allowance or uncharged transport is introduced.
+- Alternatives: increasing an unbounded connection timeout would stall expired runs; treating locks as budget depletion confuses infrastructure failure with exhausted allowance; replaying whole transactions risks duplicate charges or side effects. Immediate failure on a normal temporary writer caused observed avoidable company failures.
+- Tradeoffs/limits: a contended synchronous budget call may now wait up to one second instead of250ms, shortened by the original run deadline. Exhausted contention still raises honestly. Disk/connect/commit and wider synchronous parsing/finalization are not hard-bounded by this acquisition ceiling. Crash ownership/cost reservations remain unfinished.
+- Verification/revisit: test_budget_locking.py exercises real busy-timeout recovery, held-lock absolute cutoff, real read-only BEGIN refusal without retry, and injected body-busy rollback without replay. Adjacent persistent-budget/cancellation32cases pass. Revisit with measured high-contention scheduling or an asynchronous storage boundary; extends D-041/D-042.
+
 ## D-048 — Preserve invalid input records and reject unknown explicit schemas
 
 - Date/status: 2026-10-17, accepted.
