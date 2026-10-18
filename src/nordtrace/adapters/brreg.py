@@ -14,8 +14,10 @@ are simply absent, and 404s produce not_found terminal states upstream.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from dataclasses import field as dc_field
+from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode, urlsplit
 
@@ -365,7 +367,8 @@ class BrregAdapter:
         """Annual accounts from the public regnskapsregisteret.
 
         Returns (evidences, facts, source, status) where status is one of
-        found/not_found/failed/blocked. Currency + period always from the source.
+        found/not_found/failed/blocked/ambiguous. Found means candidates only;
+        monetary publication remains withheld pending units and value support.
         """
         url = f"{settings.brreg_regnskap_url}/{org_number}"
         source = await self.gateway.fetch(
@@ -379,8 +382,10 @@ class BrregAdapter:
             allowed_origins=[f"{urlsplit(url).scheme}://{urlsplit(url).netloc}"],
         )
         if source.access_status != "success":
-            if source.http_status == 404:
+            if source.http_status in (404, 410):
                 return [], [], source, "not_found"
+            if source.access_status in ("blocked", "robots_denied", "rate_limited"):
+                return [], [], source, "blocked"
             return [], [], source, "failed"
 
         cached = self.gateway.get_content(source.url or "")
@@ -394,22 +399,60 @@ class BrregAdapter:
         if not items:
             return [], [], source, "not_found"
 
-        # Use the latest accounting period available; the endpoint returns the
-        # latest filed entry (multi-period entries become separate fact slots
-        # via their reporting_period labels)
-        def period_end(r: Dict[str, Any]) -> str:
-            return (r.get("regnskapsperiode") or {}).get("tilDato", "")
+        if any(not isinstance(item, dict) for item in items):
+            source.error_detail = "accounts response schema mismatch"
+            return [], [], source, "failed"
+        # Scope is selected before chronology: a newer consolidated report must
+        # never become the legal entity's own accounts. Unknown qualifiers abstain.
+        legal = []
+        for index, record in enumerate(items):
+            entity = record.get("virksomhet")
+            if not isinstance(entity, dict):
+                continue
+            raw_org = entity.get("organisasjonsnummer")
+            subject = validate_orgnr(raw_org) if isinstance(raw_org, str) else None
+            if subject is None or not subject.valid or subject.value != org_number:
+                continue
+            if record.get("regnskapstype") == "SELSKAP":
+                legal.append((index, record))
+            elif record.get("regnskapstype") != "KONSERN":
+                source.error_detail = "accounts entity scope is unresolved"
+                return [], [], source, "ambiguous"
+        if not legal:
+            source.error_detail = "no exact legal-entity accounts record"
+            return [], [], source, "ambiguous"
 
-        latest = max(items, key=period_end)
-        # Sanity: the record must reference the requested orgnr
-        v = latest.get("virksomhet") or {}
-        if v.get("organisasjonsnummer") and v["organisasjonsnummer"] != org_number:
-            return [], [], source, "not_found"
+        def dates(record: dict) -> tuple[str, str]:
+            period = record.get("regnskapsperiode")
+            if not isinstance(period, dict):
+                raise ValueError("accounting period missing")
+            start, end = period.get("fraDato"), period.get("tilDato")
+            if (not isinstance(start, str) or not isinstance(end, str)
+                    or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", start)
+                    or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", end)):
+                raise ValueError("complete explicit accounting dates required")
+            if date.fromisoformat(start) > date.fromisoformat(end):
+                raise ValueError("accounting period reversed")
+            return start, end
 
-        periode = latest.get("regnskapsperiode") or {}
-        currency = latest.get("valuta") or "NOK"
-        period_str = periode.get("tilDato", "")
-        period_label = f"FY{period_str[:4]}" if period_str else None
+        try:
+            periods = {index: dates(record) for index, record in legal}
+        except ValueError as error:
+            source.error_detail = f"accounts qualifiers unresolved: {error}"
+            return [], [], source, "ambiguous"
+        latest_end = max(periods[index][1] for index, _ in legal)
+        newest = [(index, record) for index, record in legal if periods[index][1] == latest_end]
+        if len({json.dumps(record, sort_keys=True, ensure_ascii=False) for _, record in newest}) > 1:
+            source.error_detail = "competing accounts records for the same latest period"
+            return [], [], source, "ambiguous"
+        index, latest = newest[0]
+        currency = latest.get("valuta")
+        if not isinstance(currency, str) or not re.fullmatch(r"[A-Z]{3}", currency):
+            source.error_detail = "explicit source currency missing or invalid"
+            return [], [], source, "ambiguous"
+        start, end = periods[index]
+        period_label = f"{start}/{end}"
+        periode = latest["regnskapsperiode"]
 
         ev = EvidenceRecord(
             source_id=source.source_id,
@@ -418,16 +461,17 @@ class BrregAdapter:
             source_type=SourceType.REGISTRY_ACCOUNTS.value,
             authority_tier=0,
             retrieved_at=source.retrieved_at,
-            evidence_text=(
-                f"Årsregnskap {period_label or period_str} for "
-                f"{v.get('organisasjonsnummer', org_number)} "
-                f"({v.get('organisasjonsform', '')}), valuta {currency}, "
-                f"journalnr {latest.get('journalnr', '?')}"
-            ),
+            evidence_text=json.dumps(latest, ensure_ascii=False, sort_keys=True),
+            locator=JsonPointerLocator(pointer=f"/{index}" if isinstance(payload, list) else "",
+                                       raw_value=latest),
             content_hash=source.content_hash,
             entity_verdict=MatchVerdict.VERIFIED.value,
             org_number=org_number,
-            entity_match_details={"registry": "brreg_regnskap", "journalnr": latest.get("journalnr")},
+            entity_match_details={
+                "registry": "brreg_regnskap", "journalnr": latest.get("journalnr"),
+                "regnskapstype": latest["regnskapstype"], "publication_support": "unimplemented",
+                "unit_scale_basis": "unresolved",
+            },
         )
 
         rr = latest.get("resultatregnskapResultat") or {}
@@ -447,14 +491,15 @@ class BrregAdapter:
                 normalized_value=value,
                 currency=currency,
                 reporting_period=period_label,
+                subject_scope="legal_entity",
                 valid_from=periode.get("fraDato"),
                 valid_to=periode.get("tilDato"),
                 source_id=source.source_id,
                 evidence_id=ev.evidence_id,
-                retrieved_at=utcnow().isoformat(),
+                retrieved_at=source.retrieved_at,
                 entity_verdict=MatchVerdict.VERIFIED.value,
                 fact_confidence=0.99,
-                status=FactStatus.PUBLISHED.value,
+                status=FactStatus.EXTRACTED.value,
             )
 
         facts = [

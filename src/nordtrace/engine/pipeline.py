@@ -262,6 +262,26 @@ class ResearchPipeline:
                     ledger.add_evidence(e)
                 for f in afacts:
                     ledger.add_fact(f, None, asrc)
+                if asrc:
+                    financial_state = {
+                        "not_found": "not_available", "not_available": "not_available",
+                        "ambiguous": "ambiguous", "failed": "failed", "blocked": "blocked",
+                        "not_applicable": "not_applicable",
+                    }.get(astatus, "failed")
+                    reason = asrc.error_detail or f"Accounts extraction state: {astatus}."
+                    if astatus == "found":
+                        financial_state = (
+                            "available" if any(f.status == FactStatus.PUBLISHED.value for f in afacts)
+                            else "ambiguous"
+                        )
+                        if financial_state == "ambiguous":
+                            reason = ("Accounting candidates lack validated unit/scale "
+                                      "and financial value support.")
+                    outcome.refresh_outcomes.append(RefreshOutcome.model_validate({
+                        "requested_url": asrc.requested_url or asrc.url or "", "source_id": asrc.source_id,
+                        "family": "financials", "state": financial_state, "observed_at": utcnow().isoformat(),
+                        "reason": reason,
+                    }))
                 stages.append("financials")
                 financials_status = astatus
                 self._trace(
@@ -481,8 +501,8 @@ class ResearchPipeline:
             cov.set("financials", "found")
         elif accounts_status == "not_found":
             cov.set("financials", "not_available")
-        elif accounts_status in ("failed", "blocked"):
-            cov.set("financials", "blocked")
+        elif accounts_status in ("failed", "blocked", "ambiguous", "not_applicable"):
+            cov.set("financials", accounts_status)
         if any(f.category == "leadership" for f in ledger.published_facts(org_number)):
             cov.set("leadership", "found")
         if any(f.category == "locations" for f in ledger.published_facts(org_number)):
