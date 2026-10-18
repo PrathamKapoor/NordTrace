@@ -19,6 +19,8 @@ from pydantic import BaseModel, Field
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
 from nordtrace.core.contracts import map_inputs
+from nordtrace.core.evidence import verify_capture_metadata
+from nordtrace.core.ledger import CitationValidator
 from nordtrace.core.models import Fact, ResearchRun, RunState, TerminalState, utcnow
 from nordtrace.core.orgnr import validate_orgnr
 from nordtrace.core.repository import Repository
@@ -237,6 +239,56 @@ async def get_company(orgnr: str, run_id: Optional[str] = None):
         raise HTTPException(status_code=422, detail="invalid organisation number")
     repo = get_repo()
     return _company_payload(repo, orgnr, run_id)
+
+
+@app.get("/companies/{orgnr}/evidence/{evidence_id}")
+async def get_evidence_view(orgnr: str, evidence_id: str, run_id: str):
+    """Inspect only a frozen run's referenced claims; no live acquisition occurs."""
+    check = validate_orgnr(orgnr)
+    if not check.valid:
+        raise HTTPException(status_code=422, detail="invalid organisation number")
+    orgnr = check.value
+    repo = get_repo()
+    run = repo.get_run(run_id)
+    if run is None or orgnr not in run.companies:
+        raise HTTPException(status_code=404, detail="company/run not found")
+    result = repo.get_result(run_id, orgnr)
+    if result is None:
+        raise HTTPException(status_code=409, detail={"code": "result_unavailable"})
+    evidence = next((item for item in result.evidence if item.evidence_id == evidence_id), None)
+    claims = [
+        {"state": state, "claim": fact.model_dump(mode="json")}
+        for state, facts in (("current", result.facts), ("conflicting", result.conflicts),
+                             ("last_known", result.last_known))
+        for fact in facts if fact.evidence_id == evidence_id
+    ]
+    if evidence is None or not claims:
+        raise HTTPException(status_code=404, detail="referenced evidence not found in this result")
+    source = next((item for item in result.sources if item.source_id == evidence.source_id), None)
+    if source is None:
+        raise HTTPException(status_code=409, detail={"code": "claim_support_invalid"})
+    try:
+        captured, body = repo.read_capture(source.source_id)
+        verify_capture_metadata(captured, source)
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(status_code=409, detail={"code": "snapshot_unavailable"}) from None
+    validator = CitationValidator(
+        {item.source_id: item for item in result.sources},
+        {item.evidence_id: item for item in result.evidence}, repo,
+    )
+    for fact in result.facts + result.conflicts + result.last_known:
+        if fact.evidence_id == evidence_id:
+            valid, _reason = validator.validate(fact)
+            if not valid:
+                raise HTTPException(status_code=409, detail={"code": "claim_support_invalid"})
+    return {
+        "format": "nordtrace-evidence-view-v1", "run_id": run_id, "organisation_number": orgnr,
+        "evidence": evidence.model_dump(mode="json"), "source": source.model_dump(mode="json"),
+        "claims": claims, "snapshot": {
+            "verified": True, "content_hash": captured.content_hash,
+            "representation": captured.snapshot_representation, "byte_count": len(body),
+        },
+    }
 
 
 @app.get("/companies/{orgnr}/facts")

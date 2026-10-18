@@ -59,6 +59,10 @@ progress { width: 100%; height: 6px; }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .footer { margin-top: 60px; color: var(--dim); font-size: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
 .evidence-panel { background: var(--surface2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 14px; margin-top: 10px; }
+button.evidence-trigger, button.evidence-close { min-height: 44px; padding: 8px 12px; cursor: pointer; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.evidence-panel { overflow-wrap: anywhere; }
+.evidence-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
 </style>
 </head>
 <body>
@@ -111,7 +115,7 @@ progress { width: 100%; height: 6px; }
         <thead><tr><th>Category</th><th>Field</th><th>Value</th><th>Period</th><th>Confidence</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
-      <div id="evidencePanel" class="evidence-panel hidden"></div>
+      <div id="evidencePanel" class="evidence-panel hidden" role="region" aria-label="Evidence details" tabindex="-1"></div>
     </section>
 
     <!-- Changes -->
@@ -164,6 +168,9 @@ progress { width: 100%; height: 6px; }
 
 <script>
 const API = "";
+let companySequence = 0;
+let evidenceSequence = 0;
+let evidenceTrigger = null;
 
 function showError(msg) {
   const b = document.getElementById("errorBox");
@@ -189,7 +196,28 @@ function esc(s) {
   }
   return result;
 }
-function na(v) { return (v === null || v === undefined || v === "") ? '<span class="na">Not publicly available</span>' : esc(v); }
+function na(v) { return (v === null || v === undefined || v === "") ? '<span class="na">Not verified</span>' : esc(v); }
+
+function safeSourceLink(raw, label = raw) {
+  const text = esc(label ?? "Unknown");
+  if (typeof raw !== "string" || /[\u0000-\u0020\u007f]/.test(raw)) return text;
+  try {
+    const url = new URL(raw);
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) return text;
+    return `<a class="a" href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  } catch { return text; }
+}
+
+function closeEvidence(restoreFocus = true) {
+  evidenceSequence++;
+  document.getElementById("evidencePanel").classList.add("hidden");
+  document.getElementById("evidencePanel").setAttribute("aria-busy", "false");
+  if (evidenceTrigger) {
+    evidenceTrigger.setAttribute("aria-expanded", "false");
+    if (restoreFocus) evidenceTrigger.focus();
+  }
+  evidenceTrigger = null;
+}
 
 async function research() {
   clearError();
@@ -231,16 +259,26 @@ async function research() {
 }
 
 async function loadCompany(orgnr, runId) {
-  const r = await fetch(`${API}/companies/${orgnr}`);
+  const selection = ++companySequence;
+  closeEvidence(false);
+  const query = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
+  const r = await fetch(`${API}/companies/${encodeURIComponent(orgnr)}${query}`);
+  if (selection !== companySequence) return;
   if (!r.ok) { showError(`Company lookup failed: ${r.status}`); return; }
   const d = await r.json();
+  if (selection !== companySequence) return;
+  closeEvidence(false);
   renderIdentity(d);
   renderFacts(d);
   renderChanges(d);
   renderSources(d);
   renderRun(d);
-  const t = await fetch(`${API}/runs/${runId}/trace`).catch(() => null);
-  if (t && t.ok) renderTrace(await t.json());
+  document.getElementById("traceBox").innerHTML = "Loading research trace…";
+  const t = await fetch(`${API}/runs/${encodeURIComponent(d.run_id || runId)}/trace`).catch(() => null);
+  const trace = t && t.ok ? await t.json().catch(() => null) : null;
+  if (selection !== companySequence) return;
+  if (trace) renderTrace(trace);
+  else document.getElementById("traceBox").innerHTML = "Research trace unavailable for this run.";
   document.getElementById("results").classList.remove("hidden");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -253,7 +291,7 @@ function renderIdentity(d) {
   document.getElementById("cStatus").textContent = c.status || "—";
   document.getElementById("cAddr").innerHTML = na(c.registered_address);
   document.getElementById("cInd").innerHTML = na(c.industry_description ? `${c.industry_description} (${c.industry_code})` : c.industry_code);
-  document.getElementById("cWeb").innerHTML = c.website ? `<a class="a" href="${esc(c.website)}" target="_blank" rel="noopener noreferrer">${esc(c.website)}</a>` : na(null);
+  document.getElementById("cWeb").innerHTML = c.website ? safeSourceLink(c.website) : na(null);
   document.getElementById("cReg").innerHTML = na(c.registration_date);
   document.getElementById("cEmp").innerHTML = na(c.employee_count);
   const badge = document.getElementById("entityBadge");
@@ -271,22 +309,22 @@ function renderFacts(d) {
   const tb = document.querySelector("#factsTable tbody");
   const facts = (d.facts || []).filter(f => f.status === "PUBLISHED");
   document.getElementById("factCount").textContent = facts.length ? `(${facts.length})` : "";
-  tb.innerHTML = facts.map(f => `
-    <tr class="clickable" data-fact='${esc(JSON.stringify(f))}'>
+  tb.innerHTML = facts.map((f, index) => `
+    <tr>
       <td>${esc(f.category)}</td>
       <td>${esc(f.field)}</td>
-      <td>${esc(formatValue(f))}</td>
+      <td>${formatValue(f)}</td>
       <td>${na(f.reporting_period)}</td>
       <td>${confidenceBadge(f)}</td>
-      <td class="a">evidence →</td>
+      <td><button type="button" class="evidence-trigger" data-index="${index}" aria-controls="evidencePanel" aria-expanded="false">View evidence</button></td>
     </tr>`).join("") || '<tr><td colspan="6" class="na">No verified facts.</td></tr>';
-  tb.querySelectorAll("tr.clickable").forEach(tr => {
-    tr.addEventListener("click", () => showEvidence(JSON.parse(tr.dataset.fact)));
+  tb.querySelectorAll("button.evidence-trigger").forEach(button => {
+    button.addEventListener("click", () => showEvidence(facts[Number(button.dataset.index)], d.run_id, button));
   });
 }
 
 function formatValue(f) {
-  if (f.value === null || f.value === undefined) return '<span class="na">Not publicly available</span>';
+  if (f.value === null || f.value === undefined) return '<span class="na">Not verified</span>';
   if (typeof f.value === "number") {
     const s = f.value.toLocaleString("en-US").replace(/,/g, " ");
     return f.currency ? `${esc(f.currency)} ${s}` : s;
@@ -301,30 +339,60 @@ function formatValue(f) {
   return s.length > 160 ? esc(s.slice(0, 160)) + "…" : esc(s);
 }
 
-function showEvidence(f) {
-  fetch(`${API}/companies/${f.org_number}/sources`)
-    .then(r => r.json())
-    .then(data => {
-      const src = (data.sources || []).find(s => s.source_id === f.source_id);
-      const panel = document.getElementById("evidencePanel");
-      panel.classList.remove("hidden");
-      panel.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <strong>Evidence</strong>
-          <a class="a" href="#" onclick="document.getElementById('evidencePanel').classList.add('hidden'); return false;">close ×</a>
-        </div>
-        <div class="kv"><span class="k">Fact:</span> <span class="v mono">${esc(f.category)}/${esc(f.field)}${f.reporting_period ? ` (${esc(f.reporting_period)})` : ""}</span></div>
-        <div class="kv"><span class="k">Value:</span> <span class="v">${formatValue(f)}</span></div>
-        <div class="kv"><span class="k">Entity verification:</span> ${confidenceBadge(f)}</div>
-        ${src ? `
-          <div class="kv"><span class="k">Source:</span> <span class="v">${esc(src.source_type)} (tier ${src.authority_tier})</span></div>
-          <div class="kv"><span class="k">URL:</span> ${src.url ? `<a class="a" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer">${esc(src.url)}</a>` : na(null)}</div>
-          <div class="kv"><span class="k">Retrieved:</span> ${na(src.retrieved_at)}</div>
-          <div class="kv"><span class="k">HTTP status:</span> ${na(src.http_status)}</div>
-          <div class="kv"><span class="k">Content hash:</span> <span class="mono">${na(src.content_hash)}</span></div>` : ""}
-        <div class="kv"><span class="k">Evidence ID:</span> <span class="mono">${esc(f.evidence_id)}</span></div>`;
-      panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
+async function showEvidence(f, runId, trigger = null) {
+  closeEvidence(false);
+  const request = ++evidenceSequence;
+  evidenceTrigger = trigger;
+  if (trigger) trigger.setAttribute("aria-expanded", "true");
+  const panel = document.getElementById("evidencePanel");
+  panel.classList.remove("hidden");
+  function display(content) {
+    panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Evidence</strong><button type="button" class="evidence-close" id="closeEvidence">Close</button>
+      </div>${content}`;
+    document.getElementById("closeEvidence").addEventListener("click", () => closeEvidence());
+    panel.onkeydown = event => { if (event.key === "Escape") { event.preventDefault(); closeEvidence(); } };
+    document.getElementById("closeEvidence").focus();
+  }
+  display('<p role="status">Loading retained evidence…</p>');
+  panel.setAttribute("aria-busy", "true");
+  try {
+    if (!runId) throw new Error("A frozen run is required to inspect this evidence.");
+    const response = await fetch(`${API}/companies/${encodeURIComponent(f.org_number)}/evidence/${encodeURIComponent(f.evidence_id)}?run_id=${encodeURIComponent(runId)}`);
+    const data = await response.json();
+    if (request !== evidenceSequence) return;
+    if (!response.ok) {
+      const code = data.detail?.code;
+      throw new Error(code === "snapshot_unavailable"
+        ? "The retained snapshot is unavailable or corrupt. It was not refetched."
+        : code === "claim_support_invalid" ? "The retained evidence no longer passes support checks."
+        : "Evidence is unavailable for this company and run.");
+    }
+    const ev = data.evidence, src = data.source, locator = ev.locator;
+    display(`
+      <div class="kv"><span class="k">Fact:</span> ${esc(f.category)}/${esc(f.field)}</div>
+      <div class="kv"><span class="k">Value:</span> ${formatValue(f)}</div>
+      <div class="kv"><span class="k">Observation:</span> ${esc(data.claims.map(item => item.state).join(", "))}</div>
+      <div class="kv"><span class="k">Subject scope:</span> ${na(f.subject_scope)}</div>
+      <div class="kv"><span class="k">Reporting period / currency / unit:</span> ${na(f.reporting_period)} / ${na(f.currency)} / ${na(f.unit)}</div>
+      <h3>Source value</h3><pre>${esc(JSON.stringify(locator.raw_value, null, 2))}</pre>
+      <div class="kv"><span class="k">Source:</span> ${safeSourceLink(src.url)}</div>
+      <div class="kv"><span class="k">Retrieved:</span> ${na(ev.retrieved_at)}</div>
+      <div class="kv"><span class="k">Source publication date:</span> ${na(ev.published_at)}</div>
+      <details><summary>Evidence details</summary>
+        <div class="kv"><span class="k">Run:</span> ${esc(data.run_id)}</div>
+        <div class="kv"><span class="k">JSON pointer:</span> <code>${esc(locator.pointer || "(document root)")}</code></div>
+        <div class="kv"><span class="k">Normalization:</span> ${esc(locator.normalization || "identity")}</div>
+        <div class="kv"><span class="k">Snapshot:</span> <code>${esc(data.snapshot.content_hash)}</code></div>
+        <div class="kv"><span class="k">Representation:</span> ${esc(data.snapshot.representation)}</div>
+        <div class="kv"><span class="k">Stored display:</span><pre>${esc(ev.evidence_text)}</pre></div>
+      </details>`);
+    panel.scrollIntoView({behavior: "smooth", block: "nearest"});
+  } catch (error) {
+    if (request === evidenceSequence) display(`<p role="alert">${esc(error.message)}</p>`);
+  } finally {
+    if (request === evidenceSequence) panel.setAttribute("aria-busy", "false");
+  }
 }
 
 const CHANGE_BADGE = { NEW: "b-verified", CHANGED: "b-likely", RETRACTED: "b-rejected", SOURCE_UNAVAILABLE: "b-ambiguous", UNCHANGED: "b-na" };
@@ -368,7 +436,7 @@ function renderSources(d) {
   }
   tb.innerHTML = sources.map(s => `
     <tr>
-      <td>${s.url ? `<a class="a" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.url.slice(0, 70))}</a>` : na(null)}</td>
+      <td>${s.url ? safeSourceLink(s.url, s.url.slice(0, 70)) : na(null)}</td>
       <td>${esc(s.source_type)}</td>
       <td>${esc(s.authority_tier)}</td>
       <td><span class="badge ${s.access_status === "success" ? "b-verified" : s.access_status === "rate_limited" ? "b-ambiguous" : "b-rejected"}">${esc(s.access_status)}</span></td>

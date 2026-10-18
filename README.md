@@ -12,7 +12,7 @@ uv sync --frozen --extra dev --python 3.12
 
 The package declares Python >=3.11; other runtimes/Linux/container execution are unverified. For a noneditable installation, add `--no-editable` to the same command. Dependencies and build tools are pinned through uv.lock/pyproject.toml. No model key is needed. The optional model helper has no production extraction or synthesis callers.
 
-Fresh locked verification at `8aa7e06`: 596 offline tests passed, 8 live checks excluded, one upstream Starlette warning, 264.01 seconds. Ruff, mypy, wheel build, installed CLI/export/validation and dashboard resources passed. The later local regression at `38b6311` passed638offline tests in273.00seconds, including sampler, activity-source and registry-schema corrections. The subsequent adaptive-crawl correction has26passing scoped checks; these are separate measurements. Population-selection and installed-sampler evidence are in [verification](docs/verification.md). Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
+Fresh locked verification at `8aa7e06`: 596 offline tests passed, 8 live checks excluded, one upstream Starlette warning, 264.01 seconds. Ruff, mypy, wheel build, installed CLI/export/validation and dashboard resources passed. The latest local regression passed648offline tests in283.63seconds, including sampler, activity-source, registry-schema, adaptive-crawl and evidence-API checks. Final seven dashboard script checks also pass; real browser verification remains blocked. These are separate from the earlier clean-install measurement. Population-selection and installed-sampler evidence are in [verification](docs/verification.md). Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
 
 ## Research and inspect
 
@@ -23,7 +23,7 @@ Fresh locked verification at `8aa7e06`: 596 offline tests passed, 8 live checks 
 .venv/Scripts/python.exe -m nordtrace.cli serve
 ```
 
-The server defaults to `127.0.0.1:8000`; the dashboard is `/dashboard`. Intended use is local research. Public serving/access controls, evidence-drawer spans and the full UI review remain unfinished.
+The server defaults to `127.0.0.1:8000`; the dashboard is `/dashboard`. Intended use is local research. The evidence drawer checks retained snapshots and shows the supporting JSON value, pointer, dates and qualifiers for the selected run. Public serving/access controls and full UI/browser review remain unfinished; local browser verification was blocked by a tool startup error.
 
 CSV/TXT uses first-column identifiers with an optional exact header. JSONL uses UTF-8 objects, one per record:
 
@@ -88,6 +88,8 @@ Benchmark requires supplied inputs and processes all occurrences by default. Exp
 .venv/Scripts/python.exe -m ruff check src tests
 .venv/Scripts/python.exe -m mypy src/nordtrace
 ```
+
+Dashboard script checks use Node.js24.19.0 and built-in modules only (`node --test tests/frontend/evidence.test.cjs`); no npm install is needed. Python tests explicitly skip that optional check when Node is unavailable; CI configures the pinned Node release. These script checks do not replace real browser/keyboard/mobile validation.
 
 Default tests exclude live checks. `pytest -m live` opts into external access and must be assessed separately; deterministic fixtures do not establish live accuracy.
 

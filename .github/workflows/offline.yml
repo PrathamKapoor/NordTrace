@@ -24,6 +24,9 @@ jobs:
         with:
           version: "0.12.5"
           python-version: "3.12"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.19.0"
       - run: uv sync --frozen --extra dev
       - run: uv run --frozen python -m pytest -q
       - run: uv run --frozen python -m ruff check src tests
