@@ -1,6 +1,33 @@
+# Integrated offline and installed-package verification — 2026-10-18
+
+Verified behavior revision: `19adb1d12a633731d32d22af0ae41f96cd8b7ebf`.
+
+- `.venv/Scripts/python.exe -m pytest -q --tb=short`: **746 passed, 8 live deselected**, one upstream Starlette warning, 309.78 seconds. Includes mandatory robots policy, monetary template safeguards and resource classification.
+- Ruff passed; mypy passed for 35 source files at the same code boundary.
+- The regression ran concurrently with the separate installation check. This is regression timing, not live research performance.
+
+A new Windows/Python 3.12.5 environment installed 77 packages from the frozen lock. The existing local verification clone was clean at revision19adb1d; its origin points to C:/Projects/NordTrace. The root GitHub remote remains unchanged. An initial sync of the old environment only reported checked packages and was not accepted as current-source proof. A previously absent `.venv-19adb1d` environment was then created. Its directory is ignored through the clone's local .git/info/exclude; no global Git configuration changed.
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = Join-Path (Get-Location) '.venv-19adb1d'
+uv sync --frozen --extra dev --python 3.12 --no-editable --reinstall-package nordtrace
+uv build --wheel
+```
+
+All 36 installed Python/HTML files were independently hash-matched to the committed source. Wheel package membership was exactly those 36 files; LICENSE and NOTICE metadata were present. The installed CLI ran outside the checkout: help0, smoke-help0, invalid/duplicate batch2, validate0, verify new bundle0, invalid single research2, validate-db0 and verify original real100 bundle0 (numbers are exit codes). Three input occurrences produced two complete invalid envelopes, with zero recorded requests, zero declared API cost and no acquired sources. Health/dashboard routes returned200 through FastAPI TestClient. This is an in-process route/resource check, not browser or visual verification. No research server was exposed.
+
+No independent transport observer covered these subprocesses; invalid identifiers deliberately exercise the no-acquisition path. No new full suite ran inside the fresh environment; the root full-suite evidence above is separate. Docker, hosted CI, other platforms and real browser execution remain unverified or blocked as previously recorded.
+
+Retained ignored proof: `data/verification-runs/installed-19adb1d/` contains check.py, manifest.json, eight command logs, inputs/results, the audit ZIP, individual profiles and isolated database. All 15 artifact hashes were independently rechecked. Reproduce with that environment's Python, retained check.py, the clone path at19adb1d and an unused output directory, from outside the checkout. The clone location is recorded in the artifact manifest and data/clean-clone-current.txt.
+
+- uv.lock SHA256: `a8e678e7bd9760ffbac64355695ea77979537d15cae9b4d3d2e554ed32434301`.
+- Wheel SHA256: `d83669077ae96762a4e56dab308d861c93e064cd321f1878de996f27cdcdd44e`.
+
+This proves this build/install, not bit-for-bit reproducibility across builds or platforms.
+
 # Resource pages versus events/vacancies — 2026-10-18
 
-D-073: corrected a test fixture's constructor argument order before measuring the defect. Three gateway/CAS/adapter regressions then failed3.98s on false news/careers family coverage. After classification repair, the tests' transport expectation was corrected from3 to actual4operations because discovery and domain-restricted crawl have separate robots policy keys; semantic assertions were preserved. That intermediate adjacent run was76passed/3failed/2live deselected19.60s. Corrected focused3passed3.53s; added a complete canonical pipeline case asserting two retained rejected resource candidates and no published event/vacancy/resource or found family coverage. Final80adjacent passed/2live deselected21.62s. Reviewer4focused passed6.38s/no findings; Ruff/mypy35pass. Full regression running at this record. Mock transport only; source bytes genuinely retained by production CAS. Individual dated events, real active vacancies and typed external publication remain unimplemented.
+D-073: corrected a test fixture's constructor argument order before measuring the defect. Three gateway/CAS/adapter regressions then failed3.98s on false news/careers family coverage. After classification repair, the tests' transport expectation was corrected from3 to actual4operations because discovery and domain-restricted crawl have separate robots policy keys; semantic assertions were preserved. That intermediate adjacent run was76passed/3failed/2live deselected19.60s. Corrected focused3passed3.53s; added a complete canonical pipeline case asserting two retained rejected resource candidates and no published event/vacancy/resource or found family coverage. Final80adjacent passed/2live deselected21.62s. Reviewer4focused passed6.38s/no findings; Ruff/mypy35pass. Full `.venv/Scripts/python.exe -m pytest -q --tb=short`:746passed/8live deselected/one upstream Starlette warning309.78s, including D072/D073. Mock transport only; source bytes genuinely retained by production CAS. Individual dated events, real active vacancies and typed external publication remain unimplemented.
 
 # Monetary brief safeguards — 2026-10-18
 
