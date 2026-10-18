@@ -168,3 +168,9 @@ Conflict correction: competing supported observations are all withheld and retai
 | X21 / H.brief unsupported absence and stale unknown states | synthesis.py; pipeline.py; API fallback | test_summary_availability.py; refresh/API/history | verified | D-068 seven initial failures reproduced;46adjacent40.34s/27API-history4.67s/reviewer7+21pass; full708passed301.14s. Final refresh states drive shared wording; outage notes and frozen baseline preserved. Claim references/first-observation wording are separate |
 
 | I.evidence browser verification | browser tool | Runtime setup and prescribed troubleshooting both attempted | blocked | Both fail before code execution: failed to write kernel assets, system cannot find path (os error3). API and native-script checks continue; no visual/accessibility result claimed |
+
+## Internal-page identity recheck — 2026-10-18
+
+| Requirement/finding | Owner | Verification | Status | Evidence |
+|---|---|---|---|---|
+| F02 / B footer contradiction on focused pages | adapters/website.py; core/entity.py | test_website_page_identity.py; adjacent identity/publication/crawler tests | verified | D-076 eight initial negative failures10.58s; evaluate full uncleaned text/final URL before cleaning. Review caught separate-heading role suppression;4red18.77s, plus8br/hr red8.53s. Shared homepage/internal block-aware helper;31final/reviewer pass and86adjacent pass. Sources/rejection reasons retained, rejected pages emit no candidate evidence/facts/coverage. Website support remains withheld; not a new external coverage measurement |

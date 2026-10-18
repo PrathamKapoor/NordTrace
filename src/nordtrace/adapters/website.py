@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlsplit
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, CData, NavigableString, Tag
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
@@ -52,6 +52,13 @@ _JUNK_RE = re.compile(
     r"|\.((css|js|jpg|jpeg|png|gif|svg|webp|ico|woff2?|ttf|mp4|zip)(\?.*)?)$",
     re.IGNORECASE,
 )
+
+# Preserve role/identifier context across block boundaries, including footers.
+_IDENTITY_BLOCKS = frozenset({
+    "address", "article", "aside", "blockquote", "body", "dd", "div", "dl", "dt", "fieldset",
+    "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header",
+    "li", "main", "nav", "ol", "p", "pre", "section", "table", "td", "th", "tr", "ul",
+})
 
 
 def classify_url(url: str) -> Tuple[str, int]:
@@ -99,6 +106,27 @@ class WebsiteAdapter:
         self.resolver = resolver
 
     # ------------------------------------------------------------ helpers
+    @staticmethod
+    def _identity_text(soup: BeautifulSoup) -> str:
+        """Keep inline labels together without merging unrelated block subjects."""
+        parts: List[str] = []
+        previous_block = None
+        for node in soup.descendants:
+            if isinstance(node, Tag) and node.name in ("br", "hr"):
+                previous_block = None
+                continue
+            if type(node) not in (NavigableString, CData):
+                continue
+            text = str(node).strip()
+            if not text:
+                continue
+            block = next((parent for parent in node.parents if parent.name in _IDENTITY_BLOCKS), soup)
+            if parts:
+                parts.append(" " if id(block) == previous_block else "\n")
+            parts.append(text)
+            previous_block = id(block)
+        return "".join(parts)
+
     @staticmethod
     def _soup_text(soup: BeautifulSoup) -> str:
         for tag in soup(["script", "style", "noscript", "header nav", "footer"]):
@@ -219,8 +247,8 @@ class WebsiteAdapter:
                 rejected.append({"url": src.url, "reason": src.error_detail})
                 continue
             homepage_soup = BeautifulSoup(home_cached2.text, "lxml")
-            identity_text = homepage_soup.get_text(" ", strip=True)
-            ok, why = self.verify_site_homepage(identity, identity_text, src.url)
+            identity_text = self._identity_text(homepage_soup)
+            ok, why = self.verify_site_homepage(identity, identity_text, src.final_url or src.url)
             text = self._soup_text(homepage_soup)
             if ok:
                 home_url, home_text = src.url, text
@@ -313,14 +341,18 @@ class WebsiteAdapter:
                 src.error_detail = "content unavailable after reported successful acquisition"
                 rejected.append({"url": src.url, "reason": src.error_detail})
                 continue
-            page_text = self._soup_text(BeautifulSoup(page_cached.text, "lxml"))
+            page_soup = BeautifulSoup(page_cached.text, "lxml")
             ptype, _ = classify_url(link)
-            # Pages under the verified company domain: domain corroboration is strong.
-            # Still run the resolver to catch explicit foreign-orgnr contradictions.
-            match = self.resolver.evaluate(identity, candidate_text=page_text[:4000], candidate_url=link)
+            # Legal/footer identity must survive content cleaning and prefix limits.
+            # A shared domain cannot override a different page subject/operator.
+            match = self.resolver.evaluate(
+                identity, candidate_text=self._identity_text(page_soup),
+                candidate_url=src.final_url or src.url,
+            )
             if match.verdict == MatchVerdict.REJECTED.value:
                 rejected.append({"url": link, "reason": f"rejected: {match.reason}"})
                 continue
+            page_text = self._soup_text(page_soup)
             if match.verdict == MatchVerdict.AMBIGUOUS.value and link != home_url:
                 match = MatchResult("LIKELY", match.signals, "same verified company domain", 0.5)
 
