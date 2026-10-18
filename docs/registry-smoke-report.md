@@ -1,6 +1,22 @@
 # Registry-only live smoke baseline — 2026-10-18
 
-This is a real public-source research run, with complete canonical profiles and retained evidence. It establishes a bounded operational baseline, **not release readiness, independent accuracy, external recall or an official score**. A known summary defect described below remains in these immutable baseline results.
+## Separate offline brief rendering check — 2026-10-18
+
+At clean revision `758958d1b76ba06edc4172cb1b7181a5c31d34a4`, an offline check revalidated the original ZIP's complete snapshot/locator graph before rendering copied published claims with the corrected deterministic brief.100profiles/1087original supported claims passed;485displayed references all belong to the corresponding profile's published claim IDs.90profiles displayed supported subunit context. All first-run notices passed; no brief asserted that unsupported information was not publicly available. Socket connection and DNS attempts were prohibited; zero attempts were observed. The original five artifacts, manifest and database hashes were unchanged and independently rechecked afterward.
+
+This is **rendering regression evidence**, not a new canonical research run, extraction replay, live observation, independent accuracy result or coverage gain. The baseline briefs contain zero claim references and remain frozen. Only registry identity/subunits are in this corpus; financial and external publication remain withheld.
+
+Retained locally, ignored: `data/verification-runs/brief-render-100-758958d/briefs.jsonl`, `check.py`, `manifest.json`. UTC interval13:14:24.876–13:14:26.902; measured check time2.015seconds. Script review caught caller-CWD provenance and insufficient corpus pinning before execution; the executed script uses the imported source checkout and pins original run/input/ZIP hashes. SHA256: briefs `dad3feadefe3e464ddf21b72bf90ee8fc92e79d9bb3b53b7481d89026aaca8f4`; retained script `158b6667df72212d73aa3676bf02503e251c68de5650c49aba92980e93a7f33c`.
+
+```powershell
+.venv/Scripts/python.exe data/verification-runs/brief-render-100-758958d/check.py data/verification-runs/registry-100-8a90719 data/verification-runs/brief-render-reproduction
+```
+
+Use an unused destination and the exact recorded clean source revision for identical renderer code. The manifest records actual source revision and script hash; later renderers may intentionally differ. Raw derived company briefs retain the original data's source/privacy limitations and are not committed or relicensed.
+
+## Original live acquisition
+
+The baseline is a real public-source research run, with complete canonical profiles and retained evidence. It establishes a bounded operational baseline, **not release readiness, independent accuracy, external recall or an official score**. A known summary defect described below remains in these immutable baseline results.
 
 Revision: `8a90719b6a29fcb837ce77dc046842e3751c8ea7`, clean source checkout at launch. Run: `run_12a3ebe30a508b22`. Acquisition/report interval: 2026-10-18T07:33:06Z–07:36:50Z. Windows/Python3.12.5, frozen dependencies. No concurrent regression suite or paid/model/API-key acquisition ran during this measurement.
 
