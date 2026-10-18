@@ -1,5 +1,14 @@
 # Decision Log — NordTrace
 
+## D-060 — Malformed successful registry records are failures, not absence
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: nine HTTP200 fixtures reproduced falsy names being labelled not_found, whitespace-only names being resolved and nonempty containers raising Pydantic errors. A malformed response cannot establish that a legal entity does not exist.
+- Decision/implementation: BrregAdapter.fetch_entity preserves existing official-endpoint validation and actual404 handling, validates the response object and exact requested identifier, then requires navn to be a nonempty string before parsing CompanyIdentity. Missing/invalid names return failed with registry identity name missing or invalid. Wrong/missing identifiers remain ambiguous even if the name is also malformed. No replacement name is invented or copied from input metadata.
+- Application/why: applies to successful live entity responses; only affirmative official404 follows the existing not_found path. Pipeline maps malformed successful records to failed/registry_failed, preserves their captured200 source and explicit family refresh state, and does not create a company or publish claims. Schema failure and absence must remain distinct for refresh, output and measurement.
+- Alternatives/tradeoffs: treating empty names as absence hides schema drift; accepting whitespace silently claims resolution; relying on Pydantic gives inconsistent thrown versus structured failures. Broader registry field schema/version validation remains unfinished, and these fixtures do not prove live population precision.
+- Verification: test_registry_schema.py has nine direct malformed-name cases plus production persisted outcome controls for absent name200, conflicting identifier+absent name and authoritative404. Initial9failed1.77s; registry/activity boundary63passed9.65s; scoped reviewer20schema/identitypassed3.24s/no material findings. Full regression evidence is recorded in docs/verification.md. Revisit if official schema introduces a genuinely distinct unavailable-name state or supplied frozen snapshots use another documented schema; do not infer absence from missing fields.
+
 ## D-059 — Activity reads its retained entity capture
 
 - Date/status: 2026-10-18, accepted.
