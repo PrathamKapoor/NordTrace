@@ -2,6 +2,8 @@
 
 Updated: 2026-10-18. Historical claims in older documents are not current verification. Status vocabulary: `not_started`, `in_progress`, `implemented_unverified`, `verified`, `blocked`. Defect rows remain `not_started` until reproduced or explicitly shown inapplicable; inspection alone does not establish a fix.
 
+Public preflight correction (D-067): first live sampled-input attempt retained an honest failed partial result (server-issued cookie refused, independent1/gateway2, exit1). Public pinned transport now strips cookies;69adjacent/reviewer10smoke checks pass. This is not a successful100-company smoke; registry-only live rerun pending.
+
 Persistence/freshness update (D-052): new production publication independently rejects a structured company differing from supported identity facts. Canonical/index last_verified_at derives from retained identity observations; cache hits preserve the recorded acquisition time and do not imply a fresh fetch.11boundary/arithmetic and34transport/snapshot/projection checks pass. Historical envelopes remain frozen; conditional304, full cache-policy manifests and legacy-policy labels remain open.
 
 Crash recovery update (D-051): expired foreign leases no longer strand failed terminal output when no acquisition allowance remains. Expired-lease retirement/result/checkpoint are atomic; live foreign leases and unowned/nonfailed callers stay protected. Unique owner tokens and immutable terminal envelopes fence late workers. Concurrent finalizers adopt only the actual winning canonical result through a typed conflict.10crash controls/39adjacent checks pass; clock/heartbeat/hard storage limits remain open.

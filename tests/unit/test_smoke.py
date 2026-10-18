@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 import time
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -221,12 +222,41 @@ def test_smoke_runtime_includes_bundle_verification(tmp_path, monkeypatch):
 
     source = tmp_path / "input.jsonl"
     source.write_text('{"organisation_number":"invalid"}\n')
+    wall_clock = [0.0]
+    monkeypatch.setattr("nordtrace.smoke.time", SimpleNamespace(monotonic=lambda: wall_clock[0]))
     def delayed(*args, **kwargs):
-        time.sleep(.3)
-        return verify_bundle(*args, **kwargs)
+        result = verify_bundle(*args, **kwargs)
+        wall_clock[0] = 31.0  # Advance only smoke's wall clock after real offline verification.
+        return result
     monkeypatch.setattr("nordtrace.smoke.verify_bundle", delayed)
     manifest, code = asyncio.run(run_smoke(source, tmp_path / "output", configuration=RunConfiguration(
-        max_requests=0, max_runtime_sec=.2, max_cost_usd=0), concurrency=1, revision="fixture"))
+        max_requests=0, max_runtime_sec=30, max_cost_usd=0), concurrency=1, revision="fixture"))
     assert json.loads((tmp_path / "output/report.json").read_text())["budgets"]["runtime_ok"] is True
     assert code == 1
     assert manifest["budget_adherence"]["runtime_ok"] is False
+
+
+def test_public_acquisition_does_not_replay_server_session_cookies(monkeypatch):
+    from nordtrace.core.budget import BudgetManager
+    from nordtrace.core.request_gateway import RequestGateway
+    from nordtrace.smoke import TransportAudit
+
+    calls = []
+    monkeypatch.setattr("nordtrace.core.request_gateway._resolve_host", lambda host: ["8.8.8.8"])
+    async def transport(self, request):
+        calls.append(request)
+        return httpx.Response(200, text="public record", headers={"set-cookie": "session=fixture; Path=/"})
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", transport)
+    async def execute():
+        budget = BudgetManager(max_requests=3)
+        gateway = RequestGateway(budget)
+        try:
+            with TransportAudit() as audit:
+                first = await gateway.fetch("https://data.brreg.no/first", retries=0)
+                second = await gateway.fetch("https://data.brreg.no/second", retries=0)
+            assert first.access_status == second.access_status == "success"
+            assert len(audit.operations) == budget.requests.total_used == 2
+        finally:
+            await gateway.aclose()
+    asyncio.run(execute())
+    assert len(calls) == 2 and all("cookie" not in request.headers for request in calls)

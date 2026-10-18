@@ -1,5 +1,13 @@
 # Decision Log — NordTrace
 
+## D-067 — Keep public acquisition stateless at the pinned transport
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: actual one-input Brreg preflight at0d207ae returned an entity200 and a server session cookie. HTTPX automatically attached that cookie to the next public request; smoke refused it. Retained failure artifacts show one dispatched operation versus two gateway attempts and exit1, not a successful smoke.
+- Decision/implementation: `PinnedTransport.handle_async_request` copies request headers and removes Cookie before constructing the physical pinned request. Public acquisition does not replay server session state. Host/TLS identity, origin policy, body caps, accounting and Authorization refusal remain intact. No credential is imported or guard weakened.
+- Alternatives/tradeoffs: accepting all cookies would broaden public acquisition into session behavior; clearing a shared jar before each request has concurrency races. Dropping cookies at the physical boundary is explicit and independent of jar timing. Sites requiring cookies may become unavailable; an authenticated/session source needs a separate documented access decision and implementation. HTTPX may hold received cookies transiently in memory; they are not forwarded by this public transport.
+- Verification: real HTTPX client/pinned transport with two source responses and synthetic Set-Cookie reproduces the guard failure before correction, then verifies two successful cookie-free dispatches. Adjacent source/security/transport tests and review are in docs/verification.md. An export-overrun fixture's wall-time assumption also failed under load; its independent smoke clock now advances deterministically after actual offline verification, without altering the scheduler clock. Revisit if permitted session-based acquisition is introduced.
+
 ## D-066 — Persist run source origins and use a registry-only smoke baseline
 
 - Date/status: 2026-10-18, accepted.

@@ -1,3 +1,9 @@
+# Public transport preflight correction — 2026-10-18
+
+D-067: actual public preflight command `smoke data/verification-runs/registry-smoke-preflight-input.jsonl --live --output data/verification-runs/registry-preflight-0d207ae --max-requests 20 --max-runtime-sec 60 --per-company-sec 30 --finalization-reserve-sec 5 --concurrency 1` ran at0d207ae. Entity992445432 returned200, then a server-issued cookie triggered the smoke transport refusal. Runrun_38a8766e2f52e9fc retained a failed partial profile/snapshot/evidence ZIP, exit1, wall2.094s, independent1dispatch/gateway2attempts; mismatch is explicit. No cookie/private key/token/paid source was sent. This is a failed live preflight, not a 100-company smoke.
+
+Cookie replay fixture failed2.27s; pinned transport now strips cookies before physical dispatch. First69-case adjacent run68passed/1timing-assumption failure11.69s: export-overrun fixture assumed research would finish within0.2s. Replaced only that fixture's smoke wall clock with a deterministic advance after real bundle verification, leaving production/scheduler clocks unchanged. Final69smoke/gateway/source/security passed11.33s; reviewer10smoke passed7.60s/no findings; Ruff/mypy35pass. Last full700passed292.81s predates this correction.
+
 # Run source policy checkpoint — 2026-10-18
 
 D-066: source allowance cases initially6failed/7passed1.01s because the capability was absent (malformed-policy cases alone did not prove the new validator). After implementation13passed0.90s; expanded15policy/gateway/persistence44passed5.95s. Smoke registry-only regression failed4.89s on eight versus four transports before applying the policy. Broader107source/smoke/gateway/persistence/authority/export passed44.77s before final cache/compatibility corrections. Local blocked-source timestamps reproduced4failed0.98s, then changed to discovery-only metadata.

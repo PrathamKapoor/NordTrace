@@ -206,8 +206,10 @@ class PinnedTransport(httpx.AsyncBaseTransport):
             raise SSRFError("connection destination could not be verified as public")
         extensions = dict(request.extensions)
         extensions["sni_hostname"] = host
+        headers = request.headers.copy()
+        headers.pop("cookie", None)  # Public acquisition never replays server session state.
         pinned = httpx.Request(
-            request.method, request.url.copy_with(host=addresses[0]), headers=request.headers,
+            request.method, request.url.copy_with(host=addresses[0]), headers=headers,
             stream=request.stream, extensions=extensions,
         )
         origin = (request.url.scheme, host, request.url.port)
