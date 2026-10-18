@@ -10,6 +10,8 @@ Homepage descriptions now use a bounded literal Organization-data candidate read
 
 Acquisition DNS runs outside the event loop with at most 16 outstanding OS lookups per process. Caller cancellation and process exit do not wait for a stuck lookup; its capacity slot stays occupied until the OS returns. This does not establish hard bounds on synchronous parsing, storage, SSL setup or export. DNS cancellation after a request reservation is charged as unstarted, rather than a failed HTTP dispatch.
 
+Registry JSON with duplicate member names, invalid Unicode or unsupported numeric ranges is withheld with diagnostics. Exact acquired bytes are retained; malformed input is never repaired into a different identity or an invented zero. These guards do not enable financial or website publication.
+
 ## Install
 
 Verified on Windows with Python 3.12.5 and a fresh virtual environment:
@@ -20,7 +22,7 @@ uv sync --frozen --extra dev --python 3.12
 
 The package declares Python >=3.11; other runtimes/Linux/container execution are unverified. For a noneditable installation, add `--no-editable` to the same command. Dependencies and build tools are pinned through uv.lock/pyproject.toml. Model providers are unavailable: no key is needed and legacy model settings cannot enable calls. Website/PDF robots checks are mandatory; `RESPECT_ROBOTS=false` is rejected.
 
-At `262ccc5`, a fresh locked noneditable environment installed 77 packages and passed CLI/export/validation, retained-bundle replay, parser controls, health/dashboard and packaged-licence checks outside the checkout. All 37 installed code/assets and wheel members matched committed source. This installation smoke used invalid inputs and made no company acquisitions; it was not a fresh-environment full suite. The candidate regression passed 825 offline tests in 363.55 seconds, with 8 live checks excluded and one upstream warning. Subsequent registry Unicode guards now preserve terminal outcomes for invalid source strings and reject replacement decoding; their expanded regression is pending and the install proof predates them. Details and exact commands are in [verification](docs/verification.md). Dashboard script checks pass; real browser verification remains blocked. Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
+At `441b290`, a fresh locked noneditable environment installed 77 packages, passed 841 offline source tests, and separately passed installed CLI/export/validation, retained-bundle replay, Unicode/parser controls, health/dashboard and packaged-licence checks outside the checkout. All 37 installed code/assets and wheel members matched committed source. Installed smoke used invalid inputs with no company acquisitions. The newer JSON contract passed 861 local offline tests in 372.39 seconds, with 8 live checks excluded and one upstream warning; its install proof is still the preceding revision. Details and exact commands are in [verification](docs/verification.md). Dashboard script checks pass; real browser verification remains blocked. Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
 
 ## Research and inspect
 

@@ -142,8 +142,8 @@ class BrregAdapter:
         cached = self.gateway.get_content(source.url or "")
         try:
             data = parse_json_body(cached.content if cached else b"")
-        except ValueError:
-            source.error_detail = "registry identity JSON invalid or contains non-scalar Unicode"
+        except ValueError as error:
+            source.error_detail = f"registry identity JSON rejected: {error}"
             return None, source, None, "failed"
 
         if not isinstance(data, dict):
@@ -291,8 +291,8 @@ class BrregAdapter:
         cached = self.gateway.get_content(source.url or "")
         try:
             data = parse_json_body(cached.content if cached else b"")
-        except ValueError:
-            source.error_detail = "registry roles JSON invalid or contains non-scalar Unicode"
+        except ValueError as error:
+            source.error_detail = f"registry roles JSON rejected: {error}"
             return [], [], source
 
         evidences: List[EvidenceRecord] = []
@@ -389,8 +389,8 @@ class BrregAdapter:
         cached = self.gateway.get_content(source.url or "")
         try:
             payload = parse_json_body(cached.content if cached else b"")
-        except ValueError:
-            source.error_detail = "accounts JSON invalid or contains non-scalar Unicode"
+        except ValueError as error:
+            source.error_detail = f"accounts JSON rejected: {error}"
             return [], [], source, "failed"
         items = payload if isinstance(payload, list) else [payload]
         if not items:

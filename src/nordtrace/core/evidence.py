@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import date, datetime
 from typing import Any, Protocol
@@ -36,12 +37,38 @@ def require_json_unicode(document: Any) -> None:
             pending.extend(value)
 
 
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object member")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError("nonfinite JSON constant unsupported")
+
+
+def _finite_json_float(token: str) -> float:
+    value = float(token)
+    if not math.isfinite(value):
+        raise ValueError("JSON number outside supported finite range")
+    coefficient = token.lower().split("e", 1)[0]
+    if value == 0 and any(char in "123456789" for char in coefficient):
+        raise ValueError("JSON number underflow unsupported")
+    return value
+
+
 def parse_json_body(body: bytes) -> Any:
     """Decode network JSON as UTF8 strictly; tolerate an optional UTF8 BOM.
 
     Do not use HTTPX's replacement-decoded text as an identity/evidence value.
     """
-    document = json.loads(body.decode("utf-8-sig"))
+    document = json.loads(
+        body.decode("utf-8-sig"), object_pairs_hook=_unique_json_object,
+        parse_constant=_reject_json_constant, parse_float=_finite_json_float,
+    )
     require_json_unicode(document)
     return document
 

@@ -188,3 +188,9 @@ Conflict correction: competing supported observations are all withheld and retai
 | Requirement/finding | Owner | Verification | Status | Evidence |
 |---|---|---|---|---|
 | A/C terminal envelopes and source text integrity | core/evidence.py; adapters/brreg.py; adapters/activity.py | test_registry_unicode.py; registry/support/account/subunit suites | verified | D-0783pipeline negatives/3independent-support negatives reproduced; review found replacement decoding,1additional red/1valid-U+FFFDgreen. Strict raw UTF8/scalar parsing;16focused/107adjacent/reviewer15 pass, no character replacement or false retraction; exact raw captures/history retained. Full841suite pending; typed roles family-error state remains unfinished |
+
+## JSON member and numeric support — 2026-10-19 local
+
+| Requirement/finding | Owner | Verification | Status | Evidence |
+|---|---|---|---|---|
+| F01/C unique JSON Pointer support and no fabricated zero | core/evidence.py; adapters/brreg.py | test_json_body_contract.py; Unicode/locator/conflict controls | verified | D-0798initial red/4green0.66s, underflow red0.53s. Reject decoded duplicate members, nonfinite constants, overflow/nonzero-underflow; preserve zero/finite/literal/distinct Unicode keys. Actual duplicate-member claim no longer publishes; complete failed envelopes retain exact bytes.65adjacent/reviewer36 pass; full861pass372.39s. No Decimal/table/financial accuracy or external coverage claim |
