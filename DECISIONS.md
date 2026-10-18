@@ -1,5 +1,14 @@
 # Decision Log — NordTrace
 
+## D-068 — Describe verification outcomes without inventing public absence
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: the real registry baseline acquired accounts successfully but withheld unsupported monetary candidates; briefs still said accounts were not publicly available. Leadership/activity templates similarly inferred absence from missing supported observations. Canonical unknowns were generated before final refresh, omitting blocked/unresolved/failed states or disagreeing with coverage.
+- Decision/implementation: `synthesis.unknowns_for_coverage` supplies one state-aware vocabulary for canonical unknowns, deterministic brief and legacy API fallback. Not verified, no supported observation, blocked, unresolved/conflicting, failed and not applicable remain distinct. Missing-value templates describe verification, not whether a business fact exists publicly. Pipeline computes unknowns after `apply_refresh`, retaining its support/outage diagnostics and conflict notice.
+- Scope: new research outcomes and dynamically constructed legacy API unknown lists. Previously persisted canonical summaries/results, including the real100 baseline, remain immutable. No candidate gains publication authority and no source is fetched or reclassified by this text correction.
+- Alternatives/tradeoffs: replacing every message with generic unavailable would still hide important state distinctions; reconstructing old saved summaries would violate historical views. This is deterministic state-derived explanation, not a search-completeness claim. Claim references, first-observation/change wording and full financial numerical qualifiers remain separate unfinished work.
+- Verification: seven failing availability/production/outage/history tests preceded correction; adjacent financial/NAV/refresh/conflict and API/history paths pass. Review found no material issues; exact commands/counts in docs/verification.md. Revisit on state-contract changes, source completeness or synthesis versioning.
+
 ## D-067 — Keep public acquisition stateless at the pinned transport
 
 - Date/status: 2026-10-18, accepted.

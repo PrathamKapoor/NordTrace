@@ -1,5 +1,7 @@
 # Current implementation record — 2026-10-16
 
+Verification-aware unknowns (2026-10-18, D-068): after `_finalize_ledger` and `apply_refresh`, pipeline builds canonical unknowns through `synthesis.unknowns_for_coverage(Coverage(states=outcome.coverage))`, retaining refresh support/outage diagnostics and conflict notices. `build_summary` uses the same vocabulary and final coverage. Blocked, unresolved/conflicting, failed, inapplicable, not verified and no supported observation stay distinct; absent published facts cannot imply absent public accounts/jobs/events. Legacy API fallback calls the same helper with typed Coverage. All output is persisted through ordinary atomic publication; existing frozen summaries are read unchanged. Cancellation/partial finalization follows the same state construction, with no new requests/retries/budget use. Tests: test_summary_availability.py, financial/NAV/refresh/conflict/API/history boundaries.
+
 ## Observed smoke execution (2026-10-18, D-065)
 
 D-067 public session handling: after URL/DNS validation, `PinnedTransport.handle_async_request` copies headers and removes Cookie before creating the numeric-destination request with original Host/TLS identity. Server-issued cookies are not replayed on later public acquisitions. This prevents HTTPX session state from violating the smoke credential guard; it does not enable an authenticated source. Cookie-dependent pages may stay unavailable. Test: test_public_acquisition_does_not_replay_server_session_cookies.

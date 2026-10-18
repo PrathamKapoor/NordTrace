@@ -1,7 +1,7 @@
 """Evidence-grounded synthesis: summary generated ONLY from verified facts.
 
 Deterministic template builder; optional LLM polish behind strict grounding.
-Unknowns are listed explicitly ("Not publicly available") instead of guessed.
+Unknowns describe verification outcomes, never presumed absence of business facts.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def build_summary(
     elif isinstance(desc, str):
         parts.append(f"What it does: {desc}")
     else:
-        parts.append("What it does: business description not available from permitted sources.")
+        parts.append(f"What it does: {_availability_text(coverage.get('business_description'))}.")
 
     # 2. main business areas
     ind_f = _latest(ledger, org, "identity", "industry_description")
@@ -43,7 +43,7 @@ def build_summary(
     if ind:
         parts.append(f"Industry: {ind}" + (f" ({ind_code.value})" if ind_code is not None else ""))
     else:
-        parts.append("Industry: not available.")
+        parts.append("Industry: not verified in this run.")
 
     # 3. scale / financials — only verified facts
     rev = _latest(ledger, org, "financials", "revenue")
@@ -64,7 +64,7 @@ def build_summary(
         period = rev.reporting_period if rev else None
         parts.append(f"Financials ({period or 'latest reported'}): " + ", ".join(fin_parts) + ".")
     else:
-        parts.append("Financials: not publicly available via permitted sources.")
+        parts.append(f"Financials: {_availability_text(coverage.get('financials'))}.")
     if emp:
         parts.append(f"Registered employees: {_fmt(emp)}.")
 
@@ -74,7 +74,7 @@ def build_summary(
         role_str = ", ".join(f"{name} ({role})" for role, name in roles[:5])
         parts.append(f"Key roles: {role_str}.")
     else:
-        parts.append("Key roles: not available from registry roles data.")
+        parts.append(f"Key roles: {_availability_text(coverage.get('leadership'))}.")
 
     # 5. recent activity
     acts = _activity_facts(ledger, org)
@@ -82,7 +82,7 @@ def build_summary(
         act_str = "; ".join(acts[:3])
         parts.append(f"Recent registry activity: {act_str}.")
     else:
-        parts.append("Recent activity: no dated public events found.")
+        parts.append(f"Recent activity: {_availability_text(coverage.get('recent_activity'))}.")
 
     # 6. meaningful changes
     sig = [c for c in changes if c.change_type in ("CHANGED", "NEW", "RETRACTED")]
@@ -98,7 +98,7 @@ def build_summary(
         parts.append("Changes: first research run or no changes detected.")
 
     # 7. unknowns
-    unknowns = _unknown_list(coverage)
+    unknowns = unknowns_for_coverage(coverage)
     if unknowns:
         parts.append("Unknowns: " + "; ".join(unknowns) + ".")
     if conflicts:
@@ -157,14 +157,28 @@ def _short(v) -> str:
     return s[:40] + ("…" if len(s) > 40 else "")
 
 
-def _unknown_list(coverage: Coverage) -> List[str]:
+def _availability_text(state: str) -> str:
+    return {
+        "not_found": "not verified in this run",
+        "not_available": "no supported observation available",
+        "blocked": "verification blocked",
+        "ambiguous": "evidence unresolved or conflicting",
+        "failed": "verification failed",
+        "not_applicable": "not applicable",
+    }.get(state, "not verified in this run")
+
+
+def unknowns_for_coverage(coverage: Coverage) -> List[str]:
+    """One vocabulary for final canonical unknowns and the deterministic brief."""
     labels = {
-        "financials": "annual accounts not publicly available",
-        "leadership": "board/management roles not available",
-        "products_services": "products/services sections not available",
-        "jobs": "job postings not verified from permitted sources",
-        "recent_activity": "no dated public events found",
-        "business_description": "business description not available",
-        "locations": "location details not available",
+        "financials": "Annual accounts",
+        "leadership": "Board/management roles",
+        "products_services": "Products/services",
+        "jobs": "Job postings",
+        "recent_activity": "Recent public activity",
+        "business_description": "Business description",
+        "locations": "Location details",
+        "website": "Company website",
     }
-    return [labels[cat] for cat in labels if coverage.get(cat) in ("not_available", "not_found", "blocked")]
+    return [f"{label} ({_availability_text(coverage.get(category))})"
+            for category, label in labels.items() if coverage.get(category) != "found"]

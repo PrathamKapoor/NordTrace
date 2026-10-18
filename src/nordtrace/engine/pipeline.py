@@ -43,7 +43,7 @@ from nordtrace.core.orgnr import validate_orgnr
 from nordtrace.core.refresh import apply_refresh, stale_notice
 from nordtrace.core.repository import Repository
 from nordtrace.core.request_gateway import RequestGateway
-from nordtrace.core.synthesis import build_summary
+from nordtrace.core.synthesis import build_summary, unknowns_for_coverage
 
 logger = logging.getLogger("nordtrace.pipeline")
 _acquisition_deadline: ContextVar[Optional[tuple[asyncio.Timeout, str]]] = ContextVar(
@@ -401,11 +401,6 @@ class ResearchPipeline:
                     "Run limit prevented acquisition stages: " + ", ".join(dict.fromkeys(budget_skipped))
                 )
             # 10. synthesis (deterministic; LLM optional)
-            outcome.unknowns = self._unknowns(coverage)
-            if outcome.conflicts:
-                outcome.unknowns.append(
-                    "Conflicting supported observations were withheld; inspect their evidence."
-                )
             stages.append("synthesis")
             self._trace(
                 run_id,
@@ -444,6 +439,13 @@ class ResearchPipeline:
                 if ledger.sources:
                     self._finalize_ledger(outcome, ledger, run_id, financials_status)
                 apply_refresh(self.repo, outcome, run_id)
+                outcome.unknowns = list(dict.fromkeys([
+                    *unknowns_for_coverage(Coverage(states=outcome.coverage)), *outcome.unknowns,
+                ]))
+                if outcome.conflicts:
+                    outcome.unknowns.append(
+                        "Conflicting supported observations were withheld; inspect their evidence."
+                    )
                 if outcome.changes:
                     stages.append("changes")
                 if outcome.identity is not None:
@@ -519,18 +521,3 @@ class ResearchPipeline:
                 category = "industry"
             cov.set(category, "ambiguous")
         return cov
-
-    def _unknowns(self, coverage: Coverage) -> List[str]:
-        labels = {
-            "financials": "Annual accounts (not publicly available via permitted sources)",
-            "leadership": "Board/management roles (registry roles unavailable)",
-            "products_services": "Products/services (website sections unavailable)",
-            "jobs": "Job postings (not verified from permitted sources)",
-            "recent_activity": "Recent public activity (no dated events found)",
-            "business_description": "Business description (website unavailable)",
-        }
-        out = []
-        for cat, label in labels.items():
-            if coverage.get(cat) in ("not_available", "not_found", "blocked"):
-                out.append(label)
-        return out

@@ -190,10 +190,10 @@ def _company_payload(repo: Repository, orgnr: str, run_id: Optional[str] = None)
         for s in sources
         if s.access_status in _DEGRADED_STATUSES
     ]
-    from nordtrace.core.synthesis import _unknown_list
+    from nordtrace.core.models import Coverage
+    from nordtrace.core.synthesis import unknowns_for_coverage
 
-    coverage_obj = type("C", (), {"get": staticmethod(lambda c: cov.get(c, "not_found"))})()
-    unknowns = _unknown_list(coverage_obj)  # type: ignore[arg-type]
+    unknowns = unknowns_for_coverage(Coverage(states=cov))
     # run metadata
     run = repo.get_run(run_id) if run_id else None
     meta = {

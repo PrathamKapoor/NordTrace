@@ -1,3 +1,13 @@
+# Current verification-state synthesis checkpoint — 2026-10-18
+
+HEAD8c62f0d735f528984418d8bc867ee6f8290a2d47 committed truthful real100baseline report, author/committer inspected. Last full700292.81s before D067cookie delta;69postcookie11.33s/reviewer10smoke7.60s. Actual100run andhashes unchanged (see docs/registry-smoke-report.md). Aggregate report peer-review attempt hit temporary agent usage limit; no aggregatepeerreview result claimed. Later D068 scopedreview succeeded.
+
+D068 uncommitted: synthesis.py sharedunknowns_for_coverage/state-aware missingtemplates, pipeline.py unknowns afterapply_refresh preservingdiagnostics/conflict notices, api/app.py legacyfallback sharedtypedCoverage, test_summary_availability.py7cases, README/FLOW/DECISIONS/tracker/verification/smokereport/handoff.7initialred3.89s;46availability/finance/NAV/refresh/conflict passed40.34s;27API/history/availabilitypassed4.67s;review7availability+21API/refreshpassed/no findings;Ruff/mypy35pass. Full708offline passed8liveexcluded/one warning301.14s using pre-D069 loaded modules. D068 staged for commit; synthesis.py/pipeline.py now additionally have separate UNSTAGED D069 deltas and test_summary_changes.py is untracked. Do not stage these into D068. D0693initialred3.28s→24adjacentpassed30.92s/reviewer3passed6.39s/no findings; Ruff/mypy35pass. No livecompany/network/model/migration/baseline rewrite for D068. Pipeline EOFblank corrected only whitespace.
+
+Finish full708/update docs/diff/identity/localcommit. Next first-observation/new-information-versus-real-change wording (D069) and claim-reference synthesis, then financialformat/real coverage. Baseline firstNEW facts currently falsely called changes since previousrun; identical reruns use ambiguous first-or-nochange wording. Use actual previous_run_id, separate NEW observations from changes, preserve sourceoutage safety/frozen histories. No code for this nextfix written yet. Real100summaries stay frozen; no newlive100 or newofficialaccuracy claim.
+
+Broader requirements incomplete: externaltypedlocators+permittedsource access, suppliedofficialsnapshot/private schema+limits, financialtable/Decimal/scale, dormantmodelcost/network, hardlimits/DNS, browser/UIaccess, heldoutadjudication/ablations/retention. respect_robotsFalse bypass known. No remote push/PR/email/deploy. All commits required PrathamKapoor identity verified.
+
 # Current live baseline checkpoint — 2026-10-18
 
 HEAD8a90719b6a29fcb837ce77dc046842e3751c8ea7 committed D067 with author/committer inspected. Tree clean at actual live run launch. Full700offline292.81s precedes D067; post-cookie69adjacent11.33s/reviewer10smoke7.60s/Ruff/mypy35pass. No active tests/processes remain.
