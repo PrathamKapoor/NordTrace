@@ -11,6 +11,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from nordtrace.core.evidence import require_json_nesting
 from nordtrace.core.orgnr import validate_orgnr
 
 _CONTEXTS = {"https://schema.org", "https://schema.org/", "http://schema.org", "http://schema.org/"}
@@ -19,29 +20,6 @@ _ORG_LABELS = {"orgnr", "org.nr", "org.nr.", "organisasjonsnummer", "norwegian o
 MAX_SCRIPTS = 32
 MAX_SCRIPT_CHARS = 65536
 MAX_NODES = 128
-
-
-def _check_nesting(raw: str) -> None:
-    """Bound JSON container depth before decoding, ignoring string contents."""
-    depth = 0
-    quoted = False
-    escaped = False
-    for char in raw:
-        if quoted:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == '"':
-                quoted = False
-        elif char == '"':
-            quoted = True
-        elif char in "[{":
-            depth += 1
-            if depth > 64:
-                raise ValueError("JSON nesting capacity exceeded")
-        elif char in "]}":
-            depth -= 1
 
 
 def _strict_object(pairs: list[tuple[str, Any]]) -> dict:
@@ -153,7 +131,7 @@ def organization_descriptions(
             raw = script.string
             if raw is None or len(raw) > MAX_SCRIPT_CHARS:
                 raise ValueError("structured script missing or too large")
-            _check_nesting(str(raw))
+            require_json_nesting(str(raw))
             document = json.loads(str(raw), object_pairs_hook=_strict_object, parse_constant=_reject_constant)
             nodes = _nodes(document)
         except (ValueError, RecursionError) as error:

@@ -17,6 +17,29 @@ class SnapshotReader(Protocol):
     def read_capture(self, source_id: str) -> tuple[SourceRecord, bytes]: ...
 
 
+def require_json_nesting(raw: str) -> None:
+    """Bound JSON container depth before decoding, ignoring string contents."""
+    depth = 0
+    quoted = False
+    escaped = False
+    for char in raw:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char in "[{":
+            depth += 1
+            if depth > 64:
+                raise ValueError("JSON nesting capacity exceeded")
+        elif char in "]}":
+            depth -= 1
+
+
 def require_json_unicode(document: Any) -> None:
     """Reject non-scalar strings in a decoded JSON tree without rewriting data.
 
@@ -65,8 +88,10 @@ def parse_json_body(body: bytes) -> Any:
 
     Do not use HTTPX's replacement-decoded text as an identity/evidence value.
     """
+    text = body.decode("utf-8-sig")
+    require_json_nesting(text)
     document = json.loads(
-        body.decode("utf-8-sig"), object_pairs_hook=_unique_json_object,
+        text, object_pairs_hook=_unique_json_object,
         parse_constant=_reject_json_constant, parse_float=_finite_json_float,
     )
     require_json_unicode(document)

@@ -79,7 +79,8 @@ def test_snapshot_claim_cannot_publish_from_ambiguous_or_unsupported_json(tmp_pa
 @pytest.mark.parametrize("suffix", [
     b',"navn":"FIRST AS","navn":"SECOND AS"',
     b',"navn":"SECOND AS","value":NaN',
-], ids=["duplicate-member", "nonfinite-constant"])
+    b',"navn":"SECOND AS","metadata":' + b"[" * 65 + b"0" + b"]" * 65,
+], ids=["duplicate-member", "nonfinite-constant", "excessive-nesting"])
 def test_rejected_source_json_still_produces_a_terminal_envelope(tmp_path, monkeypatch, suffix):
     body = b'{"organisasjonsnummer":"982463718"' + suffix + b'}'
     repo = Repository(tmp_path / "pipeline.db")
@@ -106,3 +107,17 @@ def test_rejected_source_json_still_produces_a_terminal_envelope(tmp_path, monke
         assert body.decode() not in profile.sources[0].error_detail
     finally:
         repo.close()
+
+
+@pytest.mark.parametrize("depth", [65, 1200])
+def test_json_body_rejects_excessive_nesting_before_decoder(depth):
+    with pytest.raises(ValueError, match="nesting capacity"):
+        parse_json_body(b"[" * depth + b"0" + b"]" * depth)
+
+
+def test_json_body_keeps_bounded_nesting_and_quoted_brackets():
+    raw = b"[" * 64 + b'"[{\\\"}]"' + b"]" * 64
+    value = parse_json_body(raw)
+    for _ in range(64):
+        value = value[0]
+    assert value == '[{"}]'

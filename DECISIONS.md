@@ -1,3 +1,12 @@
+## D-081 — Bound nesting before source JSON decoding
+
+- Date/status: 2026-10-19 local, accepted.
+- Problem/evidence: `parse_json_body` had no container-depth bound, while embedded website JSON already rejected more than64 levels. New tests showed65 and1200 nested containers accepted in this test environment (2failed/1control passed1.54s). Decoder recursion behavior depends on the process recursion limit; a byte cap alone does not define supported structure depth.
+- Decision/implementation: move the existing string/escape-aware depth scanner to `core.evidence.require_json_nesting` and apply it after strict UTF8 decoding and before source JSON decoding. The restricted embedded JSON reader calls the same helper with its previous64-level semantics. Excessive depth raises a constant ValueError, following normal failed extraction handling; raw acquisition bytes remain retained.
+- Alternatives/tradeoffs: relying on RecursionError or increasing Python's recursion limit gives environment-dependent behavior. A new streaming parser dependency is unnecessary for this structural guard. The scanner adds a linear pass over already byte-capped input;64 is a documented local support limit and may conservatively reject otherwise valid deeply nested records. Malformed syntax remains the JSON decoder's responsibility. No replacement values or identity are manufactured.
+- Verification: test_json_body_contract.py covers65/1200 rejection,64-level valid quoted/escaped brackets, and actual gateway/pipeline failed envelope with successful HTTP200 capture retained.102 JSON/Unicode/embedded-candidate/locator tests passed24.65s/one upstream warning. Ruff/mypy36 passed. Broader adjacent results are recorded in docs/verification.md.
+- Limits/revisit: this is not a hard CPU/deadline guarantee, whole-file streaming decode, financial precision repair, typed HTML locator or external publication enablement. No schema, dependency, migration or source-rights change. Revisit the local limit against representative authorized source data; maintain the same bound in independent snapshot verification and extraction.
+
 ## D-080 — Freeze the local1.1 export schema as a packaged resource
 
 - Date/status: 2026-10-19 local, accepted.

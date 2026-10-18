@@ -200,3 +200,9 @@ Conflict correction: competing supported observations are all withheld and retai
 | Requirement/finding | Owner | Verification | Status | Evidence |
 |---|---|---|---|---|
 | A/C stable versioned export schema before HTML contracts | core/export.py; core/schemas; package-data/CI | test_export_bundle.py generator drift, replay, mutation and version guards | verified | D-0802red7.53s; frozen exact1.1 package asset used by writer/reader.66adjacent/reviewer15 pass; actual wheel bytes/import outsidecheckout and legacy real100 compact-schema byte equality verified. Original100/1000 bundles still replay. Full869pass396.65s/8live excluded/one upstream warning; no1.2 locator/organizer acceptance claim |
+
+## Source JSON nesting capacity — 2026-10-19 local
+
+| Requirement/finding | Owner | Verification | Status | Evidence |
+|---|---|---|---|---|
+| C/D bounded untrusted source structure; F10 partial | core/evidence.py; core/structured_data.py | test_json_body_contract.py; embedded/Unicode/locator regressions | verified | D-081:2red/1control1.54s,102adjacent24.65s. Shared64-container guard before decoder; actual failed envelope retains HTTP200 bytes. This verifies nesting only; hard CPU/storage/export deadline gates remain unresolved |
