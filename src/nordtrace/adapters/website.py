@@ -360,9 +360,10 @@ class WebsiteAdapter:
                     )
                     cov["locations"] = "found"
             elif ptype == "CAREERS":
-                cov["jobs"] = cov.get("jobs") or "found"
                 # extract individual job openings from the careers page
                 openings = _extract_job_openings(BeautifulSoup(page_cached.text, "lxml"), link)
+                if openings:
+                    cov["jobs"] = cov.get("jobs") or "found"
                 for job in openings[:6]:
                     evj = EvidenceRecord(
                         source_id=src.source_id,
@@ -405,16 +406,17 @@ class WebsiteAdapter:
                     Fact(
                         org_number=identity.organisation_number,
                         run_id=run_id,
-                        category="jobs",
-                        field=f"careers_page:{urlsplit(link).path.strip('/')[:40]}",
-                        value={"url": link, "summary": page_text[:300]},
-                        normalized_value=link,
+                        category="resources",
+                        field="careers_page",
+                        item_key=src.final_url or link,
+                        value={"url": src.final_url or link},
+                        normalized_value=src.final_url or link,
                         source_id=src.source_id,
                         evidence_id=ev.evidence_id,
                         retrieved_at=now,
                         entity_verdict=match.verdict,
                         fact_confidence=0.8,
-                        status=FactStatus.PUBLISHED.value,
+                        status=FactStatus.EXTRACTED.value,
                     )
                 )
             elif ptype in ("PRODUCT", "SERVICE"):
@@ -440,21 +442,21 @@ class WebsiteAdapter:
                     )
                 )
             elif ptype == "NEWS":
-                cov["recent_activity"] = cov.get("recent_activity") or "found"
                 facts.append(
                     Fact(
                         org_number=identity.organisation_number,
                         run_id=run_id,
-                        category="recent_activity",
-                        field=f"news_page:{urlsplit(link).path.strip('/')[:40]}",
-                        value={"url": link, "summary": page_text[:300]},
-                        normalized_value=link,
+                        category="resources",
+                        field="news_page",
+                        item_key=src.final_url or link,
+                        value={"url": src.final_url or link},
+                        normalized_value=src.final_url or link,
                         source_id=src.source_id,
                         evidence_id=ev.evidence_id,
                         retrieved_at=now,
                         entity_verdict=match.verdict,
                         fact_confidence=0.7,
-                        status=FactStatus.PUBLISHED.value,
+                        status=FactStatus.EXTRACTED.value,
                     )
                 )
             elif ptype == "LEADERSHIP":

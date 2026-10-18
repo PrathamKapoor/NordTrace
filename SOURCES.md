@@ -1,3 +1,7 @@
+# News and careers resource semantics — 2026-10-18
+
+D-073 retains acquired news/careers index URLs as internal resource candidates, never as proof of an attributable dated event or active vacancy. Incidental page dates and general hiring links do not establish those facts. No new source permissions, feed, publication predicate or external coverage is enabled; typed support, dates/status and source-specific rights remain required. Existing individual posting heuristics remain production-withheld.
+
 # Mandatory public website robots policy — 2026-10-18
 
 D-071: RESPECT_ROBOTS must remain true; false configuration fails startup. Website/document source kinds enforce checks at the gateway even when a caller omits or disables the option. Runtime global flag mutation cannot bypass a denial. Robots access is charged like other acquisition; cached content and redirects retain checks. Documented registry APIs and generic robots-file retrieval keep separate policy. This is an acquisition safeguard, not permission to ignore site terms or redistribute content. Existing robots404/410 allow and403/errors deny rules remain unchanged.

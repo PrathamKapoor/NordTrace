@@ -4,6 +4,8 @@ Norwegian company research with retained evidence. Implementation is **in progre
 
 The financial brief template preserves each claim's amount, currency, unit, period and entity scope; incomplete or unsafe values are withheld. Monetary change notices require evidence inspection because change records do not contain complete old/new qualifiers. These guards do not enable financial publication or establish parser accuracy.
 
+News indexes and general careers pages are retained as resource candidates; they do not establish dated events or active vacancies. Their substantive claims remain unpublished until typed evidence and identity checks are implemented.
+
 ## Install
 
 Verified on Windows with Python 3.12.5 and a fresh virtual environment:

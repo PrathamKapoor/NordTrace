@@ -1,5 +1,14 @@
 # Decision Log — NordTrace
 
+## D-073 — Separate page resources from dated events and vacancies
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: a fetched news index produced a recent_activity/news_page fact and found coverage without an event/date. An empty careers page produced jobs/careers_page and found coverage. A date elsewhere in a news index does not establish an attributable event. Strict production validation already withheld these candidates, but adapter semantics were still misleading.
+- Decision/implementation: WebsiteAdapter.crawl retains news/general careers pages as EXTRACTED resources candidates with news_page/careers_page fields and the final URL as stable item key/value. No arbitrary page summary is promoted as an event/vacancy. News resource discovery does not set recent_activity found; careers discovery sets jobs found only when the existing individual posting extractor actually returns candidates. Those posting heuristics remain unverified and production-withheld.
+- Scope: internal candidate classification only. resources is not a scored family or new organizer contract. No resource typed support rule was added: production retains candidate/evidence/source links and rejects publication through the existing snapshot gate. No active-vacancy assertion, dated-event extraction, unknown event date, website ownership upgrade or external coverage gain is introduced. Existing frozen results stay untouched.
+- Alternatives/tradeoffs: deleting all page provenance loses useful discovery evidence; retaining resource pages in jobs/activity overstates factual coverage. A resource URL is acquisition/discovery metadata, not proof of the page's substantive assertions. Actual individual events require attributable content, dates and typed locators before publication. Source fetching, robots, budgets and deadlines are unchanged; no dependency/migration required.
+- Verification: tests/unit/test_website_resources.py uses real gateway/CAS/adapter paths for undated and incidentally dated news indexes and an empty careers page; a complete pipeline fixture retains both rejected candidates without published event/job/resource claims or found coverage. Exact independent four-operation adapter count accounts for separate discovery/domain-restricted robots keys. Adjacent tests and scoped review: docs/verification.md. Revisit when enabling typed resource/event/vacancy support or candidate-level coverage semantics.
+
 ## D-072 — Preserve monetary precision and each observation's qualifiers in briefs
 
 - Date/status: 2026-10-18, accepted.
