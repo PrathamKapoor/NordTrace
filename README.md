@@ -1,6 +1,6 @@
 # NordTrace
 
-Norwegian company research with retained evidence. Implementation is **in progress**. Current publication supports exact registry identity fields and parent-verified subunit relationships. Website, roles, activity and financial candidates remain withheld until their producers satisfy the typed support checks. NAV search is retired; hiring stays explicitly blocked until the documented feed and its update/retention requirements are implemented. External coverage gains, independent factual accuracy and a real 100-company smoke run are not established.
+Norwegian company research with retained evidence. Implementation is **in progress**. Current publication supports exact registry identity fields and parent-verified subunit relationships. Website, roles, activity and financial candidates remain withheld until their producers satisfy the typed support checks. NAV search is retired; hiring stays explicitly blocked until the documented feed and its update/retention requirements are implemented. A [real100-input registry-only smoke baseline](docs/registry-smoke-report.md) retained complete profiles/evidence:430 matching transport operations,1087 supported claims and224.094seconds. External gains and independent accuracy remain unmeasured; baseline briefs have a documented unknown-state wording defect.
 
 ## Install
 
