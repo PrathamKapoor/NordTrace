@@ -12,7 +12,7 @@ uv sync --frozen --extra dev --python 3.12
 
 The package declares Python >=3.11; other runtimes/Linux/container execution are unverified. For a noneditable installation, add `--no-editable` to the same command. Dependencies and build tools are pinned through uv.lock/pyproject.toml. No model key is needed. The optional model helper has no production extraction or synthesis callers.
 
-Fresh locked verification at `8aa7e06`: 596 offline tests passed, 8 live checks excluded, one upstream Starlette warning, 264.01 seconds. Ruff, mypy, wheel build, installed CLI/export/validation and dashboard resources passed. The subsequent sampler has separate checks and population-selection evidence in [verification](docs/verification.md). Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
+Fresh locked verification at `8aa7e06`: 596 offline tests passed, 8 live checks excluded, one upstream Starlette warning, 264.01 seconds. Ruff, mypy, wheel build, installed CLI/export/validation and dashboard resources passed. The later local regression at `38b6311` passed638offline tests in273.00seconds, including sampler, activity-source and registry-schema corrections. The subsequent adaptive-crawl correction has26passing scoped checks; these are separate measurements. Population-selection and installed-sampler evidence are in [verification](docs/verification.md). Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
 
 ## Research and inspect
 

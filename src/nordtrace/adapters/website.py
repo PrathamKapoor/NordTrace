@@ -175,7 +175,7 @@ class WebsiteAdapter:
 
     # ------------------------------------------------------------ crawl
     async def crawl(
-        self, identity: CompanyIdentity, run_id: str, skip_verified_domains: bool = False
+        self, identity: CompanyIdentity, run_id: str
     ) -> Tuple[List[EvidenceRecord], List[Fact], List[SourceRecord], List[Dict], Dict[str, str]]:
         """Focused crawl. Returns (evidences, facts, sources, rejected, coverage_updates).
 

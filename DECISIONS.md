@@ -1,5 +1,14 @@
 # Decision Log — NordTrace
 
+## D-061 — Retire the ineffective adaptive website pass
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: F17 reproduced two actual WebsiteAdapter.crawl invocations for the same input after business-description candidates failed publication. skip_verified_domains was accepted but never read; no new candidate set or frontier existed. Gateway caching could avoid a second homepage HTTP operation, but it did not make duplicate parsing/extraction useful adaptive research.
+- Decision/implementation: remove the unused internal crawl argument and the pipeline's adaptive_business repeat. Keep the ordinary website pass and the independently budgeted accounts-to-discovered-PDF fallback. Existing unsupported website candidates stay withheld; missing business evidence remains explicit instead of rerunning identical work.
+- Why/alternatives: implementing a durable remaining-candidate frontier/search/sitemap scheduler is separate work requiring evidence and source policy. Pretending the ignored flag provides discovery was misleading. Removing a no-op argument and redundant caller is the smallest complete correction permitted by F17, without inventing coverage gains.
+- Tradeoffs/application: no second business crawl now occurs; a future targeted pass must supply genuinely new bounded candidates/tasks and prove marginal verified coverage. Cache hits are distinct from network operations, so this fixture does not claim saved HTTP requests, runtime improvement or recall gain. Existing20/15second financial headroom thresholds remain. Review additionally reproduced a false failure when completed stages spent exactly ten requests with no PDFs remaining. The fallback now checks actual candidate existence and financial eligibility before the adaptive_financials request gate; a real pending PDF still produces an honest exhausted-budget failure.
+- Verification: test_adaptive_work.py wraps the real crawler, gateway and ledger; one initial failure3.76s observed2calls. Initial adaptive/PDF/outcome boundary24passed23.57s; two additional review controls failed before correcting the residual budget gate. Corrected26passed33.33s. Existing financial fallback state matrix still verifies actual PDF fetch/source registration and inapplicable abstention. Review and regression evidence are recorded in docs/verification.md. Revisit when permitted search/sitemap/structured extraction supports a real new-work scheduler.
+
 ## D-060 — Malformed successful registry records are failures, not absence
 
 - Date/status: 2026-10-18, accepted.

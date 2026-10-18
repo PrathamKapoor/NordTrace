@@ -311,84 +311,38 @@ class ResearchPipeline:
                     run_id, org_number, "jobs", f"{len(j_facts)} jobs verified, {len(j_rejected)} rejected"
                 )
 
-            # 5b. adaptive top-ups: coverage assessment + targeted additional research
-            # value-of-request heuristic: prioritize high-value missing categories
-            # over low-probability random search; stop when marginal value is low
-            if acquisition_allowed("adaptive"):
-                cov_now = self._coverage_from(ledger, org_number, financials_status)
-                missing = [
-                    c
-                    for c in ("business_description", "financials", "jobs", "products_services")
-                    if cov_now.get(c) == "not_found"
-                    and not (c == "financials" and financials_status == "not_applicable")
-                ]
-                # An unavailable accounts source does not make permitted company
-                # documents inapplicable. Also retry when candidates were found
-                # but the publication gate rejected every financial claim.
-                if (
-                    financials_status != "not_applicable"
-                    and not any(f.category == "financials" for f in ledger.published_facts(org_number))
-                    and "financials" not in missing
-                ):
-                    missing.append("financials")
-                if missing and self.budget.runtime.should_start_expensive_operation(20):
-                    # business_description: try remaining name-derived candidates
-                    if "business_description" in missing:
-                        top_evs, top_facts, top_sources, top_rejected, top_cov = await self.website.crawl(
-                            ident, run_id, skip_verified_domains=True
-                        )
-                        for s in top_sources:
-                            ledger.add_source(s)
-                        for e in top_evs:
-                            ledger.add_evidence(e)
-                        for f in top_facts:
-                            ledger.add_fact(f, None, None)
-                        for r in top_rejected:
-                            if r.get("code") == "acquisition_budget_limited":
-                                budget_skipped.append("adaptive_business")
-                            outcome.rejected.append(r)
-                        stages.append("adaptive_business")
-                        self._trace(
-                            run_id,
-                            org_number,
-                            "adaptive_business",
-                            f"targeted business discovery: {len(top_facts)} facts, "
-                            f"{len(top_sources)} sources",
-                        )
-                    # financials: try PDF documents discovered on the website
-                    if (
-                        "financials" in missing
-                        and acquisition_allowed("adaptive_financials")
-                        and self.budget.runtime.should_start_expensive_operation(15)
-                    ):
-                        pdf_sources = [
-                            s
-                            for s in ledger.sources.values()
-                            if s.source_type == SourceType.COMPANY_DOCUMENT.value and s.url
-                        ]
-                        pdf_evs: list = []
-                        pdf_facts: list = []
-                        for pdf_src in pdf_sources[:2]:
-                            if not pdf_src.url:
-                                continue
-                            evs2, f2, src2, st2 = await self.pdf.process_pdf(ident, pdf_src.url, run_id)
-                            ledger.add_source(src2)
-                            for e in evs2:
-                                ledger.add_evidence(e)
-                            for f in f2:
-                                ledger.add_fact(f, None, None)
-                            pdf_evs.extend(evs2)
-                            pdf_facts.extend(f2)
-                        accepted_pdf = [f for f in pdf_facts if f.status == FactStatus.PUBLISHED.value]
-                        if accepted_pdf:
-                            financials_status = "found"
-                            stages.append("adaptive_financials")
-                            self._trace(
-                                run_id,
-                                org_number,
-                                "adaptive_financials",
-                                f"PDF financial extraction: {len(accepted_pdf)} published facts",
-                            )
+            # 5b. Financial fallback uses documents discovered by the one website pass.
+            # Check for actual eligible work before recording any budget skip.
+            pdf_sources = [
+                source for source in ledger.sources.values()
+                if source.source_type == SourceType.COMPANY_DOCUMENT.value and source.url
+            ][:2]
+            if (
+                pdf_sources
+                and financials_status != "not_applicable"
+                and not any(f.category == "financials" for f in ledger.published_facts(org_number))
+                and self.budget.runtime.should_start_expensive_operation(20)
+                and acquisition_allowed("adaptive_financials")
+                and self.budget.runtime.should_start_expensive_operation(15)
+            ):
+                pdf_facts: list = []
+                for pdf_src in pdf_sources:
+                    assert pdf_src.url is not None
+                    evs2, f2, src2, st2 = await self.pdf.process_pdf(ident, pdf_src.url, run_id)
+                    ledger.add_source(src2)
+                    for e in evs2:
+                        ledger.add_evidence(e)
+                    for f in f2:
+                        ledger.add_fact(f, None, None)
+                    pdf_facts.extend(f2)
+                accepted_pdf = [f for f in pdf_facts if f.status == FactStatus.PUBLISHED.value]
+                if accepted_pdf:
+                    financials_status = "found"
+                    stages.append("adaptive_financials")
+                    self._trace(
+                        run_id, org_number, "adaptive_financials",
+                        f"PDF financial extraction: {len(accepted_pdf)} published facts",
+                    )
 
             # 6. activity from registry signals
             if src:

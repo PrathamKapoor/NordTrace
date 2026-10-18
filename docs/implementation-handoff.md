@@ -1,3 +1,13 @@
+# Current adaptive website checkpoint — 2026-10-18
+
+HEAD38b631169d5842ec6e0cda1eafc492230b89c5e6 committed D060; required identities inspected. D061/F17 uncommitted: website.py/pipeline.py/test_adaptive_work.py and README/FLOW/DECISIONS/tracker/verification/handoff. Ignored flag and duplicate crawl removed after real2call regression. Review caught unconditionaladaptivebudgetgate falsely failing completed10request/noPDF run; paired actual10request fixtures2red/1pass13.72s. Fallback now selects real PDF candidates, financial eligibility/headroom, then adaptive_financials budget gate. Corrected26adaptive/PDF/outcome pass33.33s; Ruff/mypy34pass; final scoped reviewer26passed33.20s/no further material findings. No source/dependency/migration/live/paid/remote change or new coverage claim.
+
+Full638offline passed8liveexcluded/one upstream warning273.00s at38b6311 before F17. This verifies sampler+D059locator correction+D060, separate from the newer26case delta. No full F17 claim yet. Last failing full625/1locatorfail is historical and superseded for D059/D060. Fresh77package/noneditable install proof remains8aa, installed sampler proof0a5.
+
+Next finish review/docs/local D061commit under required identity; then typed company-owned Organization description with exact raw HTML/JSON location and independent registry-host/subject anchors, or supplied official snapshot contract. Primary Schema.org Organization/taxID/description inspectedOct18 as untrusted documentation only, no website producer enabled. Any new locator contract must preserve old canonical history/bundle verification and explicit source-authored assertion/scope, not infer own-company financials or siteownership. Financials, modelcost/hardlimits, UI evidence, independent gold/ablations/live100 remain open. No push/PR/email/deployment.
+
+Earlier checkpoints follow as historical records; inspect actual Git state before acting.
+
 # Current registry schema checkpoint — 2026-10-18
 
 HEAD7b81514dea4795e98700f0898b0b388f16395973 committed D059 activity provenance with reviewed locator correction; identities inspected. D060 uncommitted: adapters/brreg.py/test_registry_schema.py and FLOW/DECISIONS/tracker/verification/handoff. Nine initial malformed200names red1.77s, corrected strict nonempty-string name after exactidentifier checks; no fake absence/name.63registry/activitypass9.65s,review20schema/identitypass3.24s/no findings,Ruff/mypy34pass. Full638offline session91131 running with corrected activity locator and D060 code; inspect output. Last prior full625pass/1locatorfail272.57s predates locator correction; current45boundarypassed21.70s/review30passed10.89s, no green full yet.
