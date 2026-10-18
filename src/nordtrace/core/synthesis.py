@@ -17,6 +17,7 @@ def build_summary(
     ledger: FactLedger,
     coverage: Coverage,
     changes: List[ChangeRecord],
+    *, previous_run_id: Optional[str] = None,
 ) -> str:
     parts: List[str] = []
     org = identity.organisation_number
@@ -85,17 +86,26 @@ def build_summary(
         parts.append(f"Recent activity: {_availability_text(coverage.get('recent_activity'))}.")
 
     # 6. meaningful changes
-    sig = [c for c in changes if c.change_type in ("CHANGED", "NEW", "RETRACTED")]
-    if sig:
+    sig = [c for c in changes if c.change_type in ("CHANGED", "RETRACTED")]
+    new = [c for c in changes if c.change_type == "NEW"]
+    if previous_run_id is None:
+        if ledger.published_facts(org):
+            parts.append("Changes: first verified observations; no earlier run is available for comparison.")
+        else:
+            parts.append("Changes: no verified observations available for comparison.")
+    elif sig:
         ch_str = "; ".join(
             f"{c.field}: {_short(c.previous_value)} → {_short(c.current_value)}"
             if c.previous_value is not None
             else f"{c.field}: new ({_short(c.current_value)})"
             for c in sig[:4]
         )
-        parts.append(f"Changes since previous run: {ch_str}.")
+        parts.append(f"Changes in verified observations: {ch_str}.")
     else:
-        parts.append("Changes: first research run or no changes detected.")
+        parts.append("Changes: no material changes established among comparable verified observations.")
+    if previous_run_id is not None and new:
+        new_str = "; ".join(f"{c.field}: {_short(c.current_value)}" for c in new[:4])
+        parts.append(f"Newly verified observations: {new_str}.")
 
     # 7. unknowns
     unknowns = unknowns_for_coverage(coverage)

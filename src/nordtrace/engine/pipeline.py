@@ -451,6 +451,7 @@ class ResearchPipeline:
                 if outcome.identity is not None:
                     outcome.summary = build_summary(
                         outcome.identity, ledger, Coverage(states=outcome.coverage), outcome.changes,
+                        previous_run_id=outcome.previous_run_id,
                     )
                 notice = stale_notice(outcome)
                 if notice:

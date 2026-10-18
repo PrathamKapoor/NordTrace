@@ -1,5 +1,14 @@
 # Decision Log — NordTrace
 
+## D-069 — Separate initial observations, new knowledge and comparable changes
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: initial profiles described NEW observations as changes since a previous run. Identical refreshes said either first run or no changes, and newly supported fields could imply the company itself changed.
+- Decision/implementation: `build_summary` receives the actual `previous_run_id` from pipeline final refresh. With no earlier run it labels initial verified observations; an empty published ledger cannot claim any verified observations. With a prior run, CHANGED/RETRACTED records describe changes in verified observations, while NEW records appear separately as newly verified knowledge. No-change wording only says no material change was established among comparable verified observations, including source-outage cases.
+- Scope/tradeoffs: deterministic new briefs only; underlying observations/change records, refresh removal safeguards and frozen summaries remain unchanged. A previous failed run may precede newly verified information, so NEW remains knowledge rather than an asserted business change. Concise briefs still cap displayed changes; the canonical list remains inspectable. Claim-reference and complete financial qualifier presentation are separate unfinished requirements.
+- Alternatives: treating every NEW claim as business change invents history; a single first-or-no-change sentence hides the known previous-run relationship. Rebuilding saved briefs would alter history and was rejected.
+- Verification: three initial regressions failed before implementation; actual first/identical/renamed runs and frozen history then pass with adjacent refresh/conflict checks. An added empty-ledger regression failed before guarding the initial observation statement. Exact results and review are in docs/verification.md. Revisit when affirmative removals, restatements or richer temporal relationships are introduced.
+
 ## D-068 — Describe verification outcomes without inventing public absence
 
 - Date/status: 2026-10-18, accepted.
