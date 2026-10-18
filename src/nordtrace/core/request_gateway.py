@@ -260,8 +260,6 @@ class RequestGateway:
         allowed_schemes: Optional[List[str]] = None,
         allowed_origins: Optional[List[str]] = None,
     ) -> bool:
-        if not settings.respect_robots:
-            return True
         parsed = urlparse(url)
         base = f"{parsed.scheme}://{parsed.netloc}"
         key = (
@@ -377,6 +375,9 @@ class RequestGateway:
         allowed_origins: Optional[List[str]] = None,
     ) -> SourceRecord:
         self.budget.check()
+        respect_robots = respect_robots or source_type in (
+            SourceType.COMPANY_WEBSITE.value, SourceType.COMPANY_DOCUMENT.value,
+        )
         chain: List[str] = []
         current = url
 

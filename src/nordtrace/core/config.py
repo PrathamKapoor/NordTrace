@@ -59,6 +59,12 @@ class Settings(BaseSettings):
             self.database_path = str(Path(self.data_dir) / "nordtrace.db")
         return self
 
+    @model_validator(mode="after")
+    def enforce_public_source_policy(self) -> Settings:
+        if not self.respect_robots:
+            raise ValueError("robots policy cannot be disabled for public website/PDF acquisition")
+        return self
+
     # --- HTTP identity ---
     user_agent: str = "NordTrace/1.0 (Norwegian company research agent; research use; contact via repository)"
 

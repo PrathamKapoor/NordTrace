@@ -1,3 +1,7 @@
+# Mandatory public website robots policy — 2026-10-18
+
+D-071: RESPECT_ROBOTS must remain true; false configuration fails startup. Website/document source kinds enforce checks at the gateway even when a caller omits or disables the option. Runtime global flag mutation cannot bypass a denial. Robots access is charged like other acquisition; cached content and redirects retain checks. Documented registry APIs and generic robots-file retrieval keep separate policy. This is an acquisition safeguard, not permission to ignore site terms or redistribute content. Existing robots404/410 allow and403/errors deny rules remain unchanged.
+
 # Registry-only observed smoke policy — 2026-10-18
 
 D-066 limits observed smoke to the documented public Brreg origin `https://data.brreg.no`, without credentials/models/paid APIs. Company-domain guesses/PDFs are blocked before DNS/HTTP; external coverage is not claimed. The run policy persists with the original budget and cannot be widened by adapter options or resume defaults. Origin restrictions do not grant a licence over all content at that host. Ordinary interfaces' legacy null policy does not establish source-specific permission.

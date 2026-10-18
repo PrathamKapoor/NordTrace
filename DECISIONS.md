@@ -1,5 +1,14 @@
 # Decision Log — NordTrace
 
+## D-071 — Enforce website robots policy at the gateway
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: Settings accepted false boolean/string/environment values for respect_robots, and the gateway then bypassed a site's denial. A second regression showed company_website/company_document callers could opt out independently. These are source-policy defects even though the current adapters explicitly request checks.
+- Decision/implementation: Settings rejects disabling the public policy; RequestGateway._robots_allows no longer consults a mutable global opt-out. RequestGateway._fetch requires robots checks for website/document source types, before either cached content or transport. Caller opt-in still supports other public source types. Redirects retain the same check and existing accounting/deadline gates.
+- Scope: public website/PDF acquisition. Generic robots-file requests and documented registry API calls retain their separate policy, avoiding recursive robots acquisition. This does not establish permission under every site's terms or enable any new source.
+- Alternatives/tradeoffs: silently ignoring false configuration hides a misconfigured deployment; retaining adapter-only checks allows future callers to bypass policy. The recognized setting remains for compatibility but false is an explicit startup error. Source typing remains an adapter responsibility; generic acquisition is not an unrestricted website interface. Runtime settings mutation cannot disable required checks.
+- Verification: eight deterministic regressions include configuration/environment, runtime mutation and caller opt-out with robots403; denied content is never requested and the robots operation is charged. Adjacent source allowance, redirect, homepage, PDF and configuration tests plus reviewer results are recorded in docs/verification.md. No schema, data migration, credential use or live acquisition. Revisit when adding source types or changing robots error/redirect/cache policy.
+
 ## D-070 — Reference displayed claims and preserve registered subunit context
 
 - Date/status: 2026-10-18, accepted.
