@@ -1,6 +1,6 @@
 """Evidence-grounded synthesis: summary generated ONLY from verified facts.
 
-Deterministic template builder; optional LLM polish behind strict grounding.
+Deterministic template builder; no model is invoked.
 Unknowns describe verification outcomes, never presumed absence of business facts.
 """
 
@@ -29,11 +29,9 @@ def build_summary(
     if verified_name is None:
         parts.append(f"Organisation {org} (legal name unresolved)")
     else:
-        parts.append(f"{verified_name.value} (orgnr {org})")
+        parts.append(f"{verified_name.value} (orgnr {org}) {_cite(verified_name)}")
     if desc is not None and getattr(desc, "value", None):
-        parts.append(f"What it does: {desc.value}")
-    elif isinstance(desc, str):
-        parts.append(f"What it does: {desc}")
+        parts.append(f"What it does: {desc.value} {_cite(desc)}")
     else:
         parts.append(f"What it does: {_availability_text(coverage.get('business_description'))}.")
 
@@ -41,8 +39,9 @@ def build_summary(
     ind_f = _latest(ledger, org, "identity", "industry_description")
     ind = ind_f.value if ind_f is not None else None
     ind_code = _latest(ledger, org, "identity", "industry_code")
-    if ind:
-        parts.append(f"Industry: {ind}" + (f" ({ind_code.value})" if ind_code is not None else ""))
+    if ind_f is not None and ind:
+        parts.append(f"Industry: {ind} {_cite(ind_f)}"
+                     + (f" ({ind_code.value} {_cite(ind_code)})" if ind_code is not None else ""))
     else:
         parts.append("Industry: not verified in this run.")
 
@@ -55,24 +54,49 @@ def build_summary(
     if rev or res or ar or eq:
         fin_parts = []
         if rev:
-            fin_parts.append(f"revenue {_fmt(rev)}")
+            fin_parts.append(f"revenue {_fmt(rev)} {_cite(rev)}")
         if res:
-            fin_parts.append(f"operating result {_fmt(res)}")
+            fin_parts.append(f"operating result {_fmt(res)} {_cite(res)}")
         if ar:
-            fin_parts.append(f"annual result {_fmt(ar)}")
+            fin_parts.append(f"annual result {_fmt(ar)} {_cite(ar)}")
         if eq:
-            fin_parts.append(f"equity {_fmt(eq)}")
+            fin_parts.append(f"equity {_fmt(eq)} {_cite(eq)}")
         period = rev.reporting_period if rev else None
         parts.append(f"Financials ({period or 'latest reported'}): " + ", ".join(fin_parts) + ".")
     else:
         parts.append(f"Financials: {_availability_text(coverage.get('financials'))}.")
     if emp:
-        parts.append(f"Registered employees: {_fmt(emp)}.")
+        parts.append(f"Registered employees: {_fmt(emp)}. {_cite(emp)}")
+
+    branches = [fact for fact in ledger.published_facts(org)
+                if fact.category == "locations" and fact.field == "branch"
+                and isinstance(fact.value, dict) and fact.value.get("parent_orgnr") == org
+                and isinstance(fact.value.get("name"), str) and fact.value.get("name")
+                and fact.value.get("orgnr") == fact.item_key and fact.item_key]
+    if branches:
+        items = []
+        for branch in sorted(branches, key=lambda fact: fact.item_key or "")[:3]:
+            value = branch.value
+            if not isinstance(value, dict):
+                continue
+            text = f"{value['name']} (orgnr {value['orgnr']})"
+            address = " ".join(part for key in ("physical_address", "postal_code", "postal_area")
+                               if isinstance(part := value.get(key), str) and part)
+            if address:
+                text += f", {address}"
+            for key, label in (("closure_date", "closed"), ("deleted_date", "deleted")):
+                if value.get(key):
+                    text += f", {label} {value[key]}"
+            items.append(f"{text} {_cite(branch)}")
+        parts.append("Registered subunits observed: " + "; ".join(items) + ".")
+        if len(branches) > 3:
+            parts.append("Additional verified subunit observations appear in the profile.")
 
     # 4. people/roles
     roles = _role_facts(ledger, org)
     if roles:
-        role_str = ", ".join(f"{name} ({role})" for role, name in roles[:5])
+        role_str = ", ".join(f"{fact.value['name']} ({fact.value.get('role', fact.field)}) {_cite(fact)}"
+                             for fact in roles[:5] if isinstance(fact.value, dict))
         parts.append(f"Key roles: {role_str}.")
     else:
         parts.append(f"Key roles: {_availability_text(coverage.get('leadership'))}.")
@@ -81,7 +105,7 @@ def build_summary(
     acts = _activity_facts(ledger, org)
     if acts:
         act_str = "; ".join(acts[:3])
-        parts.append(f"Recent registry activity: {act_str}.")
+        parts.append(f"Activity observations: {act_str}.")
     else:
         parts.append(f"Recent activity: {_availability_text(coverage.get('recent_activity'))}.")
 
@@ -95,16 +119,17 @@ def build_summary(
             parts.append("Changes: no verified observations available for comparison.")
     elif sig:
         ch_str = "; ".join(
-            f"{c.field}: {_short(c.previous_value)} → {_short(c.current_value)}"
-            if c.previous_value is not None
-            else f"{c.field}: new ({_short(c.current_value)})"
+            (f"{c.field}: {_short(c.previous_value)} → {_short(c.current_value)}"
+             if c.previous_value is not None else f"{c.field}: new ({_short(c.current_value)})")
+            + (f" [{c.claim_id}]" if c.claim_id else "")
             for c in sig[:4]
         )
         parts.append(f"Changes in verified observations: {ch_str}.")
     else:
         parts.append("Changes: no material changes established among comparable verified observations.")
     if previous_run_id is not None and new:
-        new_str = "; ".join(f"{c.field}: {_short(c.current_value)}" for c in new[:4])
+        new_str = "; ".join(f"{c.field}: {_short(c.current_value)}"
+                            + (f" [{c.claim_id}]" if c.claim_id else "") for c in new[:4])
         parts.append(f"Newly verified observations: {new_str}.")
 
     # 7. unknowns
@@ -128,6 +153,10 @@ def _latest(ledger: FactLedger, org: str, category: str, field: str) -> Optional
     return best
 
 
+def _cite(fact: Fact) -> str:
+    return f"[{fact.claim_id}]"
+
+
 def _fmt(fact: Fact) -> str:
     v = fact.value
     if isinstance(v, (int, float)):
@@ -138,13 +167,12 @@ def _fmt(fact: Fact) -> str:
     return str(v)
 
 
-def _role_facts(ledger: FactLedger, org: str) -> List[tuple]:
+def _role_facts(ledger: FactLedger, org: str) -> List[Fact]:
     cur = ledger.current_values(org)
     out = []
     for _, f in sorted(cur.items()):
         if f.category == "leadership" and isinstance(f.value, dict) and f.value.get("name"):
-            role = f.value.get("role", f.field)
-            out.append((role, f.value["name"]))
+            out.append(f)
     return out
 
 
@@ -156,9 +184,9 @@ def _activity_facts(ledger: FactLedger, org: str) -> List[str]:
             v = f.value
             if isinstance(v, dict):
                 date = v.get("date") or v.get("registered") or ""
-                out.append(f"{v.get('event', f.field)}" + (f" ({date})" if date else ""))
+                out.append(f"{v.get('event', f.field)}" + (f" ({date})" if date else "") + f" {_cite(f)}")
             else:
-                out.append(str(v)[:80])
+                out.append(str(v) + f" {_cite(f)}")
     return out
 
 

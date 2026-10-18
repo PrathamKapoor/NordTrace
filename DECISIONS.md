@@ -1,5 +1,14 @@
 # Decision Log — NordTrace
 
+## D-070 — Reference displayed claims and preserve registered subunit context
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: deterministic briefs displayed supported values without logical claim references and omitted already verified subunits. A registered subunit is not automatically an active workplace or the target legal entity.
+- Decision/implementation: `build_summary` adds stable bracketed claim IDs beside displayed identity, description, industry/code, employee, role/activity and financial-template values. Change/new-observation references use recorded logical claim IDs where present. Supported subunit examples retain their own organisation number, physical address and explicit closure/deletion qualifiers. Display at most three parent/item-key-matched observations, with an additional-observations notice rather than an invented total branch count. Activity headings no longer imply recency merely from the category; source-authored string values are not silently truncated.
+- Scope: text rendering only, from the existing published ledger and verified change records. No extractor, source, publication predicate, schema, migration or model is enabled. Financial/website/role/activity producers remain withheld until their support contracts are implemented. A reference does not establish support by itself; the existing snapshot/locator validator remains authoritative. Historical summaries stay frozen.
+- Alternatives/tradeoffs: a source URL cannot replace a claim reference; display-only sequence numbers would need a separate mapping contract. Full stable IDs are auditable but lengthen machine briefs; UI shortening/resolution remains a presentation task. Truncating subunit output without notice could imply completeness; describing all records as active workplaces would misstate closure/scope. Financial scalar/period/scope formatting is still an unfinished separate safeguard.
+- Verification: real mocked-acquisition/storage profile tests link all displayed identity/subunit references to snapshot-backed published claims, preserve zero employees and closed units, and exercise a four-unit display cap. A preliminary legacy-ledger hard negative cannot attach a foreign parent. Additional legacy template cases explicitly test rendering only, not real publication of withheld predicates. Exact results/review in docs/verification.md. Revisit with new supported predicates, a structured brief-reference contract or financial formatting changes.
+
 ## D-069 — Separate initial observations, new knowledge and comparable changes
 
 - Date/status: 2026-10-18, accepted.

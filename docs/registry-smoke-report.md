@@ -65,6 +65,8 @@ Superseding implementation record (2026-10-18,D-068): new outcomes now build unk
 
 Further implementation record (2026-10-18,D-069): new briefs distinguish first observations, newly verified information and changed comparable observations. This corrects the new-output first-run wording left open at D-068; the frozen baseline still contains its original text. Claim-reference synthesis remains unfinished; no repeated live measurement is claimed.
 
+Further implementation record (2026-10-18,D-070): new briefs reference displayed logical claims and include qualified registered-subunit examples. The baseline briefs remain unchanged. This adds no external claims or financial publication, and no live100 rerun or independent accuracy result follows from the rendering change. Complete financial formatting/reference UX remain open.
+
 Earlier preflight at0d207ae failed after one entity response because a server session cookie was refused on the next request: independent1/gateway2, exit1, partial retained result. D-067 fixed cookie replay. Separate corrected first-input preflight at8a90719 succeeded in3.094s with four matching operations and a verified ZIP. Both artifacts are retained; no failed attempt is hidden or counted as the100-company run.
 
 Source attribution: contains NLOD2.0 registry data distributed by Brønnøysundregistrene, normalized by NordTrace. Raw roles/company captures remain local; software MIT does not relicense them. Privacy/retention and redistribution review remain unfinished, and no artifact has been remotely published. This baseline does not compare external coverage against a repaired extractor or satisfy the broader release gates.
