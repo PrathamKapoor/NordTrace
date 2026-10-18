@@ -112,6 +112,12 @@ async def run_smoke(
 
     if configuration.max_cost_usd != 0:
         raise ValueError("public smoke requires a zero model/API cost allowance")
+    origins = configuration.allowed_source_origins
+    if origins is None:
+        origins = ["https://data.brreg.no"]
+        configuration = configuration.model_copy(update={"allowed_source_origins": origins})
+    if any(origin != "https://data.brreg.no" for origin in origins):
+        raise ValueError("smoke permits only the documented public registry origin")
     if type(concurrency) is not int or not 1 <= concurrency <= 16:
         raise ValueError("smoke concurrency must be between 1 and 16")
     if not revision:
@@ -144,6 +150,7 @@ async def run_smoke(
             max_requests=configuration.max_requests, max_runtime_sec=configuration.max_runtime_sec,
             max_cost=0, per_company_soft_sec=configuration.per_company_sec,
             finalization_reserve_sec=configuration.finalization_reserve_sec,
+            allowed_source_origins=configuration.allowed_source_origins,
         )
         audit = TransportAudit()
         try:
@@ -183,7 +190,7 @@ async def run_smoke(
             "input_sha256": hashlib.sha256(raw).hexdigest(), "input_count": len(inputs),
             "unique_results": len(profiles), "configuration": configuration.model_dump(mode="json"),
             "concurrency": concurrency, "effective_settings": SMOKE_SETTINGS,
-            "mode": "deterministic_public_sources_no_models", "third_party_api_cost_usd": 0,
+            "mode": "deterministic_registry_only_no_models", "third_party_api_cost_usd": 0,
             "cost_basis": "No authenticated/paid source or model enabled; excludes infrastructure costs",
             "terminal_counts": report["terminal_counts"], "transport": {
                 "dispatches": len(audit.operations), "gateway_operations": telemetry["transport_operations"],
@@ -203,6 +210,7 @@ async def run_smoke(
                         "p95_sec": durations[math.ceil(len(durations) * .95) - 1] if durations else None},
             "independent_accuracy": report["independent_accuracy"], "artifact_sha256": artifacts,
             "limitations": ["Local smoke configuration, not confirmed organizer limits/schema",
+                            "Registry-only baseline; external website/PDF acquisition excluded",
                             "Support replay is not independent factual accuracy or recall",
                             "Synchronous parsing/storage/export are not hard deadline bounded",
                             "Database contains captured public content; inspect rights before sharing"],

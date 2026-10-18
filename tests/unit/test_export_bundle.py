@@ -80,6 +80,47 @@ async def forbidden_network(*args, **kwargs):
     pytest.fail("offline verification attempted acquisition")
 
 
+@pytest.mark.parametrize("extra_policy", [False, True])
+def test_legacy_schema_bundle_replays_without_admitting_new_policy_fields(tmp_path, extra_policy):
+    from nordtrace.core.export import export_run, verify_bundle
+    from nordtrace.engine.runner import BatchRunner
+
+    repo = Repository(tmp_path / "legacy.db")
+    try:
+        run = asyncio.run(BatchRunner(repo).run_batch(["invalid"]))
+        current = tmp_path / "current.zip"
+        export_run(repo, run.run_id, current)
+    finally:
+        repo.close()
+    with zipfile.ZipFile(current) as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    schema = json.loads(entries["result-schema.json"])
+    schema["$defs"]["RunConfiguration"]["properties"].pop("allowed_source_origins")
+    entries["result-schema.json"] = json.dumps(schema).encode()
+    for name in ("results.jsonl", "starter-example.jsonl"):
+        result = json.loads(entries[name])
+        config = result["research_metadata"]["run_configuration"]
+        config.pop("allowed_source_origins")
+        if extra_policy and name == "results.jsonl":
+            config["allowed_source_origins"] = ["https://data.brreg.no"]
+        entries[name] = (json.dumps(result) + "\n").encode()
+    manifest = json.loads(entries["manifest.json"])
+    manifest["schema_sha256"] = hashlib.sha256(entries["result-schema.json"]).hexdigest()
+    manifest["results_sha256"] = hashlib.sha256(entries["results.jsonl"]).hexdigest()
+    manifest["projections"]["starter-example-v1"]["sha256"] = hashlib.sha256(
+        entries["starter-example.jsonl"]).hexdigest()
+    entries["manifest.json"] = json.dumps(manifest).encode()
+    legacy = tmp_path / "legacy.zip"
+    with zipfile.ZipFile(legacy, "w") as archive:
+        for name, body in entries.items():
+            archive.writestr(name, body)
+    if extra_policy:
+        with pytest.raises(ValueError, match="legacy.*policy"):
+            verify_bundle(legacy)
+    else:
+        assert verify_bundle(legacy)["completion"]["complete"] is True
+
+
 @pytest.mark.parametrize("failure", ["missing_blob", "unsupported_value", "missing_result", "bad_mapping"])
 def test_incomplete_or_unsupported_bundle_never_appears_complete(researched, tmp_path, failure):
     from nordtrace.core.export import export_run

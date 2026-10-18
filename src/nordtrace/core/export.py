@@ -9,6 +9,7 @@ import os
 import re
 import tempfile
 import zipfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Literal
 
@@ -290,8 +291,13 @@ def verify_bundle(output: str | Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> 
             raise ValueError("unsupported bundle result schema")
         BundleOperations.model_validate(manifest["operations"])
         schema = archive.read("result-schema.json")
+        installed_schema = CompanyProfile.model_json_schema()
+        legacy_schema = deepcopy(installed_schema)
+        legacy_schema["$defs"]["RunConfiguration"]["properties"].pop("allowed_source_origins")
+        declared_schema = json.loads(schema)
+        legacy_policy_schema = declared_schema == legacy_schema
         if (hashlib.sha256(schema).hexdigest() != manifest["schema_sha256"]
-                or json.loads(schema) != CompanyProfile.model_json_schema()):
+                or (declared_schema != installed_schema and not legacy_policy_schema)):
             raise ValueError("bundle schema integrity differs from installed local schema")
         reader = _BundleReader(archive, manifest["captures"])
         for source_id in manifest["captures"]:
@@ -301,6 +307,12 @@ def verify_bundle(output: str | Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> 
         with archive.open("results.jsonl") as results:
             for line in results:
                 digest.update(line)
+                if legacy_policy_schema:
+                    raw_result = json.loads(line)
+                    metadata = raw_result.get("research_metadata") if isinstance(raw_result, dict) else None
+                    config = metadata.get("run_configuration") if isinstance(metadata, dict) else None
+                    if isinstance(config, dict) and "allowed_source_origins" in config:
+                        raise ValueError("legacy result schema cannot declare a new source policy")
                 result = CompanyProfile.model_validate_json(line)
                 if result.run_id != manifest["run_id"]:
                     raise ValueError("result run differs from manifest")
@@ -330,6 +342,10 @@ def verify_bundle(output: str | Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> 
                     actual = projection.readline()
                     projection_digest.update(actual)
                     expected = _starter_example(CompanyProfile.model_validate_json(line))
+                    if legacy_policy_schema:
+                        config = expected["research_metadata"].get("run_configuration")
+                        if isinstance(config, dict):
+                            config.pop("allowed_source_origins", None)
                     if (not actual
                             or _json(json.loads(actual), sort_keys=True) != _json(expected, sort_keys=True)):
                         raise ValueError("projection differs from canonical result")

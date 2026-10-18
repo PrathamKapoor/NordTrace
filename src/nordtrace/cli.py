@@ -70,7 +70,7 @@ def cli(ctx, debug: bool):
 def smoke_command(input_file: Path, output: Path, live: bool, max_requests: int,
                   max_runtime_sec: float, per_company_sec: float, finalization_reserve_sec: float,
                   concurrency: int):
-    """Run supplied inputs with independent transport accounting and portable evidence.
+    """Run registry-only supplied inputs with independent transport accounting/evidence.
 
     Requires a clean source checkout and an exclusive output directory. Uses no
     model credentials or paid API; local limits are not organizer allowances.

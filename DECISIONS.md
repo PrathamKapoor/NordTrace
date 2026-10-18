@@ -1,5 +1,15 @@
 # Decision Log — NordTrace
 
+## D-066 — Persist run source origins and use a registry-only smoke baseline
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: public smoke acquisition must exclude guessed domains before their access decision is established. Request limits cannot express permitted sources. Origin restrictions do not grant source rights.
+- Decision/implementation: `RunConfiguration.allowed_source_origins` accepts bare HTTP(S) origins, normalizing case/default ports. Null preserves historical absence of an allowlist; empty denies all. `BudgetManager` persists/restores it. `RequestGateway._fetch` applies it before DNS, robots, cached redirect reuse and every hop, alongside adapter restrictions. Local exclusions record blocked/discovery time without fictional retrieval/hash/HTTP status. Robots cache keys include the run policy.
+- Smoke scope: default `https://data.brreg.no` only; other origins refused, explicit deny-all allowed. Artifacts declare `deterministic_registry_only_no_models`. Websites/PDFs are blocked, so this repaired-core baseline cannot measure external coverage. Public Brreg/NLOD documentation was rechecked; personal-data retention/redistribution remain separate obligations.
+- Compatibility: this additive optional field changes generated local1.1 schema. Review reproduced rejection of retained100/1000 bundles. The verifier recognizes exactly the installed schema and prior schema differing only by absence of this property. Both still require matching archive hashes, exact schema equality and support validation. Legacy-shaped result data cannot declare the new field; legacy projections omit its new null default during equality checking. Historical bytes remain unchanged; arbitrary schema variants remain rejected. Future incompatible changes require explicit versioning.
+- Alternatives/tradeoffs: page/time limits cannot serve as a fake registry-only switch; a process-local source list would disappear on resume. Legacy null does not declare every source approved. Origin-level permission is broader than endpoint terms, so adapter/credential policies still apply. Dormant model transport is not repaired by this change.
+- Verification: strict-origin/DNS/transport/redirect/cache/robots/deny-all-resume fixtures and production smoke/export tests. Review reproduced robots-cache leakage and old bundle incompatibility; failing regressions preceded both corrections. Exact results are in docs/verification.md. Revisit for new sources, supplied organizer policy or contract version changes.
+
 ## D-065 — Measure supplied-input smoke runs at the HTTP transport boundary
 
 - Date/status: 2026-10-18, accepted.

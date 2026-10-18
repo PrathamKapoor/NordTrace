@@ -39,9 +39,12 @@ def test_smoke_retains_complete_results_and_reconciles_transport(tmp_path, monke
             ), concurrency=2, revision="fixture-revision",
         ))
         assert exit_code == 2  # Invalid input remains an envelope and programmatic error.
-        # Four registry operations plus two guessed homepage/robots pairs.
-        assert len(calls) == 8
-        assert manifest["transport"]["dispatches"] == manifest["transport"]["gateway_operations"] == 8
+        # Registry-only smoke blocks guessed sites before DNS/robots/transport.
+        assert len(calls) == 4
+        assert manifest["transport"]["dispatches"] == manifest["transport"]["gateway_operations"] == 4
+        assert all(request.headers["host"] == "data.brreg.no" for request in calls)
+        assert manifest["configuration"]["allowed_source_origins"] == ["https://data.brreg.no"]
+        assert manifest["mode"] == "deterministic_registry_only_no_models"
         assert manifest["transport"]["matches"] is True
         assert manifest["input_count"] == 3 and manifest["unique_results"] == 2
         assert manifest["independent_accuracy"]["measured"] is False

@@ -1,3 +1,9 @@
+# Registry-only observed smoke policy — 2026-10-18
+
+D-066 limits observed smoke to the documented public Brreg origin `https://data.brreg.no`, without credentials/models/paid APIs. Company-domain guesses/PDFs are blocked before DNS/HTTP; external coverage is not claimed. The run policy persists with the original budget and cannot be widened by adapter options or resume defaults. Origin restrictions do not grant a licence over all content at that host. Ordinary interfaces' legacy null policy does not establish source-specific permission.
+
+Primary [Enhetsregisteret documentation](https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/index.html) was rechecked2026-10-18, still version2.0.0/NLOD2.0, distinguishing public entity/roles/subunit endpoints from authorized personal-identifier services. Existing public adapters only; no authenticated personal-identifier, NAV token/feed or account-submission API. Attribution: contains NLOD2.0 registry data distributed by Brønnøysundregistrene, normalized by NordTrace. Captures stay local/ignored; privacy/retention and redistribution review remain unfinished. Documentation reads are separate from company-run telemetry.
+
 # NAV source decision — 2026-10-18
 
 The [official feed documentation](https://navikt.github.io/pam-stilling-feed/) now explicitly documents employer.orgnr, bearer authentication and a freely available rotating experiment token. Its feed represents updates and ACTIVE/INACTIVE state, not a filtered company-search API. The [official terms](https://arbeidsplassen.nav.no/vilkar-api) require keeping displayed vacancies current/removing inactive entries and impose personal-data handling/retention obligations. This is a source-access engineering decision, not a blanket licence over all captured data.

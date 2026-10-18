@@ -254,10 +254,12 @@ class BudgetManager:
         max_cost: float = 10.0,
         per_company_soft_sec: float = 90.0,
         finalization_reserve_sec: float = 0.0,
+        allowed_source_origins: Optional[list[str]] = None,
     ):
         self.configuration = RunConfiguration(
             max_requests=max_requests, max_runtime_sec=max_runtime_sec, max_cost_usd=max_cost,
             per_company_sec=per_company_soft_sec, finalization_reserve_sec=finalization_reserve_sec,
+            allowed_source_origins=allowed_source_origins,
         )
         self.requests: RequestBudget | PersistentRequestBudget = RequestBudget(global_limit=max_requests)
         self.runtime = RuntimeBudget(

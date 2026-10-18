@@ -12,8 +12,9 @@ import secrets
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from nordtrace.core.orgnr import validate_orgnr
 
@@ -354,6 +355,30 @@ class RunConfiguration(BaseModel):
     max_cost_usd: float = Field(ge=0)
     per_company_sec: float = Field(default=90, gt=0)
     finalization_reserve_sec: float = Field(default=0, ge=0)
+    allowed_source_origins: Optional[List[str]] = None
+
+    @field_validator("allowed_source_origins")
+    @classmethod
+    def validate_source_origins(cls, values: Optional[List[str]]) -> Optional[List[str]]:
+        if values is None:
+            return None  # Legacy configuration did not declare a source allowlist.
+        normalized = []
+        for value in values:
+            parsed = urlsplit(value)
+            if (any(ord(char) <= 32 or ord(char) >= 127 for char in value)
+                    or parsed.scheme not in ("http", "https") or not parsed.hostname
+                    or parsed.username is not None or parsed.password is not None
+                    or parsed.path not in ("", "/") or parsed.query or parsed.fragment):
+                raise ValueError("source policy requires bare HTTP(S) origins without credentials")
+            port = parsed.port
+            if port == 0:
+                raise ValueError("source origin cannot use port zero")
+            host = parsed.hostname.lower().rstrip(".")
+            if ":" in host or not host:
+                raise ValueError("source policy requires a hostname")
+            suffix = f":{port}" if port and port != {"http": 80, "https": 443}[parsed.scheme] else ""
+            normalized.append(f"{parsed.scheme}://{host}{suffix}")
+        return list(dict.fromkeys(normalized))
 
     @model_validator(mode="after")
     def reserve_leaves_work_time(self) -> RunConfiguration:

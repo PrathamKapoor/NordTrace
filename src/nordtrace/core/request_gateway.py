@@ -84,6 +84,10 @@ class SSRFError(ValueError):
     pass
 
 
+class RunSourcePolicyDenied(SSRFError):
+    """The run excluded this origin; no retrieval of that destination occurred."""
+
+
 def validate_url(
     url: str, allowed_domains: Optional[List[str]] = None, allowed_schemes: Optional[List[str]] = None,
     allowed_origins: Optional[List[str]] = None,
@@ -227,7 +231,8 @@ class RequestGateway:
         self.rate_limiter = rate_limiter or RateLimiter()
         self._cache: Dict[str, CachedResponse] = {}
         self._robots: Dict[
-            tuple[str, Optional[tuple[str, ...]], Optional[tuple[str, ...]], Optional[tuple[str, ...]]],
+            tuple[str, Optional[tuple[str, ...]], Optional[tuple[str, ...]],
+                  Optional[tuple[str, ...]], Optional[tuple[str, ...]]],
             RobotsCacheEntry,
         ] = {}
         self._client: Optional[httpx.AsyncClient] = None
@@ -261,6 +266,8 @@ class RequestGateway:
             base, tuple(sorted(allowed_domains)) if allowed_domains is not None else None,
             tuple(sorted(allowed_schemes)) if allowed_schemes is not None else None,
             tuple(sorted(allowed_origins)) if allowed_origins is not None else None,
+            tuple(sorted(self.budget.configuration.allowed_source_origins))
+            if self.budget.configuration.allowed_source_origins is not None else None,
         )
         entry = self._robots.get(key)
         if entry is None or time.time() - entry.fetched_at > self.cache_ttl:
@@ -371,24 +378,42 @@ class RequestGateway:
         chain: List[str] = []
         current = url
 
+        def validate_source(candidate: str) -> Tuple[str, str]:
+            # Apply the persisted run policy before DNS, robots, cache or transport.
+            # Adapter-specific restrictions are additional and cannot widen it.
+            permitted = self.budget.configuration.allowed_source_origins
+            if permitted is not None:
+                parsed = urlparse(candidate)
+                try:
+                    scheme, host = parsed.scheme, (parsed.hostname or "").lower().rstrip(".")
+                    port = parsed.port
+                    suffix = f":{port}" if port and port != {"http": 80, "https": 443}[scheme] else ""
+                    origin = f"{scheme}://{host}{suffix}"
+                except (ValueError, KeyError) as error:
+                    raise RunSourcePolicyDenied("invalid origin under run source policy") from error
+                if origin not in permitted:
+                    raise RunSourcePolicyDenied("URL origin outside run source policy")
+            return validate_url(candidate, allowed_domains, allowed_schemes, allowed_origins)
+
         def record(status: str, error: Optional[str] = None, response=None, **extra) -> SourceRecord:
             return SourceRecord(
                 url=url, requested_url=url, final_url=current, redirect_chain=list(chain),
                 domain=urlparse(current).hostname, source_type=source_type, authority_tier=authority_tier,
-                org_number=company, retrieved_at=utcnow().isoformat(), access_status=status,
+                org_number=company, retrieved_at=extra.pop("retrieved_at", utcnow().isoformat()),
+                access_status=status,
                 error_detail=error, http_status=response.status_code if response else None,
                 content_type=response.headers.get("content-type") if response else None, **extra,
             )
 
         try:
-            clean, host = validate_url(url, allowed_domains, allowed_schemes, allowed_origins)
+            clean, host = validate_source(url)
             url = current = clean
             chain = [clean]
             ttl = self.cache_ttl if cache_ttl_override is None else cache_ttl_override
             cached = self._cache.get(clean)
             if cached and cached.age_sec() < ttl:
                 for cached_hop in cached.redirect_chain or [clean]:
-                    validate_url(cached_hop, allowed_domains, allowed_schemes, allowed_origins)
+                    validate_source(cached_hop)
                     if respect_robots and not await self._robots_allows(
                         cached_hop, company=company, allowed_domains=allowed_domains,
                         allowed_schemes=allowed_schemes,
@@ -404,9 +429,7 @@ class RequestGateway:
                 current = clean
                 chain = [clean]
                 for hop in range(settings.max_redirects + 1):
-                    current, hop_host = validate_url(
-                        current, allowed_domains, allowed_schemes, allowed_origins,
-                    )
+                    current, hop_host = validate_source(current)
                     if respect_robots and not await self._robots_allows(
                         current, company=company, allowed_domains=allowed_domains,
                         allowed_schemes=allowed_schemes,
@@ -431,9 +454,7 @@ class RequestGateway:
                         location = response.headers.get("location")
                         if not location or hop == settings.max_redirects:
                             return record("failed", "redirect limit reached or missing Location", response)
-                        current, _ = validate_url(
-                            urljoin(current, location), allowed_domains, allowed_schemes, allowed_origins
-                        )
+                        current, _ = validate_source(urljoin(current, location))
                         if current in chain:
                             return record("failed", "redirect loop", response)
                         chain.append(current)
@@ -472,6 +493,8 @@ class RequestGateway:
                     )
                     return record(state, f"http {response.status_code}", response)
             return record("failed", "retry exhaustion")
+        except RunSourcePolicyDenied as error:
+            return record("blocked", str(error), retrieved_at=None, discovered_at=utcnow().isoformat())
         except (SSRFError, RateLimited) as error:
             return record("blocked", str(error))
         except ResponseLimitError as error:
