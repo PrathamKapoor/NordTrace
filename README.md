@@ -16,9 +16,9 @@ Verified on Windows with Python 3.12.5 and a fresh virtual environment:
 uv sync --frozen --extra dev --python 3.12
 ```
 
-The package declares Python >=3.11; other runtimes/Linux/container execution are unverified. For a noneditable installation, add `--no-editable` to the same command. Dependencies and build tools are pinned through uv.lock/pyproject.toml. No model key is needed. Website/PDF robots checks are mandatory; `RESPECT_ROBOTS=false` is rejected. The optional model helper has no production extraction or synthesis callers.
+The package declares Python >=3.11; other runtimes/Linux/container execution are unverified. For a noneditable installation, add `--no-editable` to the same command. Dependencies and build tools are pinned through uv.lock/pyproject.toml. Model providers are unavailable: no key is needed and legacy model settings cannot enable calls. Website/PDF robots checks are mandatory; `RESPECT_ROBOTS=false` is rejected.
 
-At `19adb1d`, a new locked noneditable environment installed 77 packages and passed CLI/export/validation, retained-bundle replay, health/dashboard and packaged-licence checks outside the source checkout. All 36 installed code/assets matched the committed source. This installation check used invalid inputs and made no company acquisitions; its scope differs from full testing. The latest full local regression passed 755 offline tests in 329.45 seconds, with 8 live checks excluded and one upstream warning. Details and exact commands are in [verification](docs/verification.md). Dashboard script checks pass; real browser verification remains blocked. Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
+At `19adb1d`, a new locked noneditable environment installed 77 packages and passed CLI/export/validation, retained-bundle replay, health/dashboard and packaged-licence checks outside the source checkout. All 36 installed code/assets matched the committed source. This installation check used invalid inputs and made no company acquisitions; its scope differs from full testing. The latest full local regression passed 754 offline tests in 325.95 seconds, with 8 live checks excluded and one upstream warning. Details and exact commands are in [verification](docs/verification.md). Dashboard script checks pass; real browser verification remains blocked. Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
 
 ## Research and inspect
 
@@ -64,7 +64,7 @@ Copy `.env.example` to `.env` only when needed. Settings load from the launch di
 | `PER_COMPANY_SOFT_DEADLINE_SEC` | Historical name for a limit that now cancels company acquisition |
 | `MAX_API_COST_USD` | Local default 10; deterministic production makes no paid model calls |
 
-These defaults are **not confirmed organizer budgets**. Supply the actual limits for a run; do not extrapolate a 100-company allowance to larger batches. Atomic model-cost reservations and some hard deadline/output guards remain incomplete.
+These defaults are **not confirmed organizer budgets**. Supply the actual limits for a run; do not extrapolate a 100-company allowance to larger batches. Paid-cost reservation attempts explicitly fail as unsupported; atomic reservation/reconciliation must be implemented before enabling a paid provider. Some hard deadline/output guards also remain incomplete.
 
 ```powershell
 .venv/Scripts/python.exe -m nordtrace.cli resume RUN_ID

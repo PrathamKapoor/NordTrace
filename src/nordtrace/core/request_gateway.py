@@ -10,8 +10,8 @@ Every adapter must use this gateway. It enforces:
 - bounded retries with exponential backoff on transient failures
 - structured request logs
 
-The dormant model helper has a separate transport and no production callers;
-it must not be enabled without completing its accounting/policy integration.
+Model providers are disabled and the compatibility interface has no transport.
+Future providers must complete accounting/policy integration before activation.
 """
 
 from __future__ import annotations

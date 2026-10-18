@@ -57,13 +57,13 @@ def test_env_example_has_no_real_key():
 
     env = Path(__file__).resolve().parents[2] / ".env.example"
     text = env.read_text(encoding="utf-8")
-    assert "LLM_API_KEY=" in text
-    # the example must have an empty value or placeholder, not a real key
+    # Unsupported provider settings may be absent; any active example key must
+    # still be empty or a placeholder, never a real credential.
     import re
 
-    m = re.search(r"LLM_API_KEY=(.*)", text)
-    val = m.group(1).strip()
-    assert val == "" or val.startswith("<") or val.startswith("your")
+    for match in re.finditer(r"(?im)^[ \t]*LLM_API_KEY[ \t]*=(.*)$", text):
+        val = match.group(1).strip().strip("\"'")
+        assert val == "" or val.startswith("<") or val.startswith("your")
 
 
 # --- prompt injection: web content is data, never instructions ---

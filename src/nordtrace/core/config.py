@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     brreg_branch_page_size: int = Field(default=20, ge=1, le=100)
     brreg_branch_max_pages: int = Field(default=10, ge=1, le=100)
 
-    # --- LLM (optional; system degrades to deterministic extraction without a key) ---
+    # Legacy model settings retained for config compatibility only. No provider
+    # is implemented; these defaults are not verified provider price quotes.
     llm_api_key: Optional[str] = None
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
@@ -70,10 +71,6 @@ class Settings(BaseSettings):
 
     # --- Logging ---
     log_level: str = "INFO"
-
-    @property
-    def is_live_llm_configured(self) -> bool:
-        return bool(self.llm_api_key)
 
 
 settings = Settings()

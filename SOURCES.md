@@ -1,3 +1,7 @@
+# Model provider unavailable — 2026-10-18
+
+D-075 removes the unwired direct provider transport. No model provider, SDK, weights, endpoint access, price quote or data-retention permission is enabled. Legacy keys/configuration cannot activate calls, and the compatibility API returns explicit disabled status. Unsupported cost reservations fail rather than reporting held funds. A future integration needs explicit access/charge authorization, source policy, durable atomic reservation/reconciliation and measured benefit. Existing historical provider examples are not current capability or price declarations.
+
 # News and careers resource semantics — 2026-10-18
 
 D-073 retains acquired news/careers index URLs as internal resource candidates, never as proof of an attributable dated event or active vacancy. Incidental page dates and general hiring links do not establish those facts. No new source permissions, feed, publication predicate or external coverage is enabled; typed support, dates/status and source-specific rights remain required. Existing individual posting heuristics remain production-withheld.

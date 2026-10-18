@@ -24,7 +24,6 @@ from nordtrace.core.budget import BudgetExceededError, BudgetManager, DeadlineRe
 from nordtrace.core.contracts import build_result, project_identity
 from nordtrace.core.entity import EntityResolver, PublicationFirewall
 from nordtrace.core.ledger import FactLedger
-from nordtrace.core.llm import LLMClient
 from nordtrace.core.models import (
     ChangeRecord,
     CompanyIdentity,
@@ -90,11 +89,9 @@ class ResearchPipeline:
         self.jobs = NavJobsAdapter(self.gateway, budget, self.resolver)
         self.pdf = PdfFinancialPipeline(self.gateway, budget, self.resolver)
         self.activity = ActivityAdapter(self.gateway, budget)
-        self.llm = LLMClient(budget)
 
     async def aclose(self) -> None:
         await self.gateway.aclose()
-        await self.llm.aclose()
 
     # ------------------------------------------------------------------ trace
     def _trace(self, run_id: str, org: str, stage: str, message: str, level: str = "info") -> None:

@@ -2,8 +2,8 @@
 
 The numeric constructor defaults are local development settings, not confirmed
 organizer budgets. CLI/API/batch freeze their actual configuration per run.
-Production acquisition uses RequestGateway. The dormant model helper's cost
-reservations/transport remain unfinished; research does not call that helper.
+Production acquisition uses RequestGateway. Paid providers are disabled;
+atomic cost reservation/reconciliation remains unimplemented and fails closed.
 """
 
 from __future__ import annotations
@@ -158,10 +158,10 @@ class CostBudget:
         return (input_tokens / 1_000_000) * price_in_per_m + (output_tokens / 1_000_000) * price_out_per_m
 
     def try_reserve(self, est_cost: float) -> bool:
-        with self._lock:
-            if self.total_used + est_cost > self.limit:
-                return False
-            return True  # reserved on record_add; conservative double-check happens there
+        """No paid producer may treat an affordability check as held funds."""
+        raise NotImplementedError(
+            "Atomic paid-cost reservations are not implemented; paid providers disabled"
+        )
 
     def record(self, model: str, input_tokens: int, output_tokens: int, cost: float) -> None:
         with self._lock:
@@ -176,6 +176,7 @@ class CostBudget:
             return max(0.0, self.limit - self.total_used)
 
     def can_afford(self, est_cost: float) -> bool:
+        """Advisory comparison only; does not reserve funds or authorize transport."""
         with self._lock:
             return (self.total_used + est_cost) <= self.limit
 
