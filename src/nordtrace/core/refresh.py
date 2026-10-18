@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from nordtrace.core.changes import detect_changes
 from nordtrace.core.ledger import CitationValidator
-from nordtrace.core.models import FactStatus, RefreshOutcome, SourceRecord, utcnow
+from nordtrace.core.models import FactStatus, HtmlJsonLdLocator, RefreshOutcome, SourceRecord, utcnow
 from nordtrace.core.repository import Repository
 
 if TYPE_CHECKING:
@@ -91,6 +91,12 @@ def apply_refresh(repo: Repository, outcome: CompanyOutcome, run_id: str) -> Non
             if fact.source_id not in current_sources:
                 outcome.sources.append(source)
                 current_sources[fact.source_id] = source
+            if isinstance(evidence.locator, HtmlJsonLdLocator):
+                anchor_id = evidence.locator.identity_source_id
+                if anchor_id not in current_sources:
+                    anchor = previous_sources[anchor_id]  # Already revalidated above.
+                    outcome.sources.append(anchor)
+                    current_sources[anchor_id] = anchor
             if fact.evidence_id not in evidence_ids:
                 outcome.evidence.append(evidence)
                 evidence_ids.add(fact.evidence_id)

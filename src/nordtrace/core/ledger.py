@@ -22,6 +22,7 @@ from nordtrace.core.models import (
     EvidenceRecord,
     Fact,
     FactStatus,
+    HtmlJsonLdLocator,
     MatchVerdict,
     SourceRecord,
     utcnow,
@@ -66,6 +67,10 @@ class CitationValidator:
             return False, "evidence not found in ledger"
         if ev.source_id != fact.source_id:
             return False, "evidence belongs to different source"
+        if (src.source_type == "company_website"
+                or (src.content_type or "").lower().split(";", 1)[0].strip() == "text/html"):
+            if not isinstance(ev.locator, HtmlJsonLdLocator):
+                return False, "HTML publication requires a typed retained-content locator"
         if not ev.evidence_text:
             return False, "evidence text empty"
         if ev.entity_verdict != fact.entity_verdict:
@@ -93,6 +98,18 @@ class CitationValidator:
                 return False, "financial reporting year absent from evidence"
             if not _quoted_number(fact.value, ev.evidence_text):
                 return False, "financial value absent from evidence"
+        if isinstance(ev.locator, HtmlJsonLdLocator):
+            if self.repository is None:
+                return False, "HTML support requires retained snapshots"
+            anchor = self.sources.get(ev.locator.identity_source_id)
+            if anchor is None:
+                return False, "HTML identity anchor missing from ledger"
+            try:
+                from nordtrace.core.evidence import verify_capture_metadata
+                captured, _ = self.repository.read_capture(anchor.source_id)
+                verify_capture_metadata(captured, anchor)
+            except (ValueError, KeyError, TypeError) as error:
+                return False, f"HTML anchor: {error}"
         if self.repository is not None:
             try:
                 verify_snapshot_support(self.repository, fact, src, ev)

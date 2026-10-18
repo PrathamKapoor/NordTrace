@@ -219,7 +219,8 @@ def test_production_retains_candidate_diagnostics_without_publishing_and_exports
         outcome = asyncio.run(execute())
         assert outcome.error is None
         profile = repo.get_result(run.run_id, ORG)
-        assert profile.schema_version == "1.1" and profile.status == "available"
+        assert profile.schema_version == ("1.2" if description == DESCRIPTION else "1.1")
+        assert profile.status == "available"
         assert profile.facts and not any(f.category == "business_description" for f in profile.facts)
         assert profile.coverage["business_description"] != "found"
         assert DESCRIPTION not in profile.summary

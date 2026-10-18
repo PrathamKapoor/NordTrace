@@ -183,6 +183,19 @@ class JsonPointerLocator(BaseModel):
     ] = "identity"
 
 
+class HtmlJsonLdLocator(BaseModel):
+    """A literal source-authored field in one retained UTF8 HTML script."""
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["html_json_ld"] = "html_json_ld"
+    representation: Literal["utf8-html-lxml-v1"] = "utf8-html-lxml-v1"
+    script_index: int = Field(ge=0, lt=32)
+    pointer: str
+    raw_value: str = Field(min_length=1, max_length=4000)
+    identity_source_id: str = Field(min_length=1)
+    normalization: Literal["schema-org-description-v1"] = "schema-org-description-v1"
+    assertion: Literal["source_authored"] = "source_authored"
+
+
 class EvidenceRecord(BaseModel):
     evidence_id: str = Field(default_factory=lambda: new_id("ev"))
     source_id: str
@@ -198,7 +211,7 @@ class EvidenceRecord(BaseModel):
     entity_match_details: Dict[str, Any] = Field(default_factory=dict)
     entity_verdict: str = MatchVerdict.AMBIGUOUS.value
     org_number: Optional[str] = None
-    locator: Optional[JsonPointerLocator] = None
+    locator: Optional[JsonPointerLocator | HtmlJsonLdLocator] = None
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +445,7 @@ class RefreshOutcome(BaseModel):
 
 
 class CompanyProfile(BaseModel):
-    schema_version: str = "1.1"
+    schema_version: Literal["1.1", "1.2"] = "1.1"
     run_id: str
     organisation_number: str
     status: str = TerminalState.NOT_AVAILABLE.value
@@ -457,8 +470,9 @@ class CompanyProfile(BaseModel):
 
     @model_validator(mode="after")
     def validate_envelope(self) -> CompanyProfile:
-        if self.schema_version != "1.1":
-            raise ValueError("unsupported result schema_version")
+        html_evidence = [item for item in self.evidence if isinstance(item.locator, HtmlJsonLdLocator)]
+        if self.schema_version == "1.1" and html_evidence:
+            raise ValueError("HTML evidence requires result schema_version 1.2")
         if self.status not in {state.value for state in TerminalState}:
             raise ValueError("invalid terminal status")
         if self.company and self.company.organisation_number != self.organisation_number:
@@ -467,6 +481,11 @@ class CompanyProfile(BaseModel):
         evidence = {item.evidence_id: item for item in self.evidence}
         if len(sources) != len(self.sources) or len(evidence) != len(self.evidence):
             raise ValueError("duplicate source or evidence IDs")
+        for item in html_evidence:
+            assert isinstance(item.locator, HtmlJsonLdLocator)
+            anchor = sources.get(item.locator.identity_source_id)
+            if anchor is None or anchor.access_status != "success":
+                raise ValueError("HTML identity anchor missing from result sources")
         if any(fact.status != FactStatus.CONFLICT.value for fact in self.conflicts):
             raise ValueError("conflict observations must carry CONFLICT status")
         if any(fact.status != FactStatus.SOURCE_UNAVAILABLE.value for fact in self.last_known):

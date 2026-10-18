@@ -15,16 +15,18 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlsplit
 
-from bs4 import BeautifulSoup, CData, NavigableString, Tag
+from bs4 import BeautifulSoup
 
 from nordtrace.core.budget import BudgetManager
 from nordtrace.core.config import settings
 from nordtrace.core.entity import EntityResolver, MatchResult, normalize_name, registrable_domain
+from nordtrace.core.html_evidence import visible_identity_text
 from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
     Fact,
     FactStatus,
+    HtmlJsonLdLocator,
     MatchVerdict,
     SourceRecord,
     SourceType,
@@ -54,12 +56,6 @@ _JUNK_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Preserve role/identifier context across block boundaries, including footers.
-_IDENTITY_BLOCKS = frozenset({
-    "address", "article", "aside", "blockquote", "body", "dd", "div", "dl", "dt", "fieldset",
-    "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header",
-    "li", "main", "nav", "ol", "p", "pre", "section", "table", "td", "th", "tr", "ul",
-})
 
 
 def classify_url(url: str) -> Tuple[str, int]:
@@ -109,24 +105,7 @@ class WebsiteAdapter:
     # ------------------------------------------------------------ helpers
     @staticmethod
     def _identity_text(soup: BeautifulSoup) -> str:
-        """Keep inline labels together without merging unrelated block subjects."""
-        parts: List[str] = []
-        previous_block = None
-        for node in soup.descendants:
-            if isinstance(node, Tag) and node.name in ("br", "hr"):
-                previous_block = None
-                continue
-            if type(node) not in (NavigableString, CData):
-                continue
-            text = str(node).strip()
-            if not text:
-                continue
-            block = next((parent for parent in node.parents if parent.name in _IDENTITY_BLOCKS), soup)
-            if parts:
-                parts.append(" " if id(block) == previous_block else "\n")
-            parts.append(text)
-            previous_block = id(block)
-        return "".join(parts)
+        return visible_identity_text(soup)
 
     @staticmethod
     def _soup_text(soup: BeautifulSoup) -> str:
@@ -204,7 +183,7 @@ class WebsiteAdapter:
 
     # ------------------------------------------------------------ crawl
     async def crawl(
-        self, identity: CompanyIdentity, run_id: str
+        self, identity: CompanyIdentity, run_id: str, *, identity_source_id: Optional[str] = None
     ) -> Tuple[List[EvidenceRecord], List[Fact], List[SourceRecord], List[Dict], Dict[str, str]]:
         """Focused crawl. Returns (evidences, facts, sources, rejected, coverage_updates).
 
@@ -296,7 +275,13 @@ class WebsiteAdapter:
                 evidence_text=candidate["raw_value"], content_hash=home_source.content_hash,
                 entity_verdict=MatchVerdict.LIKELY.value, org_number=identity.organisation_number,
                 entity_match_details={"structured_data_candidate": candidate},
+                locator=HtmlJsonLdLocator(
+                    script_index=candidate["script_index"], pointer=candidate["pointer"],
+                    raw_value=candidate["raw_value"], identity_source_id=identity_source_id,
+                ) if identity_source_id else None,
             )
+            if identity_source_id:
+                evidence.entity_verdict = MatchVerdict.VERIFIED.value
             evidences.append(evidence)
             facts.append(Fact(
                 org_number=identity.organisation_number,
@@ -308,7 +293,8 @@ class WebsiteAdapter:
                 source_id=evidence.source_id,
                 evidence_id=evidence.evidence_id,
                 retrieved_at=home_source.retrieved_at,
-                entity_verdict=MatchVerdict.LIKELY.value,
+                entity_verdict=evidence.entity_verdict,
+                subject_scope="legal_entity" if identity_source_id else "unknown",
                 fact_confidence=0.0,  # No calibrated publication confidence is established.
                 status=FactStatus.EXTRACTED.value,
             ))

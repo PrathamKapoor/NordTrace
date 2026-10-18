@@ -47,7 +47,7 @@ def test_case4_no_website():
 
 
 # Case 5: website but no financials
-def test_case5_website_no_financials():
+def test_case5_unlocated_website_cannot_publish_description_or_financials():
     led = FactLedger()
     src = SourceRecord(
         source_id="s",
@@ -77,8 +77,10 @@ def test_case5_website_no_financials():
             status=FactStatus.PUBLISHED.value,
         )
     )
-    assert f.status == FactStatus.PUBLISHED.value
-    # no financials facts at all → coverage reports not_available (no fabrication)
+    assert f.status == FactStatus.FAILED.value
+    assert "typed retained-content locator" in f.conflict_note
+    assert not led.published_facts()
+    # An unlocated website snippet proves neither this description nor financials.
 
 
 # Case 6: multiple old websites

@@ -9,7 +9,7 @@ from datetime import date, datetime
 from typing import Any, Protocol
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
-from nordtrace.core.models import EvidenceRecord, Fact, SourceRecord
+from nordtrace.core.models import EvidenceRecord, Fact, HtmlJsonLdLocator, SourceRecord
 from nordtrace.core.orgnr import validate_orgnr
 
 
@@ -263,6 +263,10 @@ def verify_snapshot_support(
     locator = evidence.locator
     if locator is None:
         raise ValueError("snapshot-backed evidence locator required")
+    if isinstance(locator, HtmlJsonLdLocator):
+        from nordtrace.core.html_evidence import verify_html_support
+        verify_html_support(repo, fact, captured, evidence, body)
+        return
     document = parse_json_body(body)
     raw = resolve_pointer(document, locator.pointer)
     if not _same(raw, locator.raw_value):

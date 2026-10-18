@@ -381,6 +381,11 @@ async function showEvidence(f, runId, trigger = null) {
       <div class="kv"><span class="k">Source publication date:</span> ${na(ev.published_at)}</div>
       <details><summary>Evidence details</summary>
         <div class="kv"><span class="k">Run:</span> ${esc(data.run_id)}</div>
+        ${locator.kind === "html_json_ld" ? `
+        <div class="kv"><span class="k">Embedded script index:</span> ${esc(locator.script_index)}</div>
+        <div class="kv"><span class="k">Identity anchor:</span> <code>${esc(locator.identity_source_id)}</code></div>
+        <div class="kv"><span class="k">Assertion basis:</span> ${esc(locator.assertion)}</div>
+        <div class="kv"><span class="k">Locator representation:</span> ${esc(locator.representation)}</div>` : ""}
         <div class="kv"><span class="k">JSON pointer:</span> <code>${esc(locator.pointer || "(document root)")}</code></div>
         <div class="kv"><span class="k">Normalization:</span> ${esc(locator.normalization || "identity")}</div>
         <div class="kv"><span class="k">Snapshot:</span> <code>${esc(data.snapshot.content_hash)}</code></div>

@@ -28,9 +28,10 @@ DEFAULT_MAX_BYTES = 256 * 1024 * 1024  # Local uncompressed export capacity, not
 
 def result_schema(version: str) -> dict:
     """Read a frozen local contract; never derive older schemas from live models."""
-    if version != "1.1":
+    if version not in ("1.1", "1.2"):
         raise ValueError("unsupported local result schema version")
-    resource = files("nordtrace.core").joinpath("schemas", "result-1.1.json")
+    name = {"1.1": "result-1.1.json", "1.2": "result-1.2.json"}[version]
+    resource = files("nordtrace.core").joinpath("schemas", name)
     return json.loads(resource.read_text(encoding="utf-8"))
 
 
@@ -108,7 +109,7 @@ def _starter_example(result: CompanyProfile) -> dict:
             "source_class": source.source_type if source else item["source_type"],
             "content_sha256": item["content_hash"], "claim_span": None,
             "display_text": item["evidence_text"],
-            "support_representation": "json_pointer" if item["locator"] else "unlocated_candidate",
+            "support_representation": item["locator"]["kind"] if item["locator"] else "unlocated_candidate",
         })
     duration = result.research_metadata.duration_sec
     payload["operations"] = {
@@ -122,6 +123,10 @@ def _starter_example(result: CompanyProfile) -> dict:
         "basis": "public starter illustrative OUTPUT_CONTRACT.md", "organizer_acceptance": "unverified",
         "structured_evidence": "JSON pointer and raw value; claim_span is null, never a generated quote",
     }
+    if result.schema_version == "1.2":
+        payload["compatibility"]["structured_evidence"] = (
+            "Typed retained JSON/HTML locator and raw value; HTML assertions are source-authored"
+        )
     return payload
 
 
@@ -190,12 +195,15 @@ def export_run(
             with zipfile.ZipFile(handle, "w", compression=zipfile.ZIP_STORED) as archive:
                 digest = hashlib.sha256()
                 sources: dict[str, SourceRecord] = {}
+                schema_version = "1.1"
                 with archive.open("results.jsonl", "w", force_zip64=True) as results:
                     for key in run.companies:
                         result = repo.get_result(run_id, key)
                         if result is None or result.run_id != run_id or result.organisation_number != key:
                             raise ValueError("incomplete run: missing or mismatched canonical result")
                         _validate_result(result, repo)
+                        if result.schema_version == "1.2":
+                            schema_version = "1.2"
                         body = charge(_json(result.model_dump(mode="json")))
                         results.write(body)
                         digest.update(body)
@@ -229,10 +237,10 @@ def export_run(
                         written.add(path)
                     captures[source_id] = {"path": path, "bytes": len(body),
                                            "source": captured.model_dump(mode="json")}
-                schema = charge(_json(result_schema("1.1")))
+                schema = charge(_json(result_schema(schema_version)))
                 archive.writestr("result-schema.json", schema)
                 manifest = {
-                    "format": "nordtrace-audit-bundle-v1", "result_schema": "nordtrace-1.1",
+                    "format": "nordtrace-audit-bundle-v1", "result_schema": "nordtrace-" + schema_version,
                     "run_id": run_id, "run_state": run.state, "inputs": inputs,
                     "schema_sha256": hashlib.sha256(schema).hexdigest(),
                     "results_sha256": digest.hexdigest(), "captures": captures,
@@ -296,15 +304,16 @@ def verify_bundle(output: str | Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> 
         manifest = json.loads(archive.read("manifest.json"))
         if not isinstance(manifest, dict) or manifest.get("format") != "nordtrace-audit-bundle-v1":
             raise ValueError("unsupported bundle format")
-        if manifest.get("result_schema") != "nordtrace-1.1":
+        if manifest.get("result_schema") not in ("nordtrace-1.1", "nordtrace-1.2"):
             raise ValueError("unsupported bundle result schema")
         BundleOperations.model_validate(manifest["operations"])
         schema = archive.read("result-schema.json")
-        installed_schema = result_schema("1.1")
+        version = manifest["result_schema"].removeprefix("nordtrace-")
+        installed_schema = result_schema(version)
         legacy_schema = deepcopy(installed_schema)
         legacy_schema["$defs"]["RunConfiguration"]["properties"].pop("allowed_source_origins")
         declared_schema = json.loads(schema)
-        legacy_policy_schema = declared_schema == legacy_schema
+        legacy_policy_schema = version == "1.1" and declared_schema == legacy_schema
         if (hashlib.sha256(schema).hexdigest() != manifest["schema_sha256"]
                 or (declared_schema != installed_schema and not legacy_policy_schema)):
             raise ValueError("bundle schema integrity differs from installed local schema")
@@ -323,6 +332,8 @@ def verify_bundle(output: str | Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> 
                     if isinstance(config, dict) and "allowed_source_origins" in config:
                         raise ValueError("legacy result schema cannot declare a new source policy")
                 result = CompanyProfile.model_validate_json(line)
+                if version == "1.1" and result.schema_version != "1.1":
+                    raise ValueError("result version exceeds declared bundle schema")
                 if result.run_id != manifest["run_id"]:
                     raise ValueError("result run differs from manifest")
                 _validate_result(result, reader)

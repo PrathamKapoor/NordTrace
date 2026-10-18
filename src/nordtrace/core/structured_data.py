@@ -72,14 +72,16 @@ def _identity_paths(node: dict, org: str, legal_name: str, pointer: str) -> tupl
             != " ".join(legal_name.split()).casefold() or not legal_name.strip()):
         raise ValueError("exact legal name not established")
     identifiers = []
-    if "vatID" in node:
-        vat = node["vatID"]
+    for id_key in ("vatID", "taxID"):
+        if id_key not in node:
+            continue
+        vat = node[id_key]
         if not isinstance(vat, str) or not re.match(r"^NO\s*[0-9]", vat.strip(), re.I):
             raise ValueError("Norwegian VAT country prefix missing")
         parsed = validate_orgnr(vat)
         if not parsed.valid or parsed.value != org:
             raise ValueError("VAT subject differs or is invalid")
-        identifiers.append(pointer + "/vatID")
+        identifiers.append(pointer + "/" + id_key)
     values = node.get("identifier", [])
     values = values if isinstance(values, list) else [values]
     if len(values) > 16:

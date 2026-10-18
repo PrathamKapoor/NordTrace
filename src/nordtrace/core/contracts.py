@@ -19,6 +19,7 @@ from nordtrace.core.models import (
     CompanyIdentity,
     CompanyProfile,
     Fact,
+    HtmlJsonLdLocator,
     ResearchError,
     ResearchMetadata,
     utcnow,
@@ -110,6 +111,8 @@ def build_result(outcome: Any, run_id: str, budget: BudgetManager, started_at: s
             stage=outcome.stages[-1] if outcome.stages else None,
         ))
     return CompanyProfile(
+        schema_version="1.2" if any(isinstance(item.locator, HtmlJsonLdLocator)
+                                    for item in outcome.evidence) else "1.1",
         run_id=run_id, organisation_number=outcome.org_number, status=outcome.terminal_state,
         status_reason=(getattr(outcome, "error_code", None) or getattr(outcome, "status_reason", None) or {
             "available": "research_completed", "not_available": "information_not_available",
@@ -145,7 +148,8 @@ def batch_payload(run: Any, results: list[CompanyProfile], inputs: list[dict]) -
     if {item["result_key"] for item in inputs} != set(keys):
         raise ValueError("input mapping does not correspond to batch results")
     return {
-        "schema_version": "1.1", "run_id": run.run_id, "state": run.state,
+        "schema_version": "1.2" if any(result.schema_version == "1.2" for result in results) else "1.1",
+        "run_id": run.run_id, "state": run.state,
         "inputs": inputs, "results": [result.model_dump(mode="json") for result in results],
         "completion": {"complete": True, "input_count": len(inputs), "result_count": len(results)},
         "request_count": run.request_count, "estimated_cost_usd": run.estimated_cost_usd,

@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 from typing import List, Optional
 
 from nordtrace.core.ledger import FactLedger
-from nordtrace.core.models import ChangeRecord, CompanyIdentity, Coverage, Fact
+from nordtrace.core.models import ChangeRecord, CompanyIdentity, Coverage, Fact, HtmlJsonLdLocator
 
 
 def build_summary(
@@ -32,7 +32,10 @@ def build_summary(
     else:
         parts.append(f"{verified_name.value} (orgnr {org}) {_cite(verified_name)}")
     if desc is not None and getattr(desc, "value", None):
-        parts.append(f"What it does: {desc.value} {_cite(desc)}")
+        evidence = ledger.evidence.get(desc.evidence_id)
+        label = ("Website description" if evidence and isinstance(evidence.locator, HtmlJsonLdLocator)
+                 else "What it does")
+        parts.append(f"{label}: {desc.value} {_cite(desc)}")
     else:
         parts.append(f"What it does: {_availability_text(coverage.get('business_description'))}.")
 

@@ -286,7 +286,9 @@ class ResearchPipeline:
                 )
             # 4. website discovery + crawl (registry hjemmeside or name-derived candidates)
             if acquisition_allowed("website"):
-                w_evs, w_facts, w_sources, w_rejected, w_cov = await self.website.crawl(ident, run_id)
+                w_evs, w_facts, w_sources, w_rejected, w_cov = await self.website.crawl(
+                    ident, run_id, identity_source_id=src.source_id,
+                )
                 for s in w_sources:
                     ledger.add_source(s)
                 for e in w_evs:

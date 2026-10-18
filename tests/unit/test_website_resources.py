@@ -99,7 +99,8 @@ def test_resource_candidates_are_retained_without_published_event_or_hiring_clai
         candidates = [f for f in repo.get_facts(ORG, run.run_id) if f.category == "resources"]
         assert {f.field for f in candidates} == {"news_page", "careers_page"}
         assert len(candidates) == 2 and len({f.claim_id for f in candidates}) == 2
-        assert all(f.status == "FAILED" and "snapshot support" in f.conflict_note for f in candidates)
+        assert all(f.status == "FAILED" and "typed retained-content locator" in f.conflict_note
+                   for f in candidates)
         assert all(any(s.source_id == f.source_id for s in profile.sources) for f in candidates)
     finally:
         repo.close()

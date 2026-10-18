@@ -206,3 +206,24 @@ Conflict correction: competing supported observations are all withheld and retai
 | Requirement/finding | Owner | Verification | Status | Evidence |
 |---|---|---|---|---|
 | C/D bounded untrusted source structure; F10 partial | core/evidence.py; core/structured_data.py | test_json_body_contract.py; embedded/Unicode/locator regressions | verified | D-081:2red/1control1.54s,102adjacent24.65s. Shared64-container guard before decoder; actual failed envelope retains HTTP200 bytes. This verifies nesting only; hard CPU/storage/export deadline gates remain unresolved |
+
+## Accepted next implementation order — 2026-10-19
+
+The user's explicit order supersedes other proposed scheduling: typed HTML evidence; financial extraction; NAV integration; held-out evaluation; exact-commit release verification. Work proceeds without another design permission gate under the existing autonomy authorization.
+
+Typed HTML implementation plan (D-082):
+
+- [x] Add failing real-CAS/ledger tests for a literal Organization description, unsupported value, invalid locator, missing snapshot/anchor, conflicting footer/operator and foreign entity/domain.
+- [x] Add a strict html_json_ld locator in an explicitly versioned1.2 result contract, preserving frozen1.1 schemas, historical results and starter projection bytes.
+- [x] Independently decode retained UTF8 HTML, resolve bounded embedded-script index and exact literal JSON field, recheck exact official retained entity/registered-site anchor and visible subject contradictions. Accept only source-authored legal-entity descriptions; other predicates/scope abstain.
+- [x] Exercise canonical SQLite, API evidence and portable offline export/replay. Wire only independently supported website candidates; distinguish descriptions from registry data and leave unsupported extraction rules withheld.
+- [x] Update source-policy/flow/decisions/verification, review and commit a coherent checked unit. This plan does not claim source authenticity of unsigned archives, blanket content redistribution rights, live accuracy or completion of later work.
+
+
+| Next acceptance work | Component | Status | Current evidence / limit |
+|---|---|---|---|
+| Typed HTML evidence, F01/F02/F09/F20/F21/F28 scope | models/html_evidence/ledger/website/pipeline/contracts/export/refresh/API/drawer | verified | D-082: strict1.2 locator, retained official anchor, exact description support and wrong-subject abstention;124adjacent then49corrected HTML/adversarial pass; full911passed375.40s/8live excluded/one upstream warning; Ruff/mypy37pass. Source-specific live rights/accuracy unverified; no blanket HTML-predicate support |
+| Financial extraction | accounts/PDF/evidence | in_progress | Existing candidates withheld. Next: Decimal/table/value/year/currency/scale/sign/entity-vs-group fixtures and justified schema units; no financial publication enabled by HTML work |
+| NAV integration | nav_jobs/refresh | not_started | Documented employer.orgnr/feed/bearer/update contract inspected earlier; actual feed not implemented and anonymous search retired |
+| Held-out adjudicated evaluation | sampling/benchmark | not_started | Disjoint eligible samples exist; independent manual labels, external recall/precision/evidence/refresh measurements and ablations remain unavailable |
+| Exact-release verification | install/CI/replay/live scenarios | not_started | Execute against final chosen commit after earlier gates; earlier root suites/wheel checks are not a fresh exact-release proof |

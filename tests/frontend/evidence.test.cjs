@@ -148,3 +148,20 @@ test('a failed new-run trace cannot retain the previous company trace', async ()
   assert.doesNotMatch(element('traceBox').innerHTML, /OLD COMPANY TRACE/);
   assert.match(element('traceBox').innerHTML, /trace unavailable/i);
 });
+test('HTML evidence shows its embedded script and exact source-authored value safely', async () => {
+  const {context, element} = runtime(async () => ({ok: true, json: async () => ({
+    run_id: 'html-run', evidence: {evidence_text: '<img src=x onerror=boom()>', locator: {
+      kind: 'html_json_ld', script_index: 0, pointer: '/@graph/1/description',
+      raw_value: '<img src=x onerror=boom()>', assertion: 'source_authored',
+      identity_source_id: 'registry-anchor', representation: 'utf8-html-lxml-v1',
+    }}, source: {url: 'https://target.example/'}, snapshot: {}, claims: [{state: 'current'}],
+  })}));
+  context.fact = {org_number: '982463718', evidence_id: 'html', value: '<img src=x onerror=boom()>'};
+  await vm.runInContext('showEvidence(fact, "html-run")', context);
+  const rendered = element('evidencePanel').innerHTML;
+  assert.match(rendered, /Embedded script index:<\/span> 0/);
+  assert.match(rendered, /registry-anchor/);
+  assert.match(rendered, /source_authored/);
+  assert.match(rendered, /\/@graph\/1\/description/);
+  assert.doesNotMatch(rendered, /<img\b/);
+});

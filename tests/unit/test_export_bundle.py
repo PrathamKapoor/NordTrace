@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import zipfile
+from pathlib import Path
 
 import httpx
 import pytest
@@ -17,18 +18,22 @@ from nordtrace.engine.pipeline import ResearchPipeline
 ORG = "982463718"
 
 
-def test_frozen_v1_schema_matches_implemented_contract_without_shared_mutation():
+def test_versioned_schemas_preserve_v1_and_bind_current_contract_without_shared_mutation():
     from nordtrace.core.export import result_schema
     from nordtrace.core.models import CompanyProfile
 
-    original = result_schema("1.1")
+    original = result_schema("1.2")
     assert original == CompanyProfile.model_json_schema()
+    frozen = Path(__file__).parents[2] / "src/nordtrace/core/schemas/result-1.1.json"
+    assert hashlib.sha256(frozen.read_bytes()).hexdigest() == (
+        "82654e3f43a005feb3c339c000d1c601043de11dbff9ec6ac48a83bd31b3f403"
+    )
     original["$defs"]["RunConfiguration"]["properties"].clear()
-    assert result_schema("1.1") == CompanyProfile.model_json_schema()
+    assert result_schema("1.2") == CompanyProfile.model_json_schema()
 
 
 @pytest.mark.parametrize("version", [
-    "1.2", "../models.py", "", "https://untrusted.example/schema", "1.1\x00",
+    "1.3", "../models.py", "", "https://untrusted.example/schema", "1.1\x00",
 ])
 def test_unknown_contract_versions_cannot_select_a_resource_path(version):
     from nordtrace.core.export import result_schema

@@ -55,3 +55,7 @@ Each coherent change updates FLOW.md, DECISIONS.md and the tracker, runs adjacen
 ## Frozen local schema binding — 2026-10-19
 
 D-080 packages [NordTrace1.1 JSON Schema](../src/nordtrace/core/schemas/result-1.1.json) instead of regenerating that version from future runtime models. Export/verification use the frozen resource while retaining semantic model, source-reference and snapshot checks. Its compact export bytes match the retained real100 bundle. The existing exact pre-allowed_source_origins variant remains a narrow legacy exception; arbitrary modified schemas and unknown versions are rejected. A model-drift test forces deliberate versioning. This remains an explicit local adapter, not an organizer-supplied/private schema or acceptance claim. No1.2 HTML locator is implemented by freezing this asset.
+
+## Typed HTML local1.2 — 2026-10-19
+
+D-082 adds a packaged result-1.2.json contract for typed embedded-JSON HTML locators. It retains source-authored assertion scope, script index, pointer/raw value, declared UTF8/lxml representation and official retained-anchor source ID. Registry-only results and frozen1.1 assets remain unchanged; envelopes with typed HTML require1.2. Batch/bundle declarations promote when needed;1.2 bundles may contain1.1 results but1.1 manifests cannot conceal1.2. Portable captures include transitive identity anchors; old projections retain their earlier shape. This is explicitly local compatibility, not private organizer-schema acceptance, source authenticity, a data licence or a measured external-coverage gain.

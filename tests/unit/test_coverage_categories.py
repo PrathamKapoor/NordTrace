@@ -50,7 +50,7 @@ def test_business_page_classification(url, expected):
     assert classify_url(url)[0] == expected
 
 
-def test_business_description_from_homepage():
+def test_unlocated_homepage_description_is_withheld():
     led, src, ev = make_ledger_with()
     f = led.add_fact(
         Fact(
@@ -64,7 +64,7 @@ def test_business_description_from_homepage():
             entity_verdict="LIKELY",
         )
     )
-    assert f.status == FactStatus.PUBLISHED.value
+    assert f.status == FactStatus.FAILED.value
 
 
 def test_no_description_is_not_available():
@@ -130,7 +130,7 @@ def test_unrelated_employer_job_rejected():
 
 
 # --- Financials: HTML + PDF + multi-period + unavailable ---
-def test_financial_html_fact_published():
+def test_unlocated_html_financial_fact_is_withheld():
     led, src, ev = make_ledger_with(text="Revenue 1000 NOK FY2025", verdict="VERIFIED")
     f = led.add_fact(
         Fact(
@@ -145,11 +145,12 @@ def test_financial_html_fact_published():
             entity_verdict="VERIFIED",
         )
     )
-    assert f.status == FactStatus.PUBLISHED.value
+    assert f.status == FactStatus.FAILED.value
 
 
-def test_financial_multiple_periods_separate_slots():
+def test_unlocated_financial_periods_keep_distinct_keys_without_publication():
     led, src, ev = make_ledger_with(verdict="VERIFIED")
+    attempted = []
     for i, fy in enumerate(["FY2023", "FY2024", "FY2025"]):
         support = EvidenceRecord(
             source_id="s", evidence_id=f"e_{fy}", org_number="982463718", entity_verdict="VERIFIED",
@@ -169,11 +170,10 @@ def test_financial_multiple_periods_separate_slots():
                 entity_verdict="VERIFIED",
             )
         )
-        assert f.status == FactStatus.PUBLISHED.value  # separate slots, no conflict
-    revenues = [
-        f for f in led.published_facts("982463718") if f.category == "financials" and f.field == "revenue"
-    ]
-    assert len({f.fact_key() for f in revenues}) == 3
+        assert f.status == FactStatus.FAILED.value
+        attempted.append(f)
+    assert len({f.fact_key() for f in attempted}) == 3
+    assert not led.published_facts("982463718")
 
 
 def test_financial_unavailable_is_honest():
@@ -199,7 +199,7 @@ def test_financial_currency_required():
 
 
 # --- Activity: recent/old/none/unrelated ---
-def test_activity_recent_event_published():
+def test_unlocated_recent_event_is_withheld():
     led, src, ev = make_ledger_with(verdict="VERIFIED")
     f = led.add_fact(
         Fact(
@@ -214,10 +214,10 @@ def test_activity_recent_event_published():
             published_at="2026-09-01",
         )
     )
-    assert f.status == FactStatus.PUBLISHED.value
+    assert f.status == FactStatus.FAILED.value
 
 
-def test_activity_old_event_has_date():
+def test_unlocated_old_event_retains_candidate_date_without_publication():
     led, src, ev = make_ledger_with(verdict="VERIFIED")
     f = led.add_fact(
         Fact(
@@ -232,7 +232,7 @@ def test_activity_old_event_has_date():
             published_at="2015-01-01",
         )
     )
-    assert f.status == FactStatus.PUBLISHED.value
+    assert f.status == FactStatus.FAILED.value
     assert f.value["date"] == "2015-01-01"  # date preserved; not presented as current
 
 
