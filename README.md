@@ -1,6 +1,6 @@
 # NordTrace
 
-Norwegian company research with retained evidence. Implementation is **in progress**. Current publication supports exact registry identity fields and parent-verified subunit relationships. Website, roles, NAV, activity and financial candidates remain withheld until their producers satisfy the typed support checks. External coverage gains, independent factual accuracy and a real 100-company smoke run are not established.
+Norwegian company research with retained evidence. Implementation is **in progress**. Current publication supports exact registry identity fields and parent-verified subunit relationships. Website, roles, activity and financial candidates remain withheld until their producers satisfy the typed support checks. NAV search is retired; hiring stays explicitly blocked until the documented feed and its update/retention requirements are implemented. External coverage gains, independent factual accuracy and a real 100-company smoke run are not established.
 
 ## Install
 

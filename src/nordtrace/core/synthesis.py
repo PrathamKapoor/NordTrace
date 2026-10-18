@@ -162,7 +162,7 @@ def _unknown_list(coverage: Coverage) -> List[str]:
         "financials": "annual accounts not publicly available",
         "leadership": "board/management roles not available",
         "products_services": "products/services sections not available",
-        "jobs": "no job postings found",
+        "jobs": "job postings not verified from permitted sources",
         "recent_activity": "no dated public events found",
         "business_description": "business description not available",
         "locations": "location details not available",

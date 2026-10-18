@@ -72,15 +72,17 @@ def test_exactly_spent_budget_fails_only_if_a_pdf_candidate_remains(tmp_path, mo
             })
         if str(request.url) == HOME:
             link = '<a href="/annual.pdf">Annual report</a>' if has_pdf else ""
-            return httpx.Response(200, text=f'<p>FIXTURE AS Org.nr 982 463 718</p>{link}')
-        if request.url.host == "arbeidsplassen.nav.no":
+            return httpx.Response(200, text=f'<p>FIXTURE AS Org.nr 982 463 718</p>'
+                                  f'<a href="/about">About</a>{link}')
+        if request.url.host == "target.example" and request.url.path == "/about":
             hop = int(request.url.params.get("hop", "0"))
             if hop < 3:
-                return httpx.Response(302, headers={"location": f"/stillinger/api/search?hop={hop + 1}"})
+                return httpx.Response(302, headers={"location": f"/about?hop={hop + 1}"})
+            return httpx.Response(200, text=f"<p>FIXTURE AS Org.nr {ORG}</p>")
         return httpx.Response(404)
 
     async def execute():
-        pipeline = ResearchPipeline(repo, BudgetManager(max_requests=10))
+        pipeline = ResearchPipeline(repo, BudgetManager(max_requests=11))
         pipeline.gateway._client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
         try:
             return await pipeline.research_company(ORG, run.run_id)
@@ -89,7 +91,7 @@ def test_exactly_spent_budget_fails_only_if_a_pdf_candidate_remains(tmp_path, mo
     try:
         outcome = asyncio.run(execute())
         frozen = repo.get_result(run.run_id, ORG)
-        assert len(calls) == frozen.research_metadata.request_count == 10
+        assert len(calls) == frozen.research_metadata.request_count == 11
         assert frozen.status == ("failed" if has_pdf else "available")
         if has_pdf:
             assert "adaptive_financials" in frozen.errors[0].message

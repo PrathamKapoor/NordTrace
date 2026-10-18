@@ -23,7 +23,8 @@ def source_family(source: SourceRecord) -> str:
             return "locations"
         return "identity"
     return {"registry_accounts": "financials", "company_document": "financials",
-            "company_website": "website", "public_sector": "jobs"}.get(source.source_type, "other")
+            "company_website": "website", "public_sector": "jobs",
+            "job_board": "jobs"}.get(source.source_type, "other")
 
 
 def apply_refresh(repo: Repository, outcome: CompanyOutcome, run_id: str) -> None:
@@ -42,7 +43,8 @@ def apply_refresh(repo: Repository, outcome: CompanyOutcome, run_id: str) -> Non
         if source.source_id in producer_outcomes:
             attempts.append(producer_outcomes[source.source_id])
             continue
-        state = {"blocked": "blocked", "robots_denied": "blocked", "not_found": "not_available",
+        state = {"blocked": "blocked", "robots_denied": "blocked", "rate_limited": "blocked",
+                 "not_found": "not_available",
                  "discovered": "not_available"}.get(source.access_status, "failed")
         if source.http_status in (404, 410):
             state = "not_available"

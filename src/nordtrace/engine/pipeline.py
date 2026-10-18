@@ -315,21 +315,20 @@ class ResearchPipeline:
                     {"url": None, "reason": "request budget exhausted before website stage"}
                 )
 
-            # 5. jobs (NAV)
-            if acquisition_allowed("jobs"):
-                j_evs, j_facts, j_src, j_rejected = await self.jobs.fetch_jobs(ident, run_id)
-                if j_src:
-                    ledger.add_source(j_src)
-                for e in j_evs:
-                    ledger.add_evidence(e)
-                for f in j_facts:
-                    ledger.add_fact(f, None, None)
-                for r in j_rejected:
-                    outcome.rejected.append(r)
-                stages.append("jobs")
-                self._trace(
-                    run_id, org_number, "jobs", f"{len(j_facts)} jobs verified, {len(j_rejected)} rejected"
-                )
+            # 5. NAV is locally policy-blocked until its feed contract is implemented.
+            j_evs, j_facts, j_src, j_rejected = await self.jobs.fetch_jobs(ident, run_id)
+            if j_src:
+                ledger.add_source(j_src)
+            for e in j_evs:
+                ledger.add_evidence(e)
+            for f in j_facts:
+                ledger.add_fact(f, None, None)
+            for r in j_rejected:
+                outcome.rejected.append(r)
+            stages.append("jobs")
+            self._trace(
+                run_id, org_number, "jobs", f"{len(j_facts)} jobs verified, {len(j_rejected)} rejected"
+            )
 
             # 5b. Financial fallback uses documents discovered by the one website pass.
             # Check for actual eligible work before recording any budget skip.
@@ -526,7 +525,7 @@ class ResearchPipeline:
             "financials": "Annual accounts (not publicly available via permitted sources)",
             "leadership": "Board/management roles (registry roles unavailable)",
             "products_services": "Products/services (website sections unavailable)",
-            "jobs": "Job postings (none found on public job boards)",
+            "jobs": "Job postings (not verified from permitted sources)",
             "recent_activity": "Recent public activity (no dated events found)",
             "business_description": "Business description (website unavailable)",
         }

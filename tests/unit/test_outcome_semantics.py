@@ -173,7 +173,11 @@ def test_ignored_homepage_self_link_cannot_be_reported_as_budget_skip(tmp_path, 
             await pipeline.aclose()
 
     outcome = asyncio.run(execute())
-    assert len(calls) == 8
+    # Four registry operations, robots, homepage and its redirect. NAV is a
+    # local policy block, so it cannot consume a request reservation.
+    assert len(calls) == 7
+    assert repo.get_result(run.run_id, ORG).research_metadata.request_count == 7
+    assert all("arbeidsplassen.nav.no" not in url for url in calls)
     assert outcome.terminal_state == "available"
     assert repo.get_result(run.run_id, ORG).status_reason == "research_completed"
     repo.close()

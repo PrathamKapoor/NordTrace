@@ -24,9 +24,6 @@ class Settings(BaseSettings):
     brreg_branch_page_size: int = Field(default=20, ge=1, le=100)
     brreg_branch_max_pages: int = Field(default=10, ge=1, le=100)
 
-    # --- NAV jobs ---
-    nav_job_search_url: str = "https://arbeidsplassen.nav.no/stillinger/api/search"
-
     # --- LLM (optional; system degrades to deterministic extraction without a key) ---
     llm_api_key: Optional[str] = None
     llm_base_url: str = "https://api.openai.com/v1"
