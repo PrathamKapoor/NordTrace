@@ -1,6 +1,7 @@
 """Instrument the actual httpx transport boundary; no external sockets."""
 
 import asyncio
+import time
 
 import httpx
 import pytest
@@ -111,9 +112,9 @@ def test_stream_limit_stops_reading_before_full_allocation(monkeypatch):
 
 
 def test_absolute_deadline_cancels_slow_body_stream(monkeypatch):
-    stream = Chunks([b"slow source"], delay=0.2)
+    stream = Chunks([b"slow source"], delay=2)
     gw, budget = gateway(
-        lambda request: httpx.Response(200, stream=stream), monkeypatch, max_runtime_sec=0.03
+        lambda request: httpx.Response(200, stream=stream), monkeypatch, max_runtime_sec=0.5
     )
 
     async def execute():
@@ -122,7 +123,9 @@ def test_absolute_deadline_cancels_slow_body_stream(monkeypatch):
         finally:
             await gw.aclose()
 
+    started = time.monotonic()
     result = asyncio.run(execute())
+    assert time.monotonic() - started < 1
     assert result.access_status == "timeout"
     assert stream.reads == 0
     assert stream.closed

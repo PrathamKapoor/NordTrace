@@ -1,3 +1,9 @@
+# DNS deadline and transport accounting correction — 2026-10-18
+
+D-074: three initial DNS/connection/subprocess regressions failed7.34s; the gateway reported a late DeadlineReachedError, direct pinning missed its time bound and the subprocess exceeded4seconds. Initial asynchronous DNS passed63of64adjacent cases; the30ms slow-body fixture expired before reaching its stream. The fixture now has500ms startup/acquisition allowance, a2second delayed body and the same timeout/zero-read/closed/one-request assertions, plus wall time under1second. Eighty adjacent cases then passed9.36s.
+
+Review reproduced false transport accounting when the third lookup blocked inside the actual pinned transport: zero independently observed HTTP dispatches but one reported operation/source failure. A genuine gateway+TransportAudit regression failed (1failed/4passed3.57s) before moving final DNS ahead of the transport-start marker and binding the prepared public IPs to the original host. Cancelled work now retains1charged/unstarted reservation,0dispatches/health failures. Rate health total_requests counts completed operations rather than unused permits.107adjacent deadline/transport/rate/smoke cases passed27.01s. Expanded9DNS cases passed3.24s; reviewer9passed3.28s/no remaining material findings. Ruff/mypy35pass. Full `.venv/Scripts/python.exe -m pytest -q --tb=short`: **755 passed, 8 live deselected**, one upstream Starlette warning,329.45seconds. These are controlled resolver/transport fixtures, not live DNS behavior measurements. Other synchronous hard-limit work remains open.
+
 # Integrated offline and installed-package verification — 2026-10-18
 
 Verified behavior revision: `19adb1d12a633731d32d22af0ae41f96cd8b7ebf`.

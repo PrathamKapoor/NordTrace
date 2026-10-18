@@ -6,6 +6,8 @@ The financial brief template preserves each claim's amount, currency, unit, peri
 
 News indexes and general careers pages are retained as resource candidates; they do not establish dated events or active vacancies. Their substantive claims remain unpublished until typed evidence and identity checks are implemented.
 
+Acquisition DNS runs outside the event loop with at most 16 outstanding OS lookups per process. Caller cancellation and process exit do not wait for a stuck lookup; its capacity slot stays occupied until the OS returns. This does not establish hard bounds on synchronous parsing, storage, SSL setup or export. DNS cancellation after a request reservation is charged as unstarted, rather than a failed HTTP dispatch.
+
 ## Install
 
 Verified on Windows with Python 3.12.5 and a fresh virtual environment:
@@ -16,7 +18,7 @@ uv sync --frozen --extra dev --python 3.12
 
 The package declares Python >=3.11; other runtimes/Linux/container execution are unverified. For a noneditable installation, add `--no-editable` to the same command. Dependencies and build tools are pinned through uv.lock/pyproject.toml. No model key is needed. Website/PDF robots checks are mandatory; `RESPECT_ROBOTS=false` is rejected. The optional model helper has no production extraction or synthesis callers.
 
-At `19adb1d`, a new locked noneditable environment installed 77 packages and passed CLI/export/validation, retained-bundle replay, health/dashboard and packaged-licence checks outside the source checkout. All 36 installed code/assets matched the committed source. This installation check used invalid inputs and made no company acquisitions; its scope differs from full testing. The latest full local regression passed 746 offline tests in 309.78 seconds, with 8 live checks excluded and one upstream warning. Details and exact commands are in [verification](docs/verification.md). Dashboard script checks pass; real browser verification remains blocked. Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
+At `19adb1d`, a new locked noneditable environment installed 77 packages and passed CLI/export/validation, retained-bundle replay, health/dashboard and packaged-licence checks outside the source checkout. All 36 installed code/assets matched the committed source. This installation check used invalid inputs and made no company acquisitions; its scope differs from full testing. The latest full local regression passed 755 offline tests in 329.45 seconds, with 8 live checks excluded and one upstream warning. Details and exact commands are in [verification](docs/verification.md). Dashboard script checks pass; real browser verification remains blocked. Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
 
 ## Research and inspect
 

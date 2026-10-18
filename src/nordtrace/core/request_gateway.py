@@ -1,4 +1,4 @@
-"""RequestGateway: the ONLY outbound HTTP path in the application.
+"""RequestGateway: the production acquisition HTTP boundary.
 
 Every adapter must use this gateway. It enforces:
 - global request budget (hard stop at limit)
@@ -10,8 +10,8 @@ Every adapter must use this gateway. It enforces:
 - bounded retries with exponential backoff on transient failures
 - structured request logs
 
-Design invariant: `grep -rn "httpx\\|requests\\|urllib.request" src/` must only
-show usage inside this module (and the LLM client which uses it too).
+The dormant model helper has a separate transport and no production callers;
+it must not be enabled without completing its accounting/policy integration.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ import logging
 import re
 import socket
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -52,6 +53,7 @@ _PRIVATE_HOST_HINTS = {
 }
 
 _RETRY_STATUS = {429, 500, 502, 503, 504}
+_DNS_SLOTS = threading.BoundedSemaphore(16)
 
 
 def _resolve_host(hostname: str) -> List[str]:
@@ -61,6 +63,47 @@ def _resolve_host(hostname: str) -> List[str]:
         return sorted({str(info[4][0]) for info in infos})
     except (socket.gaierror, UnicodeError):
         return []
+
+
+async def _resolve_host_async(hostname: str) -> List[str]:
+    """Bound outstanding OS lookups without joining them on cancellation/exit.
+
+    getaddrinfo cannot be interrupted safely. A cancelled caller abandons only
+    its result; the daemon worker keeps its slot until the OS call actually ends.
+    """
+    slots = _DNS_SLOTS
+    while not slots.acquire(blocking=False):
+        await asyncio.sleep(0.01)
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[List[str]] = loop.create_future()
+
+    def deliver(addresses: List[str], error: Optional[Exception]) -> None:
+        if not future.done():
+            if error is not None:
+                future.set_exception(error)
+            else:
+                future.set_result(addresses)
+
+    def resolve() -> None:
+        addresses: List[str] = []
+        error: Optional[Exception] = None
+        try:
+            addresses = _resolve_host(hostname)
+        except Exception as failure:
+            error = failure  # Propagate worker errors; never manufacture a safe address.
+        finally:
+            slots.release()
+        try:
+            loop.call_soon_threadsafe(deliver, addresses, error)
+        except RuntimeError:
+            pass  # The cancelled caller's event loop has already closed.
+
+    try:
+        threading.Thread(target=resolve, name="NordTrace DNS resolver", daemon=True).start()
+    except Exception:
+        slots.release()
+        raise
+    return await future
 
 
 def _is_private_ip(ip: str) -> bool:
@@ -88,11 +131,11 @@ class RunSourcePolicyDenied(SSRFError):
     """The run excluded this origin; no retrieval of that destination occurred."""
 
 
-def validate_url(
+def _normalize_url(
     url: str, allowed_domains: Optional[List[str]] = None, allowed_schemes: Optional[List[str]] = None,
     allowed_origins: Optional[List[str]] = None,
 ) -> Tuple[str, str]:
-    """Validate + normalize a URL. Raises SSRFError on unsafe targets."""
+    """Apply URL/source policy before any DNS lookup."""
     if not url or not isinstance(url, str):
         raise SSRFError("empty URL")
     parsed = urlparse(url)
@@ -135,13 +178,6 @@ def validate_url(
             host_is_numeric_ip = True
     if host_is_numeric_ip:
         raise SSRFError("raw/numeric IP targets are blocked")
-    # DNS resolution guard
-    addresses = _resolve_host(host)
-    if not addresses:
-        raise SSRFError("hostname could not be resolved safely")
-    for ip in addresses:
-        if _is_private_ip(ip):
-            raise SSRFError(f"{host!r} resolves to private address {ip}")
     if allowed_domains is not None:
         if host not in allowed_domains and not any(host.endswith("." + d) for d in allowed_domains):
             raise SSRFError(f"host {host!r} outside allowed domains")
@@ -153,6 +189,33 @@ def validate_url(
     clean = f"{scheme}://{netloc}{path}"
     if parsed.query:
         clean += f"?{parsed.query}"
+    return clean, host
+
+
+def _validate_addresses(host: str, addresses: List[str]) -> None:
+    if not addresses:
+        raise SSRFError("hostname could not be resolved safely")
+    for ip in addresses:
+        if _is_private_ip(ip):
+            raise SSRFError(f"{host!r} resolves to private address {ip}")
+
+
+def validate_url(
+    url: str, allowed_domains: Optional[List[str]] = None, allowed_schemes: Optional[List[str]] = None,
+    allowed_origins: Optional[List[str]] = None,
+) -> Tuple[str, str]:
+    """Synchronous validation utility; production acquisition uses the async path."""
+    clean, host = _normalize_url(url, allowed_domains, allowed_schemes, allowed_origins)
+    _validate_addresses(host, _resolve_host(host))
+    return clean, host
+
+
+async def _validate_url_async(
+    url: str, allowed_domains: Optional[List[str]] = None, allowed_schemes: Optional[List[str]] = None,
+    allowed_origins: Optional[List[str]] = None,
+) -> Tuple[str, str]:
+    clean, host = _normalize_url(url, allowed_domains, allowed_schemes, allowed_origins)
+    _validate_addresses(host, await _resolve_host_async(host))
     return clean, host
 
 
@@ -184,6 +247,12 @@ class ResponseLimitError(ValueError):
     pass
 
 
+@dataclass(frozen=True)
+class _ResolvedDestination:
+    host: str
+    addresses: Tuple[str, ...]
+
+
 class PinnedTransport(httpx.AsyncBaseTransport):
     """Connect to a freshly validated numeric address, retaining TLS SNI/Host.
 
@@ -201,10 +270,17 @@ class PinnedTransport(httpx.AsyncBaseTransport):
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         host = request.url.host
-        addresses = _resolve_host(host)
+        destination = request.extensions.get("_nordtrace_destination")
+        if destination is None:
+            addresses = await _resolve_host_async(host)
+        elif isinstance(destination, _ResolvedDestination) and destination.host == host:
+            addresses = list(destination.addresses)
+        else:
+            raise SSRFError("prepared connection destination differs from request host")
         if not addresses or any(_is_private_ip(address) for address in addresses):
             raise SSRFError("connection destination could not be verified as public")
         extensions = dict(request.extensions)
+        extensions.pop("_nordtrace_destination", None)
         extensions["sni_hostname"] = host
         headers = request.headers.copy()
         headers.pop("cookie", None)  # Public acquisition never replays server session state.
@@ -309,12 +385,18 @@ class RequestGateway:
                 raise BudgetExceededError("request budget exhausted")
             reserved = True
             client = await self._get_client()
+            destination_host = httpx.URL(url).host
+            addresses = await _resolve_host_async(destination_host)
+            _validate_addresses(destination_host, addresses)
             if self.budget.work_time_remaining() <= 0:
                 raise TimeoutError("run deadline reached before transport")
             attempted = True
             async with client.stream(
                 "GET", url, follow_redirects=False,
                 headers={"User-Agent": settings.user_agent, "Accept": "*/*", "Accept-Encoding": "identity"},
+                extensions={
+                    "_nordtrace_destination": _ResolvedDestination(destination_host, tuple(addresses)),
+                },
             ) as response:
                 rate_limited = response.status_code == 429
                 # Refuse unsolicited compression before decoding, bounding decompression allocation.
@@ -381,7 +463,7 @@ class RequestGateway:
         chain: List[str] = []
         current = url
 
-        def validate_source(candidate: str) -> Tuple[str, str]:
+        async def validate_source(candidate: str) -> Tuple[str, str]:
             # Apply the persisted run policy before DNS, robots, cache or transport.
             # Adapter-specific restrictions are additional and cannot widen it.
             permitted = self.budget.configuration.allowed_source_origins
@@ -396,7 +478,7 @@ class RequestGateway:
                     raise RunSourcePolicyDenied("invalid origin under run source policy") from error
                 if origin not in permitted:
                     raise RunSourcePolicyDenied("URL origin outside run source policy")
-            return validate_url(candidate, allowed_domains, allowed_schemes, allowed_origins)
+            return await _validate_url_async(candidate, allowed_domains, allowed_schemes, allowed_origins)
 
         def record(status: str, error: Optional[str] = None, response=None, **extra) -> SourceRecord:
             return SourceRecord(
@@ -409,14 +491,14 @@ class RequestGateway:
             )
 
         try:
-            clean, host = validate_source(url)
+            clean, host = await validate_source(url)
             url = current = clean
             chain = [clean]
             ttl = self.cache_ttl if cache_ttl_override is None else cache_ttl_override
             cached = self._cache.get(clean)
             if cached and cached.age_sec() < ttl:
                 for cached_hop in cached.redirect_chain or [clean]:
-                    validate_source(cached_hop)
+                    await validate_source(cached_hop)
                     if respect_robots and not await self._robots_allows(
                         cached_hop, company=company, allowed_domains=allowed_domains,
                         allowed_schemes=allowed_schemes,
@@ -432,7 +514,7 @@ class RequestGateway:
                 current = clean
                 chain = [clean]
                 for hop in range(settings.max_redirects + 1):
-                    current, hop_host = validate_source(current)
+                    current, hop_host = await validate_source(current)
                     if respect_robots and not await self._robots_allows(
                         current, company=company, allowed_domains=allowed_domains,
                         allowed_schemes=allowed_schemes,
@@ -457,7 +539,7 @@ class RequestGateway:
                         location = response.headers.get("location")
                         if not location or hop == settings.max_redirects:
                             return record("failed", "redirect limit reached or missing Location", response)
-                        current, _ = validate_source(urljoin(current, location))
+                        current, _ = await validate_source(urljoin(current, location))
                         if current in chain:
                             return record("failed", "redirect loop", response)
                         chain.append(current)

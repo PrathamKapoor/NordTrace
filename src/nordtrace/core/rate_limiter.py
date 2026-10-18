@@ -64,7 +64,6 @@ class DomainState:
         self.circuit_open = False
 
     def record_failure(self, rate_limited: bool = False) -> None:
-        self.total_requests += 0  # counter handled by budget; this tracks health only
         if rate_limited:
             self.rate_limited_events += 1
         self.consecutive_failures += 1
@@ -134,7 +133,6 @@ class RateLimiter:
         except BaseException:
             state.semaphore.release()
             raise
-        state.total_requests += 1
         return RateLimitToken(state)
 
     def snapshot(self) -> Dict[str, Dict[str, object]]:
@@ -160,6 +158,7 @@ class RateLimitToken:
 
     def record_success(self) -> None:
         if not self._done:
+            self.state.total_requests += 1
             self.state.record_success()
             self._release()
             self._done = True
@@ -172,6 +171,7 @@ class RateLimitToken:
 
     def record_failure(self, rate_limited: bool = False) -> None:
         if not self._done:
+            self.state.total_requests += 1
             self.state.record_failure(rate_limited)
             self._release()
             self._done = True
