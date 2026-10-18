@@ -2,6 +2,8 @@
 
 Norwegian company research with retained evidence. Implementation is **in progress**. Current publication supports exact registry identity fields and parent-verified subunit relationships. Website, roles, activity and financial candidates remain withheld until their producers satisfy the typed support checks. NAV search is retired; hiring stays explicitly blocked until the documented feed and its update/retention requirements are implemented. A [real100-input registry-only smoke baseline](docs/registry-smoke-report.md) retained complete profiles/evidence:430 matching transport operations,1087 supported claims and224.094seconds. External gains and independent accuracy remain unmeasured. Frozen baseline briefs retain a documented wording defect; new briefs distinguish final verification states without claiming public information is absent.
 
+The financial brief template preserves each claim's amount, currency, unit, period and entity scope; incomplete or unsafe values are withheld. Monetary change notices require evidence inspection because change records do not contain complete old/new qualifiers. These guards do not enable financial publication or establish parser accuracy.
+
 ## Install
 
 Verified on Windows with Python 3.12.5 and a fresh virtual environment:

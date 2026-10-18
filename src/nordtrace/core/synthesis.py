@@ -6,6 +6,7 @@ Unknowns describe verification outcomes, never presumed absence of business fact
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import List, Optional
 
 from nordtrace.core.ledger import FactLedger
@@ -51,18 +52,20 @@ def build_summary(
     ar = _latest(ledger, org, "financials", "annual_result")
     eq = _latest(ledger, org, "financials", "equity")
     emp = _latest(ledger, org, "identity", "employee_count")
-    if rev or res or ar or eq:
-        fin_parts = []
-        if rev:
-            fin_parts.append(f"revenue {_fmt(rev)} {_cite(rev)}")
-        if res:
-            fin_parts.append(f"operating result {_fmt(res)} {_cite(res)}")
-        if ar:
-            fin_parts.append(f"annual result {_fmt(ar)} {_cite(ar)}")
-        if eq:
-            fin_parts.append(f"equity {_fmt(eq)} {_cite(eq)}")
-        period = rev.reporting_period if rev else None
-        parts.append(f"Financials ({period or 'latest reported'}): " + ", ".join(fin_parts) + ".")
+    financials = [(label, fact) for label, fact in (
+        ("revenue", rev), ("operating result", res), ("annual result", ar), ("equity", eq),
+    ) if fact is not None]
+    fin_parts = []
+    for label, fact in financials:
+        amount = _financial_text(fact)
+        if amount is not None:
+            fin_parts.append(f"{label} {amount} {_cite(fact)}")
+    if fin_parts:
+        parts.append("Financials: " + "; ".join(fin_parts) + ".")
+        if len(fin_parts) != len(financials):
+            parts.append("Some monetary observations could not be safely rendered and are withheld.")
+    elif financials:
+        parts.append("Financials: monetary values could not be safely rendered.")
     else:
         parts.append(f"Financials: {_availability_text(coverage.get('financials'))}.")
     if emp:
@@ -118,18 +121,12 @@ def build_summary(
         else:
             parts.append("Changes: no verified observations available for comparison.")
     elif sig:
-        ch_str = "; ".join(
-            (f"{c.field}: {_short(c.previous_value)} → {_short(c.current_value)}"
-             if c.previous_value is not None else f"{c.field}: new ({_short(c.current_value)})")
-            + (f" [{c.claim_id}]" if c.claim_id else "")
-            for c in sig[:4]
-        )
+        ch_str = "; ".join(_change_text(c) for c in sig[:4])
         parts.append(f"Changes in verified observations: {ch_str}.")
     else:
         parts.append("Changes: no material changes established among comparable verified observations.")
     if previous_run_id is not None and new:
-        new_str = "; ".join(f"{c.field}: {_short(c.current_value)}"
-                            + (f" [{c.claim_id}]" if c.claim_id else "") for c in new[:4])
+        new_str = "; ".join(_change_text(c) for c in new[:4])
         parts.append(f"Newly verified observations: {new_str}.")
 
     # 7. unknowns
@@ -165,6 +162,46 @@ def _fmt(fact: Fact) -> str:
             return f"{fact.currency} {s}"
         return s
     return str(v)
+
+
+def _financial_text(fact: Fact) -> Optional[str]:
+    """Render existing claim values without rounding, scaling or scope inference."""
+    scopes = {"legal_entity": "legal entity", "group": "group", "branch": "branch", "brand": "brand"}
+    if (not fact.currency or len(fact.currency) != 3 or not fact.currency.isascii()
+            or not fact.currency.isalpha() or not fact.currency.isupper()
+            or not fact.unit or not fact.unit.strip()
+            or not fact.reporting_period or not fact.reporting_period.strip()
+            or fact.subject_scope not in scopes
+            or isinstance(fact.value, bool) or not isinstance(fact.value, (int, float, Decimal, str))):
+        return None
+    try:
+        value = Decimal(str(fact.value))
+    except InvalidOperation:
+        return None
+    if not value.is_finite():
+        return None
+    # Bound fixed-point expansion (e.g. 1e-999999) without silently rounding it.
+    exponent = value.as_tuple().exponent
+    if not isinstance(exponent, int) or max(1, value.adjusted() + 1) + max(0, -exponent) > 256:
+        return None
+    number = format(value, ",f").replace(",", " ")
+    return (f"{fact.currency} {number} (unit: {fact.unit}; period: {fact.reporting_period}; "
+            f"{scopes[fact.subject_scope]})")
+
+
+def _change_text(change: ChangeRecord) -> str:
+    if change.category == "financials":
+        # ChangeRecord has no old/new currency or unit. Never print an amount
+        # whose qualifiers would be invented or borrowed from the current fact.
+        text = (f"{change.field}: {change.change_type.lower()} monetary observation; "
+                "inspect qualified evidence")
+    elif change.change_type == "NEW":
+        text = f"{change.field}: {_short(change.current_value)}"
+    elif change.previous_value is not None:
+        text = f"{change.field}: {_short(change.previous_value)} → {_short(change.current_value)}"
+    else:
+        text = f"{change.field}: new ({_short(change.current_value)})"
+    return text + (f" [{change.claim_id}]" if change.claim_id else "")
 
 
 def _role_facts(ledger: FactLedger, org: str) -> List[Fact]:

@@ -1,5 +1,15 @@
 # Decision Log — NordTrace
 
+## D-072 — Preserve monetary precision and each observation's qualifiers in briefs
+
+- Date/status: 2026-10-18, accepted.
+- Problem/evidence: the legacy financial template rounded float values to integers, omitted currency on Decimal/string values, dropped scale/scope and placed every metric under revenue's reporting year. Change text truncated large monetary values without units/currency. Production financial publication is withheld; these are downstream safeguards, not a completed financial extractor.
+- Decision/implementation: synthesis._financial_text renders the existing Fact.value with Decimal fixed-point formatting and no rounding, conversion or scale inference. Each metric retains its own explicit currency, literal unit, reporting period and scope plus claim reference. Missing/unknown qualifiers or unsupported/nonfinite numeric representations withhold that fragment. Values exceeding256integer-plus-fraction digits are withheld before fixed-point expansion; other supported metrics remain visible with a withholding notice.
+- Change semantics: current ChangeRecord lacks old/new currency and units. Monetary change notices therefore retain kind/field/claim reference and direct inspection to qualified evidence, omitting amounts rather than borrowing current qualifiers or truncating digits. Nonfinancial change wording stays unchanged. Rich qualified old/new values require a later versioned change contract.
+- Scope/alternatives: new deterministic brief rendering only; no financial support predicate, model, source, schema, migration, coverage state or frozen result is changed. Separate per-metric periods avoid inventing a shared year. Displaying literal units avoids silently multiplying a source value; guessing NOK or group attachment remains prohibited. Float precision already lost upstream cannot be recovered by formatting; the producer must still supply correctly supported values. Decimal conversion here does not complete Decimal extraction.
+- Tradeoffs/limits: briefs are longer; the safety bound can abstain on extreme but otherwise legitimate numbers. Unit labels and periods are not established by the renderer: production snapshot-backed support must justify them. Group/branch/brand observations retain their scope rather than becoming legal-entity amounts. Financial/table/PDF semantics, numerical change contracts and the full fixture matrix remain incomplete.
+- Verification: tests/unit/test_summary_financials.py explicitly uses the preliminary legacy ledger for template mechanics, never production proof. Cases include fractional/negative/zero values, preserved zero precision, large Decimal and numeric-string values, mixed periods/currencies/scales/scopes, unresolved qualifiers, partial safe rendering, oversized expansion and NEW/CHANGED/RETRACTED text. Measured red/green, adjacent API/history checks and reviewer results: docs/verification.md. Revisit when enabling any financial publication or extending monetary/change schemas.
+
 ## D-071 — Enforce website robots policy at the gateway
 
 - Date/status: 2026-10-18, accepted.
