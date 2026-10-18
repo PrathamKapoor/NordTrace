@@ -12,7 +12,7 @@ uv sync --frozen --extra dev --python 3.12
 
 The package declares Python >=3.11; other runtimes/Linux/container execution are unverified. For a noneditable installation, add `--no-editable` to the same command. Dependencies and build tools are pinned through uv.lock/pyproject.toml. No model key is needed. The optional model helper has no production extraction or synthesis callers.
 
-Fresh locked verification at `8aa7e06`: 596 offline tests passed, 8 live checks excluded, one upstream Starlette warning, 264.01 seconds. Ruff, mypy, wheel build, installed CLI/export/validation and dashboard resources passed. The latest local regression passed648offline tests in283.63seconds, including sampler, activity-source, registry-schema, adaptive-crawl and evidence-API checks. Final seven dashboard script checks also pass; real browser verification remains blocked. These are separate from the earlier clean-install measurement. Population-selection and installed-sampler evidence are in [verification](docs/verification.md). Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
+Fresh locked verification at `8aa7e06`: 596 offline tests passed, 8 live checks excluded, one upstream Starlette warning, 264.01 seconds. Ruff, mypy, wheel build, installed CLI/export/validation and dashboard resources passed. The latest full local regression passed682offline tests in296.90seconds, including accounts qualifiers, retired NAV policy and the smoke command. Separate newer changes are recorded in [verification](docs/verification.md). Final seven dashboard script checks also pass; real browser verification remains blocked. These are separate from the earlier clean-install measurement. Hosted CI and Docker execution remain unverified; the local Docker daemon was unavailable.
 
 ## Research and inspect
 
@@ -36,6 +36,15 @@ Additional fields are selection metadata and cannot establish identity, configur
 CLI exit 0 means execution completed with honest availability states; exit 1 indicates research failure, support-check failure or benchmark budget overrun; exit 2 indicates invalid inputs. Failure takes precedence when a batch also contains invalid inputs. Unknown business values are not zero-filled.
 
 ## Limits, storage and resume
+
+For an observed smoke run, commit the intended code and use a dedicated process from the clean source checkout:
+
+```powershell
+.venv/Scripts/python.exe -m nordtrace.cli smoke companies.jsonl --live --output data/smoke-new --max-requests 2000 --max-runtime-sec 900 --per-company-sec 30 --finalization-reserve-sec 20 --concurrency 4
+.venv/Scripts/python.exe -m nordtrace.cli verify-bundle data/smoke-new/evidence.zip
+```
+
+These are example local parameters, not official competition limits. The command creates a new isolated database, retains the exact inputs and complete canonical results, independently counts HTTP transport dispatches, exports/verifies raw snapshots and writes a hashed manifest last. It disables model keys/paid calls, enables robots and caps crawling at two pages per company. Existing output directories are refused. Results can include failed, blocked or unavailable companies; completion is distinct from successful coverage. Runtime overruns are reported as failures, but synchronous parsing/storage/export are not hard deadline bounded. See D-065 in [DECISIONS](DECISIONS.md). No independent accuracy or live smoke result follows from having this command.
 
 Copy `.env.example` to `.env` only when needed. Settings load from the launch directory; secrets and generated artifacts are ignored by Git.
 

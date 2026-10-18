@@ -58,6 +58,43 @@ def cli(ctx, debug: bool):
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
 
 
+@cli.command("smoke")
+@click.argument("input_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--output", required=True, type=click.Path(file_okay=False, path_type=Path))
+@click.option("--live", is_flag=True, help="Explicitly allow bounded public network acquisition")
+@click.option("--max-requests", required=True, type=click.IntRange(min=0))
+@click.option("--max-runtime-sec", required=True, type=click.FloatRange(min=0, min_open=True))
+@click.option("--per-company-sec", required=True, type=click.FloatRange(min=0, min_open=True))
+@click.option("--finalization-reserve-sec", required=True, type=click.FloatRange(min=0))
+@click.option("--concurrency", default=4, show_default=True, type=click.IntRange(min=1, max=16))
+def smoke_command(input_file: Path, output: Path, live: bool, max_requests: int,
+                  max_runtime_sec: float, per_company_sec: float, finalization_reserve_sec: float,
+                  concurrency: int):
+    """Run supplied inputs with independent transport accounting and portable evidence.
+
+    Requires a clean source checkout and an exclusive output directory. Uses no
+    model credentials or paid API; local limits are not organizer allowances.
+    """
+    from nordtrace.core.models import RunConfiguration
+    from nordtrace.smoke import run_smoke, source_revision
+
+    if not live:
+        raise click.ClickException("smoke requires --live to allow public network requests")
+    try:
+        configuration = RunConfiguration(
+            max_requests=max_requests, max_runtime_sec=max_runtime_sec, max_cost_usd=0,
+            per_company_sec=per_company_sec, finalization_reserve_sec=finalization_reserve_sec,
+        )
+        manifest, exit_code = asyncio.run(run_smoke(
+            input_file, output, configuration=configuration, concurrency=concurrency,
+            revision=source_revision(),
+        ))
+    except (ValueError, OSError) as error:
+        raise click.ClickException(str(error)) from error
+    click.echo(json.dumps(manifest, ensure_ascii=False))
+    raise SystemExit(exit_code)
+
+
 @cli.command("replay-source")
 @click.argument("source_id")
 @click.option("--output", required=True, type=click.Path(dir_okay=False))
