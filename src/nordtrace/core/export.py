@@ -10,6 +10,7 @@ import re
 import tempfile
 import zipfile
 from copy import deepcopy
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,6 +24,14 @@ from nordtrace.core.models import CompanyProfile, RunBudgetState, SourceRecord, 
 from nordtrace.core.repository import Repository
 
 DEFAULT_MAX_BYTES = 256 * 1024 * 1024  # Local uncompressed export capacity, not a run budget.
+
+
+def result_schema(version: str) -> dict:
+    """Read a frozen local contract; never derive older schemas from live models."""
+    if version != "1.1":
+        raise ValueError("unsupported local result schema version")
+    resource = files("nordtrace.core").joinpath("schemas", "result-1.1.json")
+    return json.loads(resource.read_text(encoding="utf-8"))
 
 
 class BundleOperations(BaseModel):
@@ -220,7 +229,7 @@ def export_run(
                         written.add(path)
                     captures[source_id] = {"path": path, "bytes": len(body),
                                            "source": captured.model_dump(mode="json")}
-                schema = charge(_json(CompanyProfile.model_json_schema()))
+                schema = charge(_json(result_schema("1.1")))
                 archive.writestr("result-schema.json", schema)
                 manifest = {
                     "format": "nordtrace-audit-bundle-v1", "result_schema": "nordtrace-1.1",
@@ -291,7 +300,7 @@ def verify_bundle(output: str | Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> 
             raise ValueError("unsupported bundle result schema")
         BundleOperations.model_validate(manifest["operations"])
         schema = archive.read("result-schema.json")
-        installed_schema = CompanyProfile.model_json_schema()
+        installed_schema = result_schema("1.1")
         legacy_schema = deepcopy(installed_schema)
         legacy_schema["$defs"]["RunConfiguration"]["properties"].pop("allowed_source_origins")
         declared_schema = json.loads(schema)

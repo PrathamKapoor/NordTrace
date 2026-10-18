@@ -65,6 +65,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "nordtrace.frontend" = ["*.html"]
+"nordtrace.core" = ["schemas/*.json"]
 
 [tool.black]
 line-length = 88

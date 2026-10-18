@@ -194,3 +194,9 @@ Conflict correction: competing supported observations are all withheld and retai
 | Requirement/finding | Owner | Verification | Status | Evidence |
 |---|---|---|---|---|
 | F01/C unique JSON Pointer support and no fabricated zero | core/evidence.py; adapters/brreg.py | test_json_body_contract.py; Unicode/locator/conflict controls | verified | D-0798initial red/4green0.66s, underflow red0.53s. Reject decoded duplicate members, nonfinite constants, overflow/nonzero-underflow; preserve zero/finite/literal/distinct Unicode keys. Actual duplicate-member claim no longer publishes; complete failed envelopes retain exact bytes.65adjacent/reviewer36 pass; full861pass372.39s. No Decimal/table/financial accuracy or external coverage claim |
+
+## Frozen local schema compatibility — 2026-10-19 local
+
+| Requirement/finding | Owner | Verification | Status | Evidence |
+|---|---|---|---|---|
+| A/C stable versioned export schema before HTML contracts | core/export.py; core/schemas; package-data/CI | test_export_bundle.py generator drift, replay, mutation and version guards | verified | D-0802red7.53s; frozen exact1.1 package asset used by writer/reader.66adjacent/reviewer15 pass; actual wheel bytes/import outsidecheckout and legacy real100 compact-schema byte equality verified. Original100/1000 bundles still replay. Full869pass396.65s/8live excluded/one upstream warning; no1.2 locator/organizer acceptance claim |

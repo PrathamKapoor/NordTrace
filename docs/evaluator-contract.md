@@ -51,3 +51,7 @@ Execute inline, following the user's dependency order and using targeted failing
 6. Add reproducible independent evaluation, pinned installation and offline CI. Compare fixed development/held-out samples and record limitations separately from live checks. Run 100/1,000 cardinality/deadline scenarios and a real public 100-company smoke run only through the repaired safe deterministic boundary.
 
 Each coherent change updates FLOW.md, DECISIONS.md and the tracker, runs adjacent checks, receives diff inspection and is committed locally under the required author and committer. No remote write, deployment or submission is authorized.
+
+## Frozen local schema binding — 2026-10-19
+
+D-080 packages [NordTrace1.1 JSON Schema](../src/nordtrace/core/schemas/result-1.1.json) instead of regenerating that version from future runtime models. Export/verification use the frozen resource while retaining semantic model, source-reference and snapshot checks. Its compact export bytes match the retained real100 bundle. The existing exact pre-allowed_source_origins variant remains a narrow legacy exception; arbitrary modified schemas and unknown versions are rejected. A model-drift test forces deliberate versioning. This remains an explicit local adapter, not an organizer-supplied/private schema or acceptance claim. No1.2 HTML locator is implemented by freezing this asset.

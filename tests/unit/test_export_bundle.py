@@ -17,6 +17,57 @@ from nordtrace.engine.pipeline import ResearchPipeline
 ORG = "982463718"
 
 
+def test_frozen_v1_schema_matches_implemented_contract_without_shared_mutation():
+    from nordtrace.core.export import result_schema
+    from nordtrace.core.models import CompanyProfile
+
+    original = result_schema("1.1")
+    assert original == CompanyProfile.model_json_schema()
+    original["$defs"]["RunConfiguration"]["properties"].clear()
+    assert result_schema("1.1") == CompanyProfile.model_json_schema()
+
+
+@pytest.mark.parametrize("version", [
+    "1.2", "../models.py", "", "https://untrusted.example/schema", "1.1\x00",
+])
+def test_unknown_contract_versions_cannot_select_a_resource_path(version):
+    from nordtrace.core.export import result_schema
+
+    with pytest.raises(ValueError, match="unsupported local result schema version"):
+        result_schema(version)
+
+
+def test_versioned_export_schema_does_not_drift_with_runtime_generator(researched, tmp_path, monkeypatch):
+    from nordtrace.core.export import export_run
+    from nordtrace.core.models import CompanyProfile
+
+    repo, run_id = researched
+    baseline = tmp_path / "baseline.zip"
+    export_run(repo, run_id, baseline)
+    with zipfile.ZipFile(baseline) as archive:
+        original_schema = archive.read("result-schema.json")
+    future_schema = json.loads(original_schema)
+    future_schema["properties"]["future_field"] = {"type": "string"}
+    monkeypatch.setattr(CompanyProfile, "model_json_schema", lambda: future_schema)
+    output = tmp_path / "after-model-drift.zip"
+    export_run(repo, run_id, output)
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read("result-schema.json") == original_schema
+
+
+def test_retained_bundle_remains_readable_when_runtime_generator_changes(researched, tmp_path, monkeypatch):
+    from nordtrace.core.export import export_run, verify_bundle
+    from nordtrace.core.models import CompanyProfile
+
+    repo, run_id = researched
+    output = tmp_path / "retained.zip"
+    export_run(repo, run_id, output)
+    future_schema = CompanyProfile.model_json_schema()
+    future_schema["properties"]["future_field"] = {"type": "string"}
+    monkeypatch.setattr(CompanyProfile, "model_json_schema", lambda: future_schema)
+    assert verify_bundle(output)["completion"]["complete"] is True
+
+
 @pytest.fixture
 def researched(tmp_path, monkeypatch):
     repo = Repository(tmp_path / "research.db")

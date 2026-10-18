@@ -33,4 +33,4 @@ jobs:
       - run: uv run --frozen python -m mypy src/nordtrace
       - run: uv build
       - name: Check wheel resources
-        run: uv run --frozen python -c "from pathlib import Path; from zipfile import ZipFile; z=ZipFile(next(Path('dist').glob('*.whl'))); assert 'nordtrace/frontend/index.html' in z.namelist(); assert any(n.endswith('/LICENSE') for n in z.namelist())"
+        run: uv run --frozen python -c "from pathlib import Path; from zipfile import ZipFile; z=ZipFile(next(Path('dist').glob('*.whl'))); assert 'nordtrace/frontend/index.html' in z.namelist(); assert any(n.endswith('/LICENSE') for n in z.namelist()); schemas=list(Path('src/nordtrace/core/schemas').glob('*.json')); assert schemas and all(z.read('nordtrace/core/schemas/'+p.name)==p.read_bytes() for p in schemas)"
