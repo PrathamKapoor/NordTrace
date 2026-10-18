@@ -31,7 +31,7 @@ def observed_name(repo, name, industry=None, field="legal_name"):
         content_hash=hashlib.sha256(body).hexdigest(), snapshot_representation="http-response-body-v1",
     )
     repo.save_capture(source, body)
-    adapter = BrregAdapter(SimpleNamespace(get_content=lambda url: SimpleNamespace(text=body.decode())),
+    adapter = BrregAdapter(SimpleNamespace(get_content=lambda url: SimpleNamespace(content=body)),
                            BudgetManager())
     identity = adapter._parse_entity(document, ORG)
     evidence, facts = adapter.identity_claims(identity, source, "fixture")

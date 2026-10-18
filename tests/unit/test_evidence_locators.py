@@ -107,7 +107,8 @@ def test_employee_predicate_rejects_non_count_values_in_identity_and_claim(tmp_p
     document = {"organisasjonsnummer": ORG, "navn": "TARGET AS", "antallAnsatte": raw}
     source = captured(repo, document)
     adapter = BrregAdapter(
-        SimpleNamespace(get_content=lambda url: SimpleNamespace(text=json.dumps(document))), BudgetManager()
+        SimpleNamespace(get_content=lambda url: SimpleNamespace(content=json.dumps(document).encode())),
+        BudgetManager(),
     )
     identity = adapter._parse_entity(document, ORG)
     assert identity.employee_count is None

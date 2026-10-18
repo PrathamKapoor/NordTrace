@@ -22,7 +22,7 @@ def test_registry_response_cannot_manufacture_requested_identity(returned_org):
             return SourceRecord(url=url, access_status="success", http_status=200, source_type="registry")
 
         def get_content(self, url):
-            return SimpleNamespace(text=json.dumps(record))
+            return SimpleNamespace(content=json.dumps(record).encode())
 
     adapter = BrregAdapter(CapturedGateway(), BudgetManager())
     identity, source, evidence, state = asyncio.run(adapter.fetch_entity("982463718", "fixture"))
@@ -71,9 +71,9 @@ def test_matching_registry_identifier_resolves_the_actual_returned_name():
             return SourceRecord(url=url, access_status="success", http_status=200, source_type="registry")
 
         def get_content(self, url):
-            return SimpleNamespace(text=json.dumps({
+            return SimpleNamespace(content=json.dumps({
                 "organisasjonsnummer": "982463718", "navn": "TARGET AS",
-            }))
+            }).encode())
 
     adapter = BrregAdapter(CapturedGateway(), BudgetManager())
     identity, source, evidence, state = asyncio.run(adapter.fetch_entity("982463718", "fixture"))

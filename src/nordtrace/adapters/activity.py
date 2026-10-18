@@ -11,7 +11,11 @@ import json
 from typing import List, Optional, Tuple
 
 from nordtrace.core.budget import BudgetManager
-from nordtrace.core.evidence import require_registry_identity_acquisition, verify_capture_metadata
+from nordtrace.core.evidence import (
+    parse_json_body,
+    require_registry_identity_acquisition,
+    verify_capture_metadata,
+)
 from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
@@ -52,7 +56,7 @@ class ActivityAdapter:
         require_registry_identity_acquisition(captured, org)
         if captured.access_status != "success":
             raise ValueError("Activity requires a successful entity acquisition")
-        registry_payload = json.loads(body)
+        registry_payload = parse_json_body(body)
         if not isinstance(registry_payload, dict):
             raise ValueError("Activity entity capture must be an object")
         subject = validate_orgnr(registry_payload.get("organisasjonsnummer", ""))

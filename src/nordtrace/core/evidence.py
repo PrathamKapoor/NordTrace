@@ -15,6 +15,36 @@ from nordtrace.core.orgnr import validate_orgnr
 class SnapshotReader(Protocol):
     def read_capture(self, source_id: str) -> tuple[SourceRecord, bytes]: ...
 
+
+def require_json_unicode(document: Any) -> None:
+    """Reject non-scalar strings in a decoded JSON tree without rewriting data.
+
+    Escaped unpaired surrogates survive json.loads but cannot be retained as
+    UTF8 evidence/SQLite text. Inspect object keys and unused nested values too:
+    whole-record locators may preserve them even when one selected field is safe.
+    """
+    pending = [document]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str):
+            if any(0xD800 <= ord(char) <= 0xDFFF for char in value):
+                raise ValueError("JSON contains invalid Unicode scalar")
+        elif isinstance(value, dict):
+            pending.extend(value.keys())
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+
+
+def parse_json_body(body: bytes) -> Any:
+    """Decode network JSON as UTF8 strictly; tolerate an optional UTF8 BOM.
+
+    Do not use HTTPX's replacement-decoded text as an identity/evidence value.
+    """
+    document = json.loads(body.decode("utf-8-sig"))
+    require_json_unicode(document)
+    return document
+
 # These paths express the public Enhetsregisteret schema, not evaluator rules.
 IDENTITY_PATHS: dict[str, tuple[tuple[str, ...], str]] = {
     "legal_name": (("/navn",), "identity"),
@@ -181,7 +211,7 @@ def verify_snapshot_support(
     locator = evidence.locator
     if locator is None:
         raise ValueError("snapshot-backed evidence locator required")
-    document = json.loads(body)
+    document = parse_json_body(body)
     raw = resolve_pointer(document, locator.pointer)
     if not _same(raw, locator.raw_value):
         raise ValueError("locator raw value differs from snapshot")

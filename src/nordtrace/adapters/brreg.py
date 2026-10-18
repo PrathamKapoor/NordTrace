@@ -27,6 +27,7 @@ from nordtrace.core.evidence import (
     IDENTITY_PATHS,
     normalize_registry_value,
     normalize_subunit,
+    parse_json_body,
     require_registry_identity_acquisition,
     resolve_pointer,
 )
@@ -139,12 +140,10 @@ class BrregAdapter:
             return None, source, None, hint
 
         cached = self.gateway.get_content(source.url or "")
-        text = cached.text if cached else ""
         try:
-            import json
-
-            data = json.loads(text)
+            data = parse_json_body(cached.content if cached else b"")
         except ValueError:
+            source.error_detail = "registry identity JSON invalid or contains non-scalar Unicode"
             return None, source, None, "failed"
 
         if not isinstance(data, dict):
@@ -219,7 +218,7 @@ class BrregAdapter:
     ) -> tuple[List[EvidenceRecord], List[Fact]]:
         """One schema-qualified pointer per atomic field; never a generated quote."""
         cached = self.gateway.get_content(source.url or "")
-        document = json.loads(cached.text if cached else "")
+        document = parse_json_body(cached.content if cached else b"")
         evidences: List[EvidenceRecord] = []
         facts: List[Fact] = []
         for field, (pointers, normalization) in IDENTITY_PATHS.items():
@@ -291,10 +290,9 @@ class BrregAdapter:
             return [], [], source
         cached = self.gateway.get_content(source.url or "")
         try:
-            import json
-
-            data = json.loads(cached.text if cached else "")
+            data = parse_json_body(cached.content if cached else b"")
         except ValueError:
+            source.error_detail = "registry roles JSON invalid or contains non-scalar Unicode"
             return [], [], source
 
         evidences: List[EvidenceRecord] = []
@@ -390,10 +388,9 @@ class BrregAdapter:
 
         cached = self.gateway.get_content(source.url or "")
         try:
-            import json
-
-            payload = json.loads(cached.text if cached else "")
+            payload = parse_json_body(cached.content if cached else b"")
         except ValueError:
+            source.error_detail = "accounts JSON invalid or contains non-scalar Unicode"
             return [], [], source, "failed"
         items = payload if isinstance(payload, list) else [payload]
         if not items:
@@ -558,7 +555,7 @@ class BrregAdapter:
                 break
             cached = self.gateway.get_content(source.url or "")
             try:
-                data = json.loads(cached.text if cached else "")
+                data = parse_json_body(cached.content if cached else b"")
                 embedded = data.get("_embedded", {})
                 units = embedded.get("underenheter", [])
                 if not isinstance(units, list):
