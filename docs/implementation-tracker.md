@@ -174,3 +174,11 @@ Conflict correction: competing supported observations are all withheld and retai
 | Requirement/finding | Owner | Verification | Status | Evidence |
 |---|---|---|---|---|
 | F02 / B footer contradiction on focused pages | adapters/website.py; core/entity.py | test_website_page_identity.py; adjacent identity/publication/crawler tests | verified | D-076 eight initial negative failures10.58s; evaluate full uncleaned text/final URL before cleaning. Review caught separate-heading role suppression;4red18.77s, plus8br/hr red8.53s. Shared homepage/internal block-aware helper;31final/reviewer pass and86adjacent pass. Sources/rejection reasons retained, rejected pages emit no candidate evidence/facts/coverage. Website support remains withheld; not a new external coverage measurement |
+
+## Structured website candidate foundation — 2026-10-18
+
+| Requirement/finding | Owner | Verification | Status | Evidence |
+|---|---|---|---|---|
+| F.4/F.6 exact literal Organization description candidates | core/structured_data.py; adapters/website.py | test_website_structured_candidates.py plus crawler/export controls | verified | D-077 arbitrary prefix/meta behavior reproduced15then25red; bounded literal reader wired into actual homepage path.40focused/reviewer and108adjacent pass. Exact candidate values/diagnostic pointers/conflicting nodes retained; ledger still rejects publication. No external coverage gain claimed |
+| C/B typed HTML support and official retained anchor | core/models.py; core/evidence.py; export.py; website.py | future independent captured HTML/identity/rights adversarial contract | not_started | Existing1.1 locator remains JSON-pointer only. Diagnostic candidate locations grant no support. Typed contract, encoding/anchor/rights/language identity must be implemented before external claims publish; immutable real100/synthetic100/1000 bundles still verify |
+| A/D escaped-surrogate candidate broke terminal outcome | core/structured_data.py; pipeline persistence | actual pipeline normal/invalid-Unicode plus offline export | verified | Reviewer reproduced UnicodeEncodeError/no envelope;3red/1validUnicodegreen4.81s before scalar check. Malicious escaped description now abstains, supported identity envelope persists, exact source bytes remain inspectable and bundle verifies |

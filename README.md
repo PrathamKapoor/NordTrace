@@ -6,6 +6,8 @@ The financial brief template preserves each claim's amount, currency, unit, peri
 
 News indexes and general careers pages are retained as resource candidates; they do not establish dated events or active vacancies. Their substantive claims remain unpublished until typed evidence and identity checks are implemented.
 
+Homepage descriptions now use a bounded literal Organization-data candidate reader with exact values and diagnostic locations, rather than arbitrary page prefixes or unidentified meta text. It does not fetch remote contexts or execute scripts. These candidates remain unpublished pending typed HTML evidence, official identity-anchor linkage and source-specific rights.
+
 Acquisition DNS runs outside the event loop with at most 16 outstanding OS lookups per process. Caller cancellation and process exit do not wait for a stuck lookup; its capacity slot stays occupied until the OS returns. This does not establish hard bounds on synchronous parsing, storage, SSL setup or export. DNS cancellation after a request reservation is charged as unstarted, rather than a failed HTTP dispatch.
 
 ## Install

@@ -31,6 +31,7 @@ from nordtrace.core.models import (
     utcnow,
 )
 from nordtrace.core.request_gateway import RequestGateway
+from nordtrace.core.structured_data import organization_descriptions
 
 # Page classification ---------------------------------------------------------
 
@@ -262,7 +263,7 @@ class WebsiteAdapter:
             cov["business_description"] = "not_available"
             return evidences, facts, sources, rejected, cov
 
-        # homepage fact: business_description from meta/home text
+        # Homepage acquisition provenance; this alone supports no description.
         now = utcnow().isoformat()
         ev_home = EvidenceRecord(
             source_id=next(s.source_id for s in sources if s.url == home_url),
@@ -280,27 +281,40 @@ class WebsiteAdapter:
         evidences.append(ev_home)
         home_cached = self.gateway.get_content(home_url)
         assert home_cached is not None  # successfully fetched above
-        desc = _meta_description(BeautifulSoup(home_cached.text, "lxml")) or home_text[:400]
-        facts.append(
-            Fact(
+        soup = BeautifulSoup(home_cached.text, "lxml")
+        descriptions, extraction_rejections = organization_descriptions(
+            soup, identity.organisation_number, identity.legal_name,
+        )
+        rejected.extend({"url": home_url, "code": "structured_data_candidate_rejected", **item}
+                        for item in extraction_rejections)
+        home_source = next(source for source in sources if source.source_id == ev_home.source_id)
+        for candidate in descriptions:
+            evidence = EvidenceRecord(
+                source_id=home_source.source_id, url=home_source.final_url or home_url,
+                source_title="Website Organization description candidate", source_type=self.source_type,
+                authority_tier=self.authority_tier, retrieved_at=home_source.retrieved_at,
+                evidence_text=candidate["raw_value"], content_hash=home_source.content_hash,
+                entity_verdict=MatchVerdict.LIKELY.value, org_number=identity.organisation_number,
+                entity_match_details={"structured_data_candidate": candidate},
+            )
+            evidences.append(evidence)
+            facts.append(Fact(
                 org_number=identity.organisation_number,
                 run_id=run_id,
                 category="business_description",
                 field="description",
-                value=desc[:1200],
-                normalized_value=desc[:300],
-                source_id=ev_home.source_id,
-                evidence_id=ev_home.evidence_id,
-                retrieved_at=now,
+                value=candidate["raw_value"],
+                normalized_value=candidate["raw_value"],
+                source_id=evidence.source_id,
+                evidence_id=evidence.evidence_id,
+                retrieved_at=home_source.retrieved_at,
                 entity_verdict=MatchVerdict.LIKELY.value,
-                fact_confidence=0.8,
-                status=FactStatus.PUBLISHED.value,
-            )
-        )
-        cov["business_description"] = "found"
+                fact_confidence=0.0,  # No calibrated publication confidence is established.
+                status=FactStatus.EXTRACTED.value,
+            ))
+        cov["business_description"] = "ambiguous" if descriptions else "not_available"
 
         # ---- 2. focused crawl from homepage links ------------------------
-        soup = BeautifulSoup(home_cached.text, "lxml")
         links, pdf_links = self._extract_links(soup, home_url, urlsplit(home_url).hostname or "")
         scored: Dict[str, int] = {}
         for link in links:
@@ -543,13 +557,6 @@ class WebsiteAdapter:
             )
 
         return evidences, facts, sources, rejected, cov
-
-
-def _meta_description(soup: BeautifulSoup) -> Optional[str]:
-    meta = soup.find("meta", attrs={"name": "description"}) or soup.find("meta", property="og:description")
-    if meta and meta.get("content"):
-        return re.sub(r"\s+", " ", str(meta["content"])).strip()[:600]
-    return None
 
 
 def _page_title(soup: BeautifulSoup) -> Optional[str]:
