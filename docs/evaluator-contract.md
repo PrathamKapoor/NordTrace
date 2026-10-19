@@ -1,3 +1,7 @@
+## Current compatibility boundary — 2026-10-19 (D-084)
+
+Local result versions 1.1 and 1.2 are supported; both packaged resources remain frozen. Older dated references below to validation of 1.1 only describe their earlier implementation boundary. D-084 changes only unpublished structured financial diagnostics: exact source numeric tokens are retained as metadata, candidate values use decimal strings, and no guessed unit/multiplier or financial support locator is emitted. Canonical evidence carries diagnostic metadata without treating it as verified claim support. Generic identity JSON and published claim contracts remain unchanged. No new schema version is needed for this internal candidate repair. Independent unit/currency/period/scope support remains required before enabling publication; any eventual typed financial contract needs explicit version review. Organizer acceptance remains unverified.
+
 # Evaluator compatibility
 
 ## Primary-source recheck — 2026-10-18 (Asia/Calcutta)

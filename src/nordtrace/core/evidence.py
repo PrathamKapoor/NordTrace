@@ -6,7 +6,7 @@ import json
 import math
 import re
 from datetime import date, datetime
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from nordtrace.core.models import EvidenceRecord, Fact, HtmlJsonLdLocator, SourceRecord
@@ -83,19 +83,23 @@ def _finite_json_float(token: str) -> float:
     return value
 
 
-def parse_json_body(body: bytes) -> Any:
-    """Decode network JSON as UTF8 strictly; tolerate an optional UTF8 BOM.
-
-    Do not use HTTPX's replacement-decoded text as an identity/evidence value.
-    """
+def decode_source_json(
+    body: bytes, *, parse_float: Callable[[str], Any], parse_int: Callable[[str], Any] = int,
+) -> Any:
+    """Shared strict source decoder with an explicitly selected number representation."""
     text = body.decode("utf-8-sig")
     require_json_nesting(text)
     document = json.loads(
         text, object_pairs_hook=_unique_json_object,
-        parse_constant=_reject_json_constant, parse_float=_finite_json_float,
+        parse_constant=_reject_json_constant, parse_float=parse_float, parse_int=parse_int,
     )
     require_json_unicode(document)
     return document
+
+
+def parse_json_body(body: bytes) -> Any:
+    """Strict UTF8/BOM JSON, retaining the established generic int/finite-float contract."""
+    return decode_source_json(body, parse_float=_finite_json_float)
 
 # These paths express the public Enhetsregisteret schema, not evaluator rules.
 IDENTITY_PATHS: dict[str, tuple[tuple[str, ...], str]] = {

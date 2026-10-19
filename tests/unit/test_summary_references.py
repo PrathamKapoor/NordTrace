@@ -1,6 +1,7 @@
 """Brief references resolve to published claims; subunits retain their own scope."""
 import asyncio
 import re
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -100,8 +101,17 @@ def test_template_fragments_keep_logical_claim_references_without_granting_publi
     fact = Fact(org_number=ORG, category=category, field=field, value=value, source_id="source",
                 evidence_id="evidence", entity_verdict="VERIFIED", reporting_period="2025",
                 currency="EUR", unit="units", subject_scope="legal_entity")
-    ledger.add_fact(fact, evidence, source)
-    assert ledger.published_facts(ORG) == [fact]
+    if category == "financials":
+        ledger.add_fact(fact, evidence, source)
+        assert fact.status == "FAILED" and ledger.published_facts(ORG) == []
+        # Renderer-only hypothetical DTO input: no publication is granted.
+        ledger = SimpleNamespace(
+            evidence={}, current_values=lambda org: {fact.fact_key(): fact},
+            published_facts=lambda org: [fact], conflicting_facts=lambda org: [],
+        )
+    else:
+        ledger.add_fact(fact, evidence, source)
+        assert ledger.published_facts(ORG) == [fact]
     summary = build_summary(CompanyIdentity(organisation_number=ORG, legal_name="FIXTURE AS"),
                             ledger, Coverage(), [])
     assert f"[{fact.claim_id}]" in summary

@@ -68,11 +68,11 @@ def test_legal_entity_accounts_do_not_lose_to_newer_group_accounts(tmp_path, mon
     evidence, facts, source, status = collect(tmp_path, monkeypatch, [group, BASE])
     assert status == "found"
     revenue = next(f for f in facts if f.field == "revenue")
-    assert revenue.value == 0 and revenue.currency == "EUR"
+    assert revenue.value == "0" and revenue.currency == "EUR"
     assert revenue.reporting_period == "2025-01-01/2025-12-31"
     assert revenue.subject_scope == "legal_entity"
     assert revenue.retrieved_at == source.retrieved_at
-    assert next(f for f in facts if f.field == "operating_result").value == -12
+    assert next(f for f in facts if f.field == "operating_result").value == "-12"
     assert evidence[0].entity_match_details["regnskapstype"] == "SELSKAP"
 
 
@@ -124,19 +124,19 @@ def test_accounts_abstention_state_survives_canonical_finalization(
     finally:
         repo.close()
 
-def test_candidate_record_locator_replays_but_does_not_enable_financial_publication(tmp_path, monkeypatch):
-    import json
-
+def test_candidate_lexeme_replays_but_does_not_enable_financial_publication(tmp_path, monkeypatch):
     from nordtrace.core.evidence import resolve_pointer
+    from nordtrace.core.financial import parse_accounts_json
     from nordtrace.core.ledger import CitationValidator
 
     evidence, facts, source, _ = collect(tmp_path, monkeypatch, [BASE])
     repo = Repository(tmp_path / "accounts.db")
     try:
         _, body = repo.read_capture(source.source_id)
-        locator = evidence[0].locator
-        assert resolve_pointer(json.loads(body), locator.pointer) == locator.raw_value == BASE
-        assert json.loads(evidence[0].evidence_text) == BASE
+        details = evidence[0].entity_match_details
+        assert evidence[0].locator is None
+        assert resolve_pointer(parse_accounts_json(body), details["field_pointer"]).lexeme == "0"
+        assert details["raw_number_lexeme"] == "0"
         assert evidence[0].entity_match_details["unit_scale_basis"] == "unresolved"
         assert all(f.status == "EXTRACTED" for f in facts)
         validator = CitationValidator({source.source_id: source}, {e.evidence_id: e for e in evidence}, repo)

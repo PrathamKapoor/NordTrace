@@ -2,7 +2,7 @@
 
 import pytest
 
-from nordtrace.core.ledger import FactLedger
+from nordtrace.core.ledger import FactLedger, _quoted_number
 from nordtrace.core.models import EvidenceRecord, Fact, SourceRecord
 
 
@@ -40,6 +40,7 @@ def test_financial_claim_without_reporting_period_is_withheld():
 
 
 def test_value_substring_does_not_support_a_different_numeric_value():
+    assert not _quoted_number(999999999, "Revenue 1999999999 NOK FY2025")
     result = ledger_with_quote("Revenue 1999999999 NOK FY2025").add_fact(revenue())
     assert result.status == "FAILED"
 
@@ -49,8 +50,9 @@ def test_value_substring_does_not_support_a_different_numeric_value():
     (-100, "Revenue -100 NOK FY2025"),
 ])
 def test_explicit_zero_and_negative_values_are_preserved(value, quote):
+    assert _quoted_number(value, quote)
     result = ledger_with_quote(quote).add_fact(revenue(value))
-    assert result.status == "PUBLISHED"
+    assert result.status == "FAILED"  # A quote alone establishes no retained financial support.
     assert result.value == value
 
 
@@ -59,8 +61,10 @@ def test_explicit_zero_and_negative_values_are_preserved(value, quote):
     (100, "Revenue (100) NOK FY2025"),
 ])
 def test_numeric_group_or_negative_parentheses_cannot_support_wrong_value(value, quote):
+    assert not _quoted_number(value, quote)
     assert ledger_with_quote(quote).add_fact(revenue(value)).status == "FAILED"
 
 
 def test_negative_parentheses_preserve_the_sign():
-    assert ledger_with_quote("Revenue (100) NOK FY2025").add_fact(revenue(-100)).status == "PUBLISHED"
+    assert _quoted_number(-100, "Revenue (100) NOK FY2025")
+    assert ledger_with_quote("Revenue (100) NOK FY2025").add_fact(revenue(-100)).status == "FAILED"

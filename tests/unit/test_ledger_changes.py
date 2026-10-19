@@ -1,6 +1,48 @@
+import hashlib
+import json
+
+import pytest
+
 from nordtrace.core.changes import detect_changes
 from nordtrace.core.ledger import FactLedger
-from nordtrace.core.models import EvidenceRecord, Fact, FactStatus, SourceRecord, utcnow
+from nordtrace.core.models import EvidenceRecord, Fact, FactStatus, JsonPointerLocator, SourceRecord, utcnow
+from nordtrace.core.repository import Repository
+
+
+@pytest.fixture
+def retained_registry(tmp_path):
+    """Exercise ledger mechanics with real retained/located registry support."""
+    repo = Repository(tmp_path / "ledger.db")
+    ledger = FactLedger(repo)
+
+    def observe(value, field="employee_count"):
+        key = "antallAnsatte" if field == "employee_count" else "navn"
+        document = {"organisasjonsnummer": "982463718", key: value}
+        body = json.dumps(document).encode()
+        source = SourceRecord(
+            url="https://data.brreg.no/enhetsregisteret/api/enheter/982463718",
+            source_type="registry", authority_tier=0, org_number="982463718",
+            access_status="success", http_status=200, retrieved_at=utcnow().isoformat(),
+            content_hash=hashlib.sha256(body).hexdigest(), snapshot_representation="http-response-body-v1",
+        )
+        repo.save_capture(source, body)
+        evidence = EvidenceRecord(
+            source_id=source.source_id, source_type="registry", authority_tier=0,
+            org_number="982463718", entity_verdict="VERIFIED", content_hash=source.content_hash,
+            retrieved_at=source.retrieved_at, evidence_text=json.dumps(value),
+            locator=JsonPointerLocator(pointer="/" + key, raw_value=value),
+        )
+        fact = Fact(
+            org_number="982463718", category="identity", field=field, value=value, normalized_value=value,
+            subject_scope="legal_entity", source_id=source.source_id, evidence_id=evidence.evidence_id,
+            entity_verdict="VERIFIED", retrieved_at=source.retrieved_at,
+        )
+        return ledger.add_fact(fact, evidence, source)
+
+    try:
+        yield ledger, observe
+    finally:
+        repo.close()
 
 
 def make_src(src_id="s1", org="982463718", status="success"):
@@ -49,11 +91,9 @@ def make_fact(
 
 
 # --- citation validation ---
-def test_valid_citation_publishes():
-    led = FactLedger()
-    led.add_source(make_src())
-    led.add_evidence(make_ev())
-    f = led.add_fact(make_fact())
+def test_valid_citation_publishes(retained_registry):
+    _, observe = retained_registry
+    f = observe(100)
     assert f.status == FactStatus.PUBLISHED.value
 
 
@@ -109,31 +149,25 @@ def test_evidence_from_other_source_fails():
 
 
 # --- conflict detection ---
-def test_conflict_detected_same_slot_different_value():
-    led = FactLedger()
-    led.add_source(make_src())
-    led.add_evidence(make_ev())
-    led.add_fact(make_fact(val=100))
-    f2 = led.add_fact(make_fact(val=999))
+def test_conflict_detected_same_slot_different_value(retained_registry):
+    _, observe = retained_registry
+    observe(100)
+    f2 = observe(999)
     assert f2.status == FactStatus.CONFLICT.value
     assert "conflict" in f2.conflict_note.lower()
 
 
-def test_no_conflict_same_value():
-    led = FactLedger()
-    led.add_source(make_src())
-    led.add_evidence(make_ev())
-    led.add_fact(make_fact(val=100))
-    f2 = led.add_fact(make_fact(val=100))
+def test_no_conflict_same_value(retained_registry):
+    _, observe = retained_registry
+    observe(100)
+    f2 = observe(100)
     assert f2.status == FactStatus.PUBLISHED.value
 
 
-def test_no_conflict_different_slots():
-    led = FactLedger()
-    led.add_source(make_src())
-    led.add_evidence(make_ev())
-    led.add_fact(make_fact(fld="revenue", val=100))
-    f2 = led.add_fact(make_fact(fld="equity", val=999))
+def test_no_conflict_different_slots(retained_registry):
+    _, observe = retained_registry
+    observe(100)
+    f2 = observe("FIXTURE AS", field="legal_name")
     assert f2.status == FactStatus.PUBLISHED.value
 
 
@@ -160,12 +194,10 @@ def test_temporal_facts_not_merged():
 
 
 # --- source unavailable on refresh ---
-def test_mark_source_unavailable():
-    led = FactLedger()
-    led.add_source(make_src())
-    led.add_evidence(make_ev())
-    led.add_fact(make_fact(val=100))
-    n = led.mark_source_unavailable("982463718", "s1")
+def test_mark_source_unavailable(retained_registry):
+    led, observe = retained_registry
+    fact = observe(100)
+    n = led.mark_source_unavailable("982463718", fact.source_id)
     assert n == 1
     facts = led.all_entries()
     assert facts[0].fact.status == FactStatus.SOURCE_UNAVAILABLE.value

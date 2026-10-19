@@ -31,6 +31,7 @@ from nordtrace.core.evidence import (
     require_registry_identity_acquisition,
     resolve_pointer,
 )
+from nordtrace.core.financial import JsonNumber, parse_accounts_json
 from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
@@ -388,7 +389,7 @@ class BrregAdapter:
 
         cached = self.gateway.get_content(source.url or "")
         try:
-            payload = parse_json_body(cached.content if cached else b"")
+            payload = parse_accounts_json(cached.content if cached else b"")
         except ValueError as error:
             source.error_detail = f"accounts JSON rejected: {error}"
             return [], [], source, "failed"
@@ -439,7 +440,7 @@ class BrregAdapter:
             return [], [], source, "ambiguous"
         latest_end = max(periods[index][1] for index, _ in legal)
         newest = [(index, record) for index, record in legal if periods[index][1] == latest_end]
-        if len({json.dumps(record, sort_keys=True, ensure_ascii=False) for _, record in newest}) > 1:
+        if any(record != newest[0][1] for _, record in newest[1:]):
             source.error_detail = "competing accounts records for the same latest period"
             return [], [], source, "ambiguous"
         index, latest = newest[0]
@@ -451,67 +452,76 @@ class BrregAdapter:
         period_label = f"{start}/{end}"
         periode = latest["regnskapsperiode"]
 
-        ev = EvidenceRecord(
-            source_id=source.source_id,
-            url=source.url,
-            source_title="Brønnøysundregistrene — Regnskapsregisteret",
-            source_type=SourceType.REGISTRY_ACCOUNTS.value,
-            authority_tier=0,
-            retrieved_at=source.retrieved_at,
-            evidence_text=json.dumps(latest, ensure_ascii=False, sort_keys=True),
-            locator=JsonPointerLocator(pointer=f"/{index}" if isinstance(payload, list) else "",
-                                       raw_value=latest),
-            content_hash=source.content_hash,
-            entity_verdict=MatchVerdict.VERIFIED.value,
-            org_number=org_number,
-            entity_match_details={
-                "registry": "brreg_regnskap", "journalnr": latest.get("journalnr"),
-                "regnskapstype": latest["regnskapstype"], "publication_support": "unimplemented",
-                "unit_scale_basis": "unresolved",
-            },
-        )
-
-        rr = latest.get("resultatregnskapResultat") or {}
-        drift = rr.get("driftsresultat") or {}
-        eg = latest.get("egenkapitalGjeld") or {}
-        eiendeler = latest.get("eiendeler") or {}
-
-        def fin_fact(field: str, value, unit: Optional[str] = None) -> Optional[Fact]:
+        # Financial diagnostics use per-field lexical numbers, not a rounded
+        # whole-record locator. No supported unit/scale rule exists yet.
+        paths = {
+            "revenue": (
+                "resultatregnskapResultat", "driftsresultat", "driftsinntekter", "sumDriftsinntekter",
+            ),
+            "operating_result": ("resultatregnskapResultat", "driftsresultat", "driftsresultat"),
+            "annual_result": ("resultatregnskapResultat", "aarsresultat"),
+            "total_assets": ("eiendeler", "sumEiendeler"),
+            "equity": ("egenkapitalGjeld", "egenkapital", "sumEgenkapital"),
+            "total_liabilities": ("egenkapitalGjeld", "gjeldOversikt", "sumGjeld"),
+        }
+        evidences, facts = [], []
+        invalid = False
+        for field, path in paths.items():
+            value = latest
+            for key in path:
+                if value is None:
+                    break
+                if not isinstance(value, dict):
+                    invalid = True
+                    value = None
+                    break
+                value = value.get(key)
             if value is None:
-                return None
-            return Fact(
-                org_number=org_number,
-                run_id=run_id,
-                category="financials",
-                field=field,
-                value=value,
-                normalized_value=value,
-                currency=currency,
-                reporting_period=period_label,
-                subject_scope="legal_entity",
-                valid_from=periode.get("fraDato"),
+                continue
+            if not isinstance(value, JsonNumber):
+                invalid = True
+                continue
+            try:
+                exact = value.decimal_text()
+            except ValueError:
+                invalid = True
+                continue
+            pointer = (f"/{index}" if isinstance(payload, list) else "") + "/" + "/".join(path)
+            journal = latest.get("journalnr")
+            journal = journal.lexeme if isinstance(journal, JsonNumber) else journal
+            if not isinstance(journal, str):
+                journal = None
+            display = {
+                "source_number": value.lexeme, "currency": currency,
+                "period_start": start, "period_end": end, "scope": latest["regnskapstype"],
+            }
+            ev = EvidenceRecord(
+                source_id=source.source_id, url=source.url,
+                source_title="Brønnøysundregistrene — Regnskapsregisteret",
+                source_type=SourceType.REGISTRY_ACCOUNTS.value, authority_tier=0,
+                retrieved_at=source.retrieved_at, content_hash=source.content_hash,
+                evidence_text=json.dumps(display, ensure_ascii=False, sort_keys=True),
+                org_number=org_number, entity_verdict=MatchVerdict.VERIFIED.value,
+                entity_match_details={
+                    "registry": "brreg_regnskap", "journalnr": journal,
+                    "regnskapstype": latest["regnskapstype"], "publication_support": "unimplemented",
+                    "unit_scale_basis": "unresolved", "field_pointer": pointer,
+                    "raw_number_lexeme": value.lexeme, "number_representation": "json-number-decimal-v1",
+                },
+            )
+            evidences.append(ev)
+            facts.append(Fact(
+                org_number=org_number, run_id=run_id, category="financials", field=field,
+                value=exact, normalized_value=exact, currency=currency, reporting_period=period_label,
+                subject_scope="legal_entity", valid_from=periode.get("fraDato"),
                 valid_to=periode.get("tilDato"),
-                source_id=source.source_id,
-                evidence_id=ev.evidence_id,
-                retrieved_at=source.retrieved_at,
-                entity_verdict=MatchVerdict.VERIFIED.value,
-                fact_confidence=0.99,
+                source_id=source.source_id, evidence_id=ev.evidence_id, retrieved_at=source.retrieved_at,
+                entity_verdict=MatchVerdict.VERIFIED.value, fact_confidence=0.0,
                 status=FactStatus.EXTRACTED.value,
-            )
-
-        facts = [
-            f
-            for f in (
-                fin_fact("revenue", drift.get("driftsinntekter", {}).get("sumDriftsinntekter")),
-                fin_fact("operating_result", drift.get("driftsresultat")),
-                fin_fact("annual_result", rr.get("aarsresultat")),
-                fin_fact("total_assets", eiendeler.get("sumEiendeler")),
-                fin_fact("equity", eg.get("egenkapital", {}).get("sumEgenkapital")),
-                fin_fact("total_liabilities", eg.get("gjeldOversikt", {}).get("sumGjeld")),
-            )
-            if f
-        ]
-        return [ev], facts, source, "found" if facts else "not_found"
+            ))
+        if invalid:
+            source.error_detail = "unsupported monetary value or accounting field shape"
+        return evidences, facts, source, "found" if facts else "ambiguous" if invalid else "not_found"
 
     # ------------------------------------------------------------------ branches
     async def fetch_underenheter(

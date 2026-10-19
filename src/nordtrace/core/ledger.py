@@ -98,6 +98,8 @@ class CitationValidator:
                 return False, "financial reporting year absent from evidence"
             if not _quoted_number(fact.value, ev.evidence_text):
                 return False, "financial value absent from evidence"
+            if self.repository is None:
+                return False, "financial support requires retained snapshots"
         if isinstance(ev.locator, HtmlJsonLdLocator):
             if self.repository is None:
                 return False, "HTML support requires retained snapshots"

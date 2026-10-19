@@ -1,18 +1,28 @@
 """Legacy template safeguards only: financial production support stays withheld."""
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
-from nordtrace.core.ledger import FactLedger
 from nordtrace.core.models import ChangeRecord, CompanyIdentity, Coverage, EvidenceRecord, Fact, SourceRecord
 from nordtrace.core.synthesis import build_summary
 
 ORG = "982463718"
 
 
+def template_inputs():
+    """Renderer input double only; no ledger, support validator or publication."""
+    facts = []
+    return SimpleNamespace(
+        facts=facts, evidence={}, published_facts=lambda org: facts,
+        current_values=lambda org: {fact.fact_key(): fact for fact in facts},
+        conflicting_facts=lambda org: [],
+    )
+
+
 def add_candidate(ledger, field="revenue", value=Decimal("1234.56"), **qualifiers):
-    # Real production rejects these unlocated financial candidates. This legacy
-    # in-memory ledger exercises the downstream template without mocking it.
+    # Exercise the real renderer with explicit hypothetical inputs. Do not call
+    # publication or claim these inputs passed the production evidence boundary.
     source = SourceRecord(access_status="success", org_number=ORG)
     evidence = EvidenceRecord(source_id=source.source_id, org_number=ORG,
                               entity_verdict="VERIFIED",
@@ -23,9 +33,8 @@ def add_candidate(ledger, field="revenue", value=Decimal("1234.56"), **qualifier
     fact = Fact(org_number=ORG, category="financials", field=field, value=value,
                 source_id=source.source_id, evidence_id=evidence.evidence_id,
                 entity_verdict="VERIFIED", **fields)
-    ledger.add_fact(fact, evidence, source)
-    assert fact in ledger.published_facts(ORG)
-    assert fact.status == "PUBLISHED"
+    ledger.facts.append(fact)
+    assert fact.status == "DISCOVERED"
     return fact
 
 
@@ -43,14 +52,14 @@ def render(ledger):
     (Decimal("0.00"), "0.00"),
 ])
 def test_monetary_text_preserves_exact_normalized_value_and_qualifiers(value, expected):
-    ledger = FactLedger()
+    ledger = template_inputs()
     fact = add_candidate(ledger, value=value)
     text = render(ledger)
     assert f"revenue EUR {expected} (unit: units; period: 2025; legal entity) [{fact.claim_id}]" in text
 
 
 def test_each_financial_observation_keeps_its_own_period_unit_currency_and_scope():
-    ledger = FactLedger()
+    ledger = template_inputs()
     revenue = add_candidate(ledger, value=1000, unit="thousands")
     result = add_candidate(ledger, field="annual_result", value=-20.25, currency="NOK",
                            unit="millions", reporting_period="2024", subject_scope="group")
@@ -62,7 +71,7 @@ def test_each_financial_observation_keeps_its_own_period_unit_currency_and_scope
 
 @pytest.mark.parametrize("qualifiers", [{"unit": None}, {"unit": ""}, {"subject_scope": "unknown"}])
 def test_template_does_not_display_monetary_candidates_with_unresolved_qualifiers(qualifiers):
-    ledger = FactLedger()
+    ledger = template_inputs()
     fact = add_candidate(ledger, **qualifiers)
     text = render(ledger)
     assert f"[{fact.claim_id}]" not in text
@@ -71,7 +80,7 @@ def test_template_does_not_display_monetary_candidates_with_unresolved_qualifier
 
 
 def test_unresolved_financial_candidate_does_not_hide_the_qualified_observation():
-    ledger = FactLedger()
+    ledger = template_inputs()
     add_candidate(ledger, field="revenue", unit=None)
     result = add_candidate(ledger, field="annual_result", value=0)
     text = render(ledger)
@@ -81,7 +90,7 @@ def test_unresolved_financial_candidate_does_not_hide_the_qualified_observation(
 
 @pytest.mark.parametrize("kind", ["NEW", "CHANGED", "RETRACTED"])
 def test_financial_change_text_does_not_publish_unqualified_or_truncated_amounts(kind):
-    ledger = FactLedger()
+    ledger = template_inputs()
     current = "11112222333344445555666677778888999900001111222233.45"
     fact = add_candidate(ledger, value=current)
     changes = [ChangeRecord(org_number=ORG, run_id="new", category="financials", field="revenue",
@@ -96,7 +105,7 @@ def test_financial_change_text_does_not_publish_unqualified_or_truncated_amounts
 
 
 def test_oversized_fixed_point_amount_is_withheld_without_allocating_a_huge_brief():
-    ledger = FactLedger()
+    ledger = template_inputs()
     fact = add_candidate(ledger, value=10 ** 300)
     text = render(ledger)
     assert f"[{fact.claim_id}]" not in text
