@@ -165,3 +165,22 @@ test('HTML evidence shows its embedded script and exact source-authored value sa
   assert.match(rendered, /\/@graph\/1\/description/);
   assert.doesNotMatch(rendered, /<img\b/);
 });
+test('amount evidence shows the exact lexeme, statement record and multiplier basis safely', async () => {
+  const {context, element} = runtime(async () => ({ok: true, json: async () => ({
+    run_id: 'amount-run', evidence: {evidence_text: '{"source_number": "882017.0"}', locator: {
+      kind: 'json_number', pointer: '/0/resultatregnskapResultat/aarsresultat', raw_value: '-12.50',
+      record_pointer: '/0', record_id: '120<b>', multiplier: '1', representation: 'json-number-lexeme-v1',
+      unit_basis: 'rr0002-denomination-normalized-at-receipt', normalization: 'brreg-account-amount-v1',
+    }}, source: {url: 'https://data.brreg.no/regnskapsregisteret/regnskap/982463718'}, snapshot: {},
+    claims: [{state: 'current'}],
+  })}));
+  context.fact = {org_number: '982463718', evidence_id: 'amount', category: 'financials',
+    field: 'annual_result', value: '-12.5', currency: 'NOK', unit: 'currency_unit_x1',
+    reporting_period: '2025-01-01/2025-12-31', subject_scope: 'legal_entity'};
+  await vm.runInContext('showEvidence(fact, "amount-run")', context);
+  const rendered = element('evidencePanel').innerHTML;
+  assert.match(rendered, /<pre>-12\.50<\/pre>/);
+  assert.match(rendered, /Multiplier \/ unit basis:<\/span> 1 \/ rr0002-denomination-normalized-at-receipt/);
+  assert.match(rendered, /120&lt;b&gt;/);
+  assert.doesNotMatch(rendered, /120<b>/);
+});

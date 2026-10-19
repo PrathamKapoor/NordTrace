@@ -1,4 +1,4 @@
-"""Legacy template safeguards only: financial production support stays withheld."""
+"""Template renderer safeguards; production amount support is tested in test_account_amounts.py."""
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -20,7 +20,7 @@ def template_inputs():
     )
 
 
-def add_candidate(ledger, field="revenue", value=Decimal("1234.56"), **qualifiers):
+def add_candidate(ledger, field="total_operating_revenue", value=Decimal("1234.56"), **qualifiers):
     # Exercise the real renderer with explicit hypothetical inputs. Do not call
     # publication or claim these inputs passed the production evidence boundary.
     source = SourceRecord(access_status="success", org_number=ORG)
@@ -55,7 +55,8 @@ def test_monetary_text_preserves_exact_normalized_value_and_qualifiers(value, ex
     ledger = template_inputs()
     fact = add_candidate(ledger, value=value)
     text = render(ledger)
-    assert f"revenue EUR {expected} (unit: units; period: 2025; legal entity) [{fact.claim_id}]" in text
+    assert (f"total operating revenue EUR {expected} (unit: units; period: 2025; legal entity) "
+            f"[{fact.claim_id}]") in text
 
 
 def test_each_financial_observation_keeps_its_own_period_unit_currency_and_scope():
@@ -64,7 +65,8 @@ def test_each_financial_observation_keeps_its_own_period_unit_currency_and_scope
     result = add_candidate(ledger, field="annual_result", value=-20.25, currency="NOK",
                            unit="millions", reporting_period="2024", subject_scope="group")
     text = render(ledger)
-    assert f"revenue EUR 1 000 (unit: thousands; period: 2025; legal entity) [{revenue.claim_id}]" in text
+    assert (f"total operating revenue EUR 1 000 (unit: thousands; period: 2025; legal entity) "
+            f"[{revenue.claim_id}]") in text
     assert f"annual result NOK -20.25 (unit: millions; period: 2024; group) [{result.claim_id}]" in text
     assert "Financials (2025)" not in text
 
@@ -81,7 +83,7 @@ def test_template_does_not_display_monetary_candidates_with_unresolved_qualifier
 
 def test_unresolved_financial_candidate_does_not_hide_the_qualified_observation():
     ledger = template_inputs()
-    add_candidate(ledger, field="revenue", unit=None)
+    add_candidate(ledger, field="total_operating_revenue", unit=None)
     result = add_candidate(ledger, field="annual_result", value=0)
     text = render(ledger)
     assert f"annual result EUR 0 (unit: units; period: 2025; legal entity) [{result.claim_id}]" in text

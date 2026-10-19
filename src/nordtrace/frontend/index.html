@@ -375,7 +375,8 @@ async function showEvidence(f, runId, trigger = null) {
       <div class="kv"><span class="k">Observation:</span> ${esc(data.claims.map(item => item.state).join(", "))}</div>
       <div class="kv"><span class="k">Subject scope:</span> ${na(f.subject_scope)}</div>
       <div class="kv"><span class="k">Reporting period / currency / unit:</span> ${na(f.reporting_period)} / ${na(f.currency)} / ${na(f.unit)}</div>
-      <h3>Source value</h3><pre>${esc(JSON.stringify(locator.raw_value, null, 2))}</pre>
+      <h3>Source value</h3><pre>${esc(locator.kind === "json_number" ? locator.raw_value
+        : JSON.stringify(locator.raw_value, null, 2))}</pre>
       <div class="kv"><span class="k">Source:</span> ${safeSourceLink(src.url)}</div>
       <div class="kv"><span class="k">Retrieved:</span> ${na(ev.retrieved_at)}</div>
       <div class="kv"><span class="k">Source publication date:</span> ${na(ev.published_at)}</div>
@@ -385,6 +386,10 @@ async function showEvidence(f, runId, trigger = null) {
         <div class="kv"><span class="k">Embedded script index:</span> ${esc(locator.script_index)}</div>
         <div class="kv"><span class="k">Identity anchor:</span> <code>${esc(locator.identity_source_id)}</code></div>
         <div class="kv"><span class="k">Assertion basis:</span> ${esc(locator.assertion)}</div>
+        <div class="kv"><span class="k">Locator representation:</span> ${esc(locator.representation)}</div>` : ""}
+        ${locator.kind === "json_number" ? `
+        <div class="kv"><span class="k">Statement record:</span> ${esc(locator.record_id)} at <code>${esc(locator.record_pointer || "(document root)")}</code></div>
+        <div class="kv"><span class="k">Multiplier / unit basis:</span> ${esc(locator.multiplier)} / ${esc(locator.unit_basis)}</div>
         <div class="kv"><span class="k">Locator representation:</span> ${esc(locator.representation)}</div>` : ""}
         <div class="kv"><span class="k">JSON pointer:</span> <code>${esc(locator.pointer || "(document root)")}</code></div>
         <div class="kv"><span class="k">Normalization:</span> ${esc(locator.normalization || "identity")}</div>

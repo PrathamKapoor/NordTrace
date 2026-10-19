@@ -86,7 +86,7 @@ def test_real_profile_brief_references_identity_and_registered_subunit_observati
     ("business_description", "description", "Fixture services"),
     ("leadership", "board", {"name": "Fixture Person", "role": "chair"}),
     ("recent_activity", "event", {"event": "Fixture event", "date": "2025-01-02"}),
-    ("financials", "revenue", 123),
+    ("financials", "total_operating_revenue", 123),
 ])
 def test_template_fragments_keep_logical_claim_references_without_granting_publication(
     category, field, value,

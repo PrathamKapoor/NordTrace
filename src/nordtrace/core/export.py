@@ -26,11 +26,14 @@ from nordtrace.core.repository import Repository
 DEFAULT_MAX_BYTES = 256 * 1024 * 1024  # Local uncompressed export capacity, not a run budget.
 
 
+SCHEMA_VERSIONS = ("1.1", "1.2", "1.3")  # Ordered; each frozen resource is immutable.
+
+
 def result_schema(version: str) -> dict:
     """Read a frozen local contract; never derive older schemas from live models."""
-    if version not in ("1.1", "1.2"):
+    if version not in SCHEMA_VERSIONS:
         raise ValueError("unsupported local result schema version")
-    name = {"1.1": "result-1.1.json", "1.2": "result-1.2.json"}[version]
+    name = {"1.1": "result-1.1.json", "1.2": "result-1.2.json", "1.3": "result-1.3.json"}[version]
     resource = files("nordtrace.core").joinpath("schemas", name)
     return json.loads(resource.read_text(encoding="utf-8"))
 
@@ -127,6 +130,11 @@ def _starter_example(result: CompanyProfile) -> dict:
         payload["compatibility"]["structured_evidence"] = (
             "Typed retained JSON/HTML locator and raw value; HTML assertions are source-authored"
         )
+    elif result.schema_version == "1.3":
+        payload["compatibility"]["structured_evidence"] = (
+            "Typed retained JSON/HTML/JSON-number locator and raw value; HTML assertions are "
+            "source-authored; amounts carry exact source lexemes, currency, full period and multiplier"
+        )
     return payload
 
 
@@ -202,8 +210,8 @@ def export_run(
                         if result is None or result.run_id != run_id or result.organisation_number != key:
                             raise ValueError("incomplete run: missing or mismatched canonical result")
                         _validate_result(result, repo)
-                        if result.schema_version == "1.2":
-                            schema_version = "1.2"
+                        schema_version = max(schema_version, result.schema_version,
+                                             key=SCHEMA_VERSIONS.index)
                         body = charge(_json(result.model_dump(mode="json")))
                         results.write(body)
                         digest.update(body)
@@ -304,7 +312,7 @@ def verify_bundle(output: str | Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> 
         manifest = json.loads(archive.read("manifest.json"))
         if not isinstance(manifest, dict) or manifest.get("format") != "nordtrace-audit-bundle-v1":
             raise ValueError("unsupported bundle format")
-        if manifest.get("result_schema") not in ("nordtrace-1.1", "nordtrace-1.2"):
+        if manifest.get("result_schema") not in tuple("nordtrace-" + item for item in SCHEMA_VERSIONS):
             raise ValueError("unsupported bundle result schema")
         BundleOperations.model_validate(manifest["operations"])
         schema = archive.read("result-schema.json")
@@ -332,7 +340,7 @@ def verify_bundle(output: str | Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> 
                     if isinstance(config, dict) and "allowed_source_origins" in config:
                         raise ValueError("legacy result schema cannot declare a new source policy")
                 result = CompanyProfile.model_validate_json(line)
-                if version == "1.1" and result.schema_version != "1.1":
+                if SCHEMA_VERSIONS.index(result.schema_version) > SCHEMA_VERSIONS.index(version):
                     raise ValueError("result version exceeds declared bundle schema")
                 if result.run_id != manifest["run_id"]:
                     raise ValueError("result run differs from manifest")

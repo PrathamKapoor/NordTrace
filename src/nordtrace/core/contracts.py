@@ -10,7 +10,7 @@ import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,7 @@ from nordtrace.core.models import (
     CompanyProfile,
     Fact,
     HtmlJsonLdLocator,
+    JsonNumberLocator,
     ResearchError,
     ResearchMetadata,
     utcnow,
@@ -100,6 +101,13 @@ def project_identity(
     return CompanyIdentity.model_validate(identity.model_dump() | updates)
 
 
+def result_version(evidence: Any) -> Literal["1.1", "1.2", "1.3"]:
+    """Smallest frozen contract able to represent every locator kind present."""
+    if any(isinstance(item.locator, JsonNumberLocator) for item in evidence):
+        return "1.3"
+    return "1.2" if any(isinstance(item.locator, HtmlJsonLdLocator) for item in evidence) else "1.1"
+
+
 def build_result(outcome: Any, run_id: str, budget: BudgetManager, started_at: str) -> CompanyProfile:
     """Serialize the actual outcome, never infer it from a claim count."""
     completed = utcnow().isoformat()
@@ -111,8 +119,7 @@ def build_result(outcome: Any, run_id: str, budget: BudgetManager, started_at: s
             stage=outcome.stages[-1] if outcome.stages else None,
         ))
     return CompanyProfile(
-        schema_version="1.2" if any(isinstance(item.locator, HtmlJsonLdLocator)
-                                    for item in outcome.evidence) else "1.1",
+        schema_version=result_version(outcome.evidence),
         run_id=run_id, organisation_number=outcome.org_number, status=outcome.terminal_state,
         status_reason=(getattr(outcome, "error_code", None) or getattr(outcome, "status_reason", None) or {
             "available": "research_completed", "not_available": "information_not_available",
@@ -148,7 +155,8 @@ def batch_payload(run: Any, results: list[CompanyProfile], inputs: list[dict]) -
     if {item["result_key"] for item in inputs} != set(keys):
         raise ValueError("input mapping does not correspond to batch results")
     return {
-        "schema_version": "1.2" if any(result.schema_version == "1.2" for result in results) else "1.1",
+        "schema_version": max((result.schema_version for result in results), default="1.1",
+                              key=("1.1", "1.2", "1.3").index),
         "run_id": run.run_id, "state": run.state,
         "inputs": inputs, "results": [result.model_dump(mode="json") for result in results],
         "completion": {"complete": True, "input_count": len(inputs), "result_count": len(results)},

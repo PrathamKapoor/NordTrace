@@ -50,13 +50,15 @@ def build_summary(
         parts.append("Industry: not verified in this run.")
 
     # 3. scale / financials — only verified facts
-    rev = _latest(ledger, org, "financials", "revenue")
-    res = _latest(ledger, org, "financials", "operating_result")
-    ar = _latest(ledger, org, "financials", "annual_result")
-    eq = _latest(ledger, org, "financials", "equity")
+    # Each predicate shows its most recent supported period, labelled with that period;
+    # this is display ordering, never an amended-filing precedence claim.
     emp = _latest(ledger, org, "identity", "employee_count")
     financials = [(label, fact) for label, fact in (
-        ("revenue", rev), ("operating result", res), ("annual result", ar), ("equity", eq),
+        (label, _latest(ledger, org, "financials", field)) for label, field in (
+            ("total operating revenue", "total_operating_revenue"), ("operating result", "operating_result"),
+            ("annual result", "annual_result"), ("equity", "equity"), ("total assets", "total_assets"),
+            ("total liabilities", "total_liabilities"),
+        )
     ) if fact is not None]
     fin_parts = []
     for label, fact in financials:
@@ -201,7 +203,8 @@ def _financial_text(fact: Fact) -> Optional[str]:
     if not isinstance(exponent, int) or max(1, value.adjusted() + 1) + max(0, -exponent) > 256:
         return None
     number = format(value, ",f").replace(",", " ")
-    return (f"{fact.currency} {number} (unit: {fact.unit}; period: {fact.reporting_period}; "
+    unit = {"currency_unit_x1": "whole currency units"}.get(fact.unit, fact.unit)
+    return (f"{fact.currency} {number} (unit: {unit}; period: {fact.reporting_period}; "
             f"{scopes[fact.subject_scope]})")
 
 

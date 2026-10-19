@@ -1,3 +1,13 @@
+# Current execution and implementation — 2026-10-20 local (D-086)
+
+Startup verified: C:/Projects/NordTrace, main, HEAD 81040af8dcdc2cac1def4949511ab4535da1dabd, clean, local identity PrathamKapoor <prathamkapoor027@gmail.com>, origin/main last known 384b836 (two local commits ahead before this unit). Use `git rev-parse HEAD` for the new tip.
+
+New: the unit blocker is resolved by a documented rule (docs/financial-source-semantics.md). Altinn's RR-0002 guidance says thousands/millions denominations are multiplied at receipt; the API has no denomination field. Six SELSKAP predicates now publish as exact decimal strings in whole units of the record's own valuta, scoped to an identified filing per full period, through the whole production path with result schema 1.3. Amendment precedence remains undocumented and is handled by abstention (competing same-period records withhold that period). Group, liquidation-basis, PDF and other numeric fields remain unpublished.
+
+Checks: see verification.md (47 focused; full 1053 passed/1 renamed-fixture failure then fixed; ruff/mypy pass). Next executable tasks: (1) bounded live `nordtrace smoke --live` on a development input at the committed tip to obtain fresh live amount publication evidence; (2) NAV feed implementation: global feed has no employer filter and only ad details carry employer.orgnr/contactList; design a minimal local index (no contact data), INACTIVE removal and outage-safe refresh; live use of the public token needs an explicit decision because it entails the NAV API terms; (3) independent held-out adjudication; (4) PDF table semantics. No push/PR/deploy/email.
+
+## Historical status records (not a current-work report)
+
 # Current execution and implementation — 2026-10-20 local (D-085)
 
 Verified live checkout at task startup: cwd/root C:/Projects/NordTrace; branch main; full HEAD efe8fd78f5325754bc9b856de0af7284f8701807; clean status and no later commits. Commands, reads, a temporary workspace write/read/delete probe and public documentation all worked. One initial Get-Item argument error was corrected. No permission restriction or missing credential prevented execution. The earlier efe8fd7 report was historical, not new work. This section supersedes the older current-status headings below; use actual git HEAD/status for the ensuing local commit tip.

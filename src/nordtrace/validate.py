@@ -13,9 +13,9 @@ _ORGNR_RE = re.compile(r"^\d{9}$")
 def validate_result(data: Any) -> List[str]:
     if not isinstance(data, dict):
         return ["result must be a JSON object"]
-    if "schema_version" in data and data["schema_version"] not in ("1.1", "1.2"):
-        return [f"unsupported schema_version: {data['schema_version']!r}; expected '1.1' or '1.2'"]
-    if data.get("schema_version") in ("1.1", "1.2"):
+    if "schema_version" in data and data["schema_version"] not in ("1.1", "1.2", "1.3"):
+        return [f"unsupported schema_version: {data['schema_version']!r}; expected '1.1', '1.2' or '1.3'"]
+    if data.get("schema_version") in ("1.1", "1.2", "1.3"):
         from pydantic import ValidationError
 
         from nordtrace.core.models import CompanyProfile

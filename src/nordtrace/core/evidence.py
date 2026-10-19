@@ -9,7 +9,7 @@ from datetime import date, datetime
 from typing import Any, Callable, Protocol
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
-from nordtrace.core.models import EvidenceRecord, Fact, HtmlJsonLdLocator, SourceRecord
+from nordtrace.core.models import EvidenceRecord, Fact, HtmlJsonLdLocator, JsonNumberLocator, SourceRecord
 from nordtrace.core.orgnr import validate_orgnr
 
 
@@ -270,6 +270,10 @@ def verify_snapshot_support(
     if isinstance(locator, HtmlJsonLdLocator):
         from nordtrace.core.html_evidence import verify_html_support
         verify_html_support(repo, fact, captured, evidence, body)
+        return
+    if isinstance(locator, JsonNumberLocator):
+        from nordtrace.core.financial import verify_amount_support
+        verify_amount_support(fact, captured, evidence, body)
         return
     if fact.category == "accounting_filings":
         from nordtrace.core.financial import verify_statement_support

@@ -1,3 +1,15 @@
+# Current delta after 81040af — 2026-10-20 local (D-086)
+
+| Requirement / finding | Component | Status | Evidence / limitation |
+|---|---|---|---|
+| Monetary multiplier semantics | docs/financial-source-semantics.md | verified (documented two-document chain) | Altinn RR-0002 denomination rule (thousands/millions multiplied at receipt) + no API denomination field; retained hashes. Revisit conditions recorded |
+| Amended-filing precedence | financial.amount_entries | verified abstention | Not documented; claims scoped to identified filing per full period; competing same-period records withhold that period only |
+| Six structured legal-entity amounts | financial/brreg/evidence/ledger | verified | Exact lexeme → decimal string, valuta, currency_unit_x1, full period, SELSKAP, avviklingsregnskap false; 47 focused tests; 14/20 tamper cases depend solely on the independent validator |
+| Result schema 1.3 / archive compatibility | models/contracts/export/validate | verified | JsonNumberLocator; frozen 1.1/1.2 bytes hash-pinned; bundle verifier rejects results newer than declared schema |
+| Production path refresh/history/interfaces | pipeline/repository/API/CLI/batch/export/drawer | verified (synthetic acquisition) | first/no-op/restatement CHANGED/new period NEW/outage last-known; frozen history; Node drawer check |
+| Retained live replay | offline, sockets denied | verified | 18 amounts from D-085 capture equal retained official CSV (same provider; not accuracy) |
+| Group, PDF, other numeric fields, NAV, held-out evaluation | — | not_started / in_progress | Unchanged boundaries; see handoff |
+
 # Current delta after efe8fd7 — 2026-10-20 local (D-085)
 
 Live startup state was clean main at efe8fd78f5325754bc9b856de0af7284f8701807, with execution/read/write/public-doc access available. New current work is individually verified registry account statement metadata through capture, validation, persistence, grounded summary, API/CLI/batch/export/replay and refresh. It is **not monetary financial publication or external coverage**. Current execution/artifacts are in the handoff and verification; older status headings below retain historical boundaries.

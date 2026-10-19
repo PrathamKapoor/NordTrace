@@ -196,6 +196,21 @@ class HtmlJsonLdLocator(BaseModel):
     assertion: Literal["source_authored"] = "source_authored"
 
 
+class JsonNumberLocator(BaseModel):
+    """One exact JSON number token in a retained registry statement (result schema 1.3)."""
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["json_number"] = "json_number"
+    representation: Literal["json-number-lexeme-v1"] = "json-number-lexeme-v1"
+    pointer: str = Field(pattern=r"^(/(0|[1-9][0-9]{0,1}))?(/[A-Za-z]+){1,4}$")
+    raw_value: str = Field(pattern=r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$", max_length=256)
+    record_pointer: str = Field(pattern=r"^(/(0|[1-9][0-9]{0,1}))?$")
+    record_id: str = Field(pattern=r"^[1-9][0-9]{0,9}$")
+    normalization: Literal["brreg-account-amount-v1"] = "brreg-account-amount-v1"
+    multiplier: Literal["1"] = "1"
+    unit_basis: Literal["rr0002-denomination-normalized-at-receipt"] = (
+        "rr0002-denomination-normalized-at-receipt")
+
+
 class EvidenceRecord(BaseModel):
     evidence_id: str = Field(default_factory=lambda: new_id("ev"))
     source_id: str
@@ -211,7 +226,7 @@ class EvidenceRecord(BaseModel):
     entity_match_details: Dict[str, Any] = Field(default_factory=dict)
     entity_verdict: str = MatchVerdict.AMBIGUOUS.value
     org_number: Optional[str] = None
-    locator: Optional[JsonPointerLocator | HtmlJsonLdLocator] = None
+    locator: Optional[JsonPointerLocator | HtmlJsonLdLocator | JsonNumberLocator] = None
 
 
 # ---------------------------------------------------------------------------
@@ -445,7 +460,7 @@ class RefreshOutcome(BaseModel):
 
 
 class CompanyProfile(BaseModel):
-    schema_version: Literal["1.1", "1.2"] = "1.1"
+    schema_version: Literal["1.1", "1.2", "1.3"] = "1.1"
     run_id: str
     organisation_number: str
     status: str = TerminalState.NOT_AVAILABLE.value
@@ -473,6 +488,9 @@ class CompanyProfile(BaseModel):
         html_evidence = [item for item in self.evidence if isinstance(item.locator, HtmlJsonLdLocator)]
         if self.schema_version == "1.1" and html_evidence:
             raise ValueError("HTML evidence requires result schema_version 1.2")
+        if self.schema_version != "1.3" and any(
+                isinstance(item.locator, JsonNumberLocator) for item in self.evidence):
+            raise ValueError("monetary number evidence requires result schema_version 1.3")
         if self.status not in {state.value for state in TerminalState}:
             raise ValueError("invalid terminal status")
         if self.company and self.company.organisation_number != self.organisation_number:

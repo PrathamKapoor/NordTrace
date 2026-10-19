@@ -22,18 +22,21 @@ def test_versioned_schemas_preserve_v1_and_bind_current_contract_without_shared_
     from nordtrace.core.export import result_schema
     from nordtrace.core.models import CompanyProfile
 
-    original = result_schema("1.2")
+    original = result_schema("1.3")
     assert original == CompanyProfile.model_json_schema()
-    frozen = Path(__file__).parents[2] / "src/nordtrace/core/schemas/result-1.1.json"
-    assert hashlib.sha256(frozen.read_bytes()).hexdigest() == (
-        "82654e3f43a005feb3c339c000d1c601043de11dbff9ec6ac48a83bd31b3f403"
-    )
+    schemas = Path(__file__).parents[2] / "src/nordtrace/core/schemas"
+    for name, digest in (
+        ("result-1.1.json", "82654e3f43a005feb3c339c000d1c601043de11dbff9ec6ac48a83bd31b3f403"),
+        ("result-1.2.json", "c0dcf61b0ca58bc984a27c1df3172fff275c4547c442b7e17222d9446b4189b1"),
+    ):
+        assert hashlib.sha256((schemas / name).read_bytes()).hexdigest() == digest
+    assert "JsonNumberLocator" not in result_schema("1.2")["$defs"]
     original["$defs"]["RunConfiguration"]["properties"].clear()
-    assert result_schema("1.2") == CompanyProfile.model_json_schema()
+    assert result_schema("1.3") == CompanyProfile.model_json_schema()
 
 
 @pytest.mark.parametrize("version", [
-    "1.3", "../models.py", "", "https://untrusted.example/schema", "1.1\x00",
+    "1.4", "../models.py", "", "https://untrusted.example/schema", "1.1\x00",
 ])
 def test_unknown_contract_versions_cannot_select_a_resource_path(version):
     from nordtrace.core.export import result_schema

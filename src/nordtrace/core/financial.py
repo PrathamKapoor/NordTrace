@@ -1,4 +1,4 @@
-"""Exact source-number diagnostics; no implied monetary units or publication rule."""
+"""Exact source-number support: statement metadata and documented whole-unit registry amounts."""
 import json
 import re
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from nordtrace.core.evidence import decode_source_json
-from nordtrace.core.models import EvidenceRecord, Fact, JsonPointerLocator, SourceRecord
+from nordtrace.core.models import EvidenceRecord, Fact, JsonNumberLocator, JsonPointerLocator, SourceRecord
 from nordtrace.core.orgnr import validate_orgnr
 
 
@@ -145,6 +145,25 @@ def statement_claims(
     return evidence, facts
 
 
+def _require_accounts_capture(source: SourceRecord, orgnr: str, record_id: str) -> None:
+    if (source.source_type != "registry_accounts" or source.authority_tier != 0
+            or source.access_status != "success" or source.http_status != 200
+            or source.snapshot_representation != "http-response-body-v1"
+            or (source.content_type or "").split(";", 1)[0].strip().lower() != "application/json"):
+        raise ValueError("account support requires captured official JSON")
+    root = "/regnskapsregisteret/regnskap/" + orgnr
+    for url in (source.url, source.requested_url or source.url, source.final_url or source.url,
+                *source.redirect_chain):
+        if not url or any(ord(char) < 33 or ord(char) == 127 for char in url):
+            raise ValueError("account acquisition URL invalid")
+        parsed = urlsplit(url)
+        if (parsed.scheme != "https" or parsed.hostname != "data.brreg.no" or parsed.port not in (None, 443)
+                or parsed.username is not None or parsed.password is not None
+                or parsed.query or parsed.fragment
+                or parsed.path not in (root, root + "/" + record_id)):
+            raise ValueError("account support requires exact official company/record endpoint")
+
+
 def verify_statement_support(fact: Fact, source: SourceRecord, evidence: EvidenceRecord, body: bytes) -> None:
     locator = evidence.locator
     if (fact.field != "statement" or not isinstance(locator, JsonPointerLocator)
@@ -153,22 +172,7 @@ def verify_statement_support(fact: Fact, source: SourceRecord, evidence: Evidenc
             or fact.entity_verdict != "VERIFIED" or evidence.entity_verdict != "VERIFIED"
             or evidence.entity_match_details.get("extraction_rule") != STATEMENT_RULE):
         raise ValueError("unsupported statement metadata contract")
-    if (source.source_type != "registry_accounts" or source.authority_tier != 0
-            or source.access_status != "success" or source.http_status != 200
-            or source.snapshot_representation != "http-response-body-v1"
-            or (source.content_type or "").split(";", 1)[0].strip().lower() != "application/json"):
-        raise ValueError("statement metadata requires captured official JSON")
-    root = "/regnskapsregisteret/regnskap/" + fact.org_number
-    for url in (source.url, source.requested_url or source.url, source.final_url or source.url,
-                *source.redirect_chain):
-        if not url or any(ord(char) < 33 or ord(char) == 127 for char in url):
-            raise ValueError("statement acquisition URL invalid")
-        parsed = urlsplit(url)
-        if (parsed.scheme != "https" or parsed.hostname != "data.brreg.no" or parsed.port not in (None, 443)
-                or parsed.username is not None or parsed.password is not None
-                or parsed.query or parsed.fragment
-                or parsed.path not in (root, root + "/" + str(locator.raw_value))):
-            raise ValueError("statement metadata requires exact official company/record endpoint")
+    _require_accounts_capture(source, fact.org_number, str(locator.raw_value))
     supported = dict(statement_entries(parse_accounts_json(body), fact.org_number)).get(locator.pointer)
     if supported is None or str(locator.raw_value) != supported["record_id"]:
         raise ValueError("statement locator or record binding differs from capture")
@@ -180,3 +184,150 @@ def verify_statement_support(fact: Fact, source: SourceRecord, evidence: Evidenc
             or fact.valid_from != supported["period_start"] or fact.valid_to != supported["period_end"]
             or evidence.evidence_text != json.dumps(supported, ensure_ascii=False, sort_keys=True)):
         raise ValueError("statement attributes differ from independently resolved record")
+
+
+AMOUNT_RULE = "brreg-account-amount-v1"
+AMOUNT_UNIT = "currency_unit_x1"
+# D-086: the RR-0002 filing guidance states that thousands/millions denominations
+# are multiplied when Regnskapsregisteret receives the form set; the key-figure
+# API exposes no denomination field. Multiplier 1 of the record's own currency.
+AMOUNT_PATHS = {
+    "total_operating_revenue": (
+        "resultatregnskapResultat", "driftsresultat", "driftsinntekter", "sumDriftsinntekter",
+    ),
+    "operating_result": ("resultatregnskapResultat", "driftsresultat", "driftsresultat"),
+    "annual_result": ("resultatregnskapResultat", "aarsresultat"),
+    "total_assets": ("eiendeler", "sumEiendeler"),
+    "equity": ("egenkapitalGjeld", "egenkapital", "sumEgenkapital"),
+    "total_liabilities": ("egenkapitalGjeld", "gjeldOversikt", "sumGjeld"),
+}
+
+
+def canonical_amount(number: JsonNumber) -> str:
+    """Exact fixed-point decimal string: no exponent, no trailing fraction zeros, no -0."""
+    value = Decimal(number.decimal_text())
+    if value == 0:
+        return "0"
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
+def amount_entries(document: Any, orgnr: str) -> dict[str, dict[str, str]]:
+    """Supported amounts keyed by exact field pointer; whole periods abstain on any competition.
+
+    One legal-entity record per full period is required. Distinct records for one
+    period, or a subject record whose period cannot be resolved, withhold amounts:
+    no amendment, latest-filing or row-order precedence is asserted.
+    """
+    records = document if isinstance(document, list) else [document]
+    if len(records) > 100:
+        return {}
+    by_period: dict[tuple[str, str], list[tuple[str, Any, dict[str, str] | None]]] = {}
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            return {}
+        entity = record.get("virksomhet")
+        raw_org = entity.get("organisasjonsnummer") if isinstance(entity, dict) else None
+        subject = validate_orgnr(raw_org) if isinstance(raw_org, str) else None
+        if subject is None or not subject.valid or subject.value != orgnr:
+            continue
+        if record.get("regnskapstype") == "KONSERN":
+            continue  # Group scope is a different claim; it never competes with SELSKAP.
+        period = record.get("regnskapsperiode")
+        start = period.get("fraDato") if isinstance(period, dict) else None
+        end = period.get("tilDato") if isinstance(period, dict) else None
+        try:
+            if not isinstance(start, str) or not isinstance(end, str):
+                raise ValueError("period")
+            key = (date.fromisoformat(start).isoformat(), date.fromisoformat(end).isoformat())
+            if key != (start, end):
+                raise ValueError("period")
+        except ValueError:
+            return {}  # An unplaceable subject record could compete with any period.
+        try:
+            metadata: dict[str, str] | None = statement_metadata(record, orgnr)
+        except ValueError:
+            metadata = None
+        if record.get("avviklingsregnskap") is not False:
+            metadata = None  # Liquidation-basis or undeclared statements are withheld.
+        prefix = f"/{index}" if isinstance(document, list) else ""
+        by_period.setdefault(key, []).append((prefix, record, metadata))
+    result: dict[str, dict[str, str]] = {}
+    for items in by_period.values():
+        prefix, record, metadata = items[0]
+        if metadata is None or any(other != record for _, other, _ in items[1:]):
+            continue
+        for field, path in AMOUNT_PATHS.items():
+            value: Any = record
+            for part in path:
+                value = value.get(part) if isinstance(value, dict) else None
+            if not isinstance(value, JsonNumber):
+                continue  # Absent, null, string or boolean values never become amounts.
+            try:
+                amount = canonical_amount(value)
+            except ValueError:
+                continue
+            result[prefix + "/" + "/".join(path)] = {
+                "field": field, "source_field": path[-1], "source_number": value.lexeme,
+                "value": amount, "record_pointer": prefix, **metadata,
+            }
+    return result
+
+
+def amount_display(entry: dict[str, str]) -> str:
+    keys = ("source_field", "source_number", "value", "currency", "period_start", "period_end",
+            "record_id", "journal_number", "accounting_scope")
+    return json.dumps({key: entry[key] for key in keys if key in entry}, ensure_ascii=False, sort_keys=True)
+
+
+def amount_claims(
+    document: Any, orgnr: str, run_id: str, source: SourceRecord,
+) -> tuple[list[EvidenceRecord], list[Fact]]:
+    evidence, facts = [], []
+    for pointer, entry in amount_entries(document, orgnr).items():
+        ev = EvidenceRecord(
+            source_id=source.source_id, source_type=source.source_type, authority_tier=source.authority_tier,
+            url=source.url, source_title="Brønnøysundregistrene — Regnskapsregisteret",
+            org_number=orgnr, entity_verdict="VERIFIED", retrieved_at=source.retrieved_at,
+            content_hash=source.content_hash, evidence_text=amount_display(entry),
+            locator=JsonNumberLocator(
+                pointer=pointer, raw_value=entry["source_number"], record_pointer=entry["record_pointer"],
+                record_id=entry["record_id"],
+            ),
+            entity_match_details={"extraction_rule": AMOUNT_RULE, "registry": "brreg_regnskap"},
+        )
+        evidence.append(ev)
+        facts.append(Fact(
+            org_number=orgnr, run_id=run_id, category="financials", field=entry["field"],
+            value=entry["value"], normalized_value=entry["value"], currency=entry["currency"],
+            unit=AMOUNT_UNIT, reporting_period=entry["period_start"] + "/" + entry["period_end"],
+            subject_scope="legal_entity", valid_from=entry["period_start"], valid_to=entry["period_end"],
+            source_id=source.source_id, evidence_id=ev.evidence_id, retrieved_at=source.retrieved_at,
+            entity_verdict="VERIFIED", status="EXTRACTED", fact_confidence=0.0,
+        ))
+    return evidence, facts
+
+
+def verify_amount_support(fact: Fact, source: SourceRecord, evidence: EvidenceRecord, body: bytes) -> None:
+    locator = evidence.locator
+    if (not isinstance(locator, JsonNumberLocator) or fact.category != "financials"
+            or fact.field not in AMOUNT_PATHS or fact.subject_scope != "legal_entity"
+            or fact.item_key is not None or fact.unit != AMOUNT_UNIT
+            or fact.entity_verdict != "VERIFIED" or evidence.entity_verdict != "VERIFIED"
+            or evidence.entity_match_details.get("extraction_rule") != AMOUNT_RULE):
+        raise ValueError("unsupported monetary claim contract")
+    _require_accounts_capture(source, fact.org_number, locator.record_id)
+    entry = amount_entries(parse_accounts_json(body), fact.org_number).get(locator.pointer)
+    if entry is None:
+        raise ValueError("amount pointer is not an independently supported statement field")
+    if (entry["field"] != fact.field or entry["source_number"] != locator.raw_value
+            or entry["record_pointer"] != locator.record_pointer or entry["record_id"] != locator.record_id):
+        raise ValueError("amount locator differs from retained statement")
+    if (type(fact.value) is not str or fact.value != entry["value"] or fact.normalized_value != entry["value"]
+            or fact.currency != entry["currency"]
+            or fact.reporting_period != entry["period_start"] + "/" + entry["period_end"]
+            or fact.valid_from != entry["period_start"] or fact.valid_to != entry["period_end"]
+            or evidence.evidence_text != amount_display(entry)):
+        raise ValueError("amount value or qualifiers differ from retained statement")

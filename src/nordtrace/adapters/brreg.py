@@ -31,12 +31,13 @@ from nordtrace.core.evidence import (
     require_registry_identity_acquisition,
     resolve_pointer,
 )
-from nordtrace.core.financial import JsonNumber, parse_accounts_json, statement_claims
+from nordtrace.core.financial import JsonNumber, amount_claims, parse_accounts_json, statement_claims
 from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
     Fact,
     FactStatus,
+    JsonNumberLocator,
     JsonPointerLocator,
     MatchVerdict,
     SourceRecord,
@@ -401,6 +402,20 @@ class BrregAdapter:
             source.error_detail = "accounts response schema mismatch"
             return [], [], source, "failed"
         statement_evs, statement_facts = statement_claims(payload, org_number, run_id, source)
+        amount_evs, amount_facts = amount_claims(payload, org_number, run_id, source)
+        if amount_facts:
+            # D-086 typed amounts for every unambiguous legal-entity period; never a
+            # latest/amended-filing selection. Other subject records stay withheld.
+            supported = {ev.locator.record_pointer for ev in amount_evs
+                         if isinstance(ev.locator, JsonNumberLocator)}
+            withheld = [index for index, item in enumerate(items)
+                        if item.get("regnskapstype") == "SELSKAP"
+                        and (f"/{index}" if isinstance(payload, list) else "") not in supported]
+            if withheld:
+                source.error_detail = (f"{len(withheld)} legal-entity statement record(s) withheld: "
+                                       "competing, liquidation-basis or unsupported qualifiers")
+            return statement_evs + amount_evs, statement_facts + amount_facts, source, "found"
+        # Diagnostic-only candidates below never satisfy a publication rule.
         # Scope is selected before chronology: a newer consolidated report must
         # never become the legal entity's own accounts. Unknown qualifiers abstain.
         legal = []

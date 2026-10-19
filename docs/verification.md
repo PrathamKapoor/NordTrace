@@ -1,3 +1,11 @@
+# Registry amount verification — 2026-10-20 local (D-086)
+
+Base: clean main 81040af8dcdc2cac1def4949511ab4535da1dabd, identity PrathamKapoor (author/committer) verified. Focused: `.venv/Scripts/python.exe -m pytest tests/unit/test_account_amounts.py` 47 passed 23.73s (initial run: 2 test-construction errors — fixture float serialization and journal string — fixed in the tests, no production change). Validator-dependence check: with `verify_amount_support` replaced by a no-op via a scratch plugin, 14 of 20 tamper cases published (remaining 6 also blocked by generic ledger/capture checks). Adjacent export/statement/qualifier/precision/HTML/summary files: 143 passed before the predicate rename of template fixtures (12 template failures were the `revenue`→`total_operating_revenue` rename; fixtures renamed, assertions otherwise unchanged; then 15 passed). Node drawer: 9 passed. Ruff and mypy (38 files) passed.
+
+Full `.venv/Scripts/python.exe -m pytest -q --tb=short`: 1 failed / 1053 passed / 8 live deselected / one upstream Starlette warning, 452.20s; the failure was one more template fixture using the old `revenue` predicate (test_summary_references.py), renamed; that file then 7 passed. No production change after the full run. Frozen schema hashes: 1.1 82654e3f…f403, 1.2 c0dcf61b…89b1 unchanged; new 1.3 1864055d81d191029db4b345993b5af1b3ab7cebe1b45b77dbc6103b2dcf36ba (35,710 bytes).
+
+Retained replay (no network, sockets denied): D-085 live capture src_bd5606b9c889a594 (SHA-256 1d6b78bf…ff9) → 18 candidates, 18 published, all equal to retained official CSV values. Synthetic acquisition (MockTransport) is not live correctness; same-provider CSV agreement is not independent accuracy.
+
 # Fresh statement metadata verification — 2026-10-20 local (D-085)
 
 Actual startup commands confirmed C:/Projects/NordTrace as cwd/root, main at full efe8fd78f5325754bc9b856de0af7284f8701807, clean status, empty subsequent commit range and unchanged origin. No tests/document edits preceded that report. Read/write/commands/public documentation worked. A Get-Item argument mistake was corrected; it was not a permission failure. New work described here occurred after that checkpoint.
