@@ -271,6 +271,10 @@ def verify_snapshot_support(
         from nordtrace.core.html_evidence import verify_html_support
         verify_html_support(repo, fact, captured, evidence, body)
         return
+    if fact.category == "accounting_filings":
+        from nordtrace.core.financial import verify_statement_support
+        verify_statement_support(fact, captured, evidence, body)
+        return
     document = parse_json_body(body)
     raw = resolve_pointer(document, locator.pointer)
     if not _same(raw, locator.raw_value):

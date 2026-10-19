@@ -31,7 +31,7 @@ from nordtrace.core.evidence import (
     require_registry_identity_acquisition,
     resolve_pointer,
 )
-from nordtrace.core.financial import JsonNumber, parse_accounts_json
+from nordtrace.core.financial import JsonNumber, parse_accounts_json, statement_claims
 from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
@@ -400,6 +400,7 @@ class BrregAdapter:
         if any(not isinstance(item, dict) for item in items):
             source.error_detail = "accounts response schema mismatch"
             return [], [], source, "failed"
+        statement_evs, statement_facts = statement_claims(payload, org_number, run_id, source)
         # Scope is selected before chronology: a newer consolidated report must
         # never become the legal entity's own accounts. Unknown qualifiers abstain.
         legal = []
@@ -415,10 +416,10 @@ class BrregAdapter:
                 legal.append((index, record))
             elif record.get("regnskapstype") != "KONSERN":
                 source.error_detail = "accounts entity scope is unresolved"
-                return [], [], source, "ambiguous"
+                return statement_evs, statement_facts, source, "ambiguous"
         if not legal:
             source.error_detail = "no exact legal-entity accounts record"
-            return [], [], source, "ambiguous"
+            return statement_evs, statement_facts, source, "ambiguous"
 
         def dates(record: dict) -> tuple[str, str]:
             period = record.get("regnskapsperiode")
@@ -437,17 +438,17 @@ class BrregAdapter:
             periods = {index: dates(record) for index, record in legal}
         except ValueError as error:
             source.error_detail = f"accounts qualifiers unresolved: {error}"
-            return [], [], source, "ambiguous"
+            return statement_evs, statement_facts, source, "ambiguous"
         latest_end = max(periods[index][1] for index, _ in legal)
         newest = [(index, record) for index, record in legal if periods[index][1] == latest_end]
         if any(record != newest[0][1] for _, record in newest[1:]):
             source.error_detail = "competing accounts records for the same latest period"
-            return [], [], source, "ambiguous"
+            return statement_evs, statement_facts, source, "ambiguous"
         index, latest = newest[0]
         currency = latest.get("valuta")
         if not isinstance(currency, str) or not re.fullmatch(r"[A-Z]{3}", currency):
             source.error_detail = "explicit source currency missing or invalid"
-            return [], [], source, "ambiguous"
+            return statement_evs, statement_facts, source, "ambiguous"
         start, end = periods[index]
         period_label = f"{start}/{end}"
         periode = latest["regnskapsperiode"]
@@ -464,7 +465,7 @@ class BrregAdapter:
             "equity": ("egenkapitalGjeld", "egenkapital", "sumEgenkapital"),
             "total_liabilities": ("egenkapitalGjeld", "gjeldOversikt", "sumGjeld"),
         }
-        evidences, facts = [], []
+        evidences, facts = list(statement_evs), list(statement_facts)
         invalid = False
         for field, path in paths.items():
             value = latest
@@ -521,7 +522,9 @@ class BrregAdapter:
             ))
         if invalid:
             source.error_detail = "unsupported monetary value or accounting field shape"
-        return evidences, facts, source, "found" if facts else "ambiguous" if invalid else "not_found"
+        has_money = any(f.category == "financials" for f in facts)
+        status = "found" if has_money else "ambiguous" if invalid or statement_facts else "not_found"
+        return evidences, facts, source, status
 
     # ------------------------------------------------------------------ branches
     async def fetch_underenheter(

@@ -1,3 +1,21 @@
+# Current delta after efe8fd7 — 2026-10-20 local (D-085)
+
+Live startup state was clean main at efe8fd78f5325754bc9b856de0af7284f8701807, with execution/read/write/public-doc access available. New current work is individually verified registry account statement metadata through capture, validation, persistence, grounded summary, API/CLI/batch/export/replay and refresh. It is **not monetary financial publication or external coverage**. Current execution/artifacts are in the handoff and verification; older status headings below retain historical boundaries.
+
+| Requirement / finding | Component | Status | Current evidence / limitation |
+|---|---|---|---|
+| Record identity, source currency, full period and legal-company scope | core/financial.py; adapters/brreg.py | verified | Exact retained JSON and official endpoint; typed ID locator and enforced field pointers.30focused17.31s; individual IDs, no amendment winner |
+| Unsupported/wrong-subject metadata abstention | ledger/evidence/financial | verified | Value/item/pointer/rule mutations, foreign subject, group, bad IDs, duplicate-ID contradictions, missing capture, no-repository and actual bad-origin/MIME captures |
+| Production metadata path / cardinality / refresh | pipeline/synthesis/repository/API/CLI/export | verified | Real synthetic acquisition, repeated snapshot, additional same-period record, then outage; canonical/API/CLI/export agree; prior history frozen; no false retraction |
+| Monetary availability and external attribution | pipeline coverage; benchmark registry exclusion | verified | Metadata stays accounting_filings; money remains ambiguous/failed; registry_accounts excluded from external counts |
+| Live metadata source verification | gateway/CAS/support validator | verified | One company, three metadata records; JSON one charged/one independently observed transport op; attributes match separate official CSV. Not a profile/held-out accuracy sample |
+| Monetary scale and amendment selection | authoritative source contract | blocked | Exact missing statements and freshly checked sources in SOURCES.md; neither CSV nor JSON exposes the needed semantics |
+| Full monetary publication / financial release matrix | financial support/PDF/evaluation | in_progress | No amount publication enabled. New metadata rule does not complete the financial package or broader release gates |
+
+Full regression:1,007passed421.72s/eight live excluded/one upstream warning. Ruff/mypy38pass; wheel41assets match and offline live-record revalidation succeeds. Frozen resources/lock/migration unchanged. No remote mutation. Historical failures and prior units remain below.
+
+## Historical tracker and scoped updates
+
 # Current implementation status — 2026-10-19
 
 Authoritative checkout/capability/authorization status: [implementation handoff](implementation-handoff.md). Startup base was clean main at 384b836, also confirmed on origin. Earlier entries marked precommit/local-only and the old F03/F27 descriptions are superseded. Existing rows retain their historical verification boundaries; a verified helper/subset does not complete its encompassing release gate.

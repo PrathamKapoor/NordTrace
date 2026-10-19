@@ -268,7 +268,8 @@ class ResearchPipeline:
                     reason = asrc.error_detail or f"Accounts extraction state: {astatus}."
                     if astatus == "found":
                         financial_state = (
-                            "available" if any(f.status == FactStatus.PUBLISHED.value for f in afacts)
+                            "available" if any(f.category == "financials"
+                                               and f.status == FactStatus.PUBLISHED.value for f in afacts)
                             else "ambiguous"
                         )
                         if financial_state == "ambiguous":

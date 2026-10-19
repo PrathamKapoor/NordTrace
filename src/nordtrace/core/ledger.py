@@ -67,6 +67,8 @@ class CitationValidator:
             return False, "evidence not found in ledger"
         if ev.source_id != fact.source_id:
             return False, "evidence belongs to different source"
+        if fact.category == "accounting_filings" and self.repository is None:
+            return False, "statement metadata support requires retained snapshots"
         if (src.source_type == "company_website"
                 or (src.content_type or "").lower().split(";", 1)[0].strip() == "text/html"):
             if not isinstance(ev.locator, HtmlJsonLdLocator):

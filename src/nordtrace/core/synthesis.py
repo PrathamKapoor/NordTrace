@@ -74,6 +74,19 @@ def build_summary(
     if emp:
         parts.append(f"Registered employees: {_fmt(emp)}. {_cite(emp)}")
 
+    statements = [fact for fact in ledger.published_facts(org)
+                  if fact.category == "accounting_filings" and fact.field == "statement"
+                  and fact.subject_scope == "legal_entity" and isinstance(fact.value, dict)
+                  and all(isinstance(fact.value.get(key), str)
+                          for key in ("record_id", "period_start", "period_end", "currency"))]
+    for statement in sorted(statements, key=lambda fact: fact.reporting_period or "", reverse=True)[:2]:
+        value = statement.value
+        if not isinstance(value, dict):
+            continue
+        parts.append(f"Accounts record {value['record_id']}: "
+                     f"{value['period_start']} to {value['period_end']}; "
+                     f"source currency {value['currency']}; legal entity. {_cite(statement)}")
+
     branches = [fact for fact in ledger.published_facts(org)
                 if fact.category == "locations" and fact.field == "branch"
                 and isinstance(fact.value, dict) and fact.value.get("parent_orgnr") == org
