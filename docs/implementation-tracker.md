@@ -227,3 +227,12 @@ Typed HTML implementation plan (D-082):
 | NAV integration | nav_jobs/refresh | not_started | Documented employer.orgnr/feed/bearer/update contract inspected earlier; actual feed not implemented and anonymous search retired |
 | Held-out adjudicated evaluation | sampling/benchmark | not_started | Disjoint eligible samples exist; independent manual labels, external recall/precision/evidence/refresh measurements and ablations remain unavailable |
 | Exact-release verification | install/CI/replay/live scenarios | not_started | Execute against final chosen commit after earlier gates; earlier root suites/wheel checks are not a fresh exact-release proof |
+
+## Exact financial candidates and safe PDF abstention — 2026-10-19 local
+
+| Requirement/finding | Owner | Verification | Status | Evidence |
+|---|---|---|---|---|
+| F03 numeric/zero/sign/unsafe selection correction | pdf_pipeline.py | test_financial_numbers.py + adapter cases | verified | D-08326red/10controls2.44s; exact Decimal cell candidates, ambiguous separators abstain, no last-nonzero/space-column merge;43new cases including HTTP outcome controls. Complete financial qualifier/table/release matrix remains in_progress |
+| F27 unqualified PDF currency/year/scope | pdf_pipeline.py | actual authored PDF through real parser | verified | Found-with-default-qualifiers reproduced1failure2.31s; now ambiguous evidence/no financial facts, no NOK/FY/first-occurrence/default scope. No unit/scale proof or financial publication enabled |
+| A/E/F16 PDF ambiguity and per-source refresh outcome | engine/pipeline.py | real complete pipeline with retained synthetic PDF | verified | not_available flattening reproduced1failure4.04s; PDF state and unknown completeness retained, failed source does not prove absence;107adjacent38.67s/2live excluded after429/404/410 regressions; full 954 passed in 402.65s, eight live excluded, one upstream warning; Ruff/mypy37 pass |
+| Financial extraction completion gate | accounts/PDF/table/evidence/evaluation | adjudicated value/year/currency/scale/sign/entity-vs-group corpus | in_progress | Only safety/numeric subset implemented. Next: authoritative structured units/Decimal JSON lexemes and typed table locators; ambiguity abstains. NAV/heldout/release remain after this gate |

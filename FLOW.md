@@ -1,3 +1,11 @@
+## PDF financial diagnostics and availability — 2026-10-19 local (D-083)
+
+Trigger: financial fallback over actually acquired/discovered PDF candidates when accounts lack supported publication and budget/deadline gates permit work. PdfFinancialPipeline.process_pdf → counted/robots-checked gateway fetch and raw capture → extract_pdf_pages → bounded-row extract_financial_lines → raw numeric cells and optional exact Decimal diagnostic. No row with multiple numeric tokens chooses a current/prior column; zero is preserved. `_parse_number` parses an identified cell with strict grouping/sign/convention rules, without establishing currency, scale, dates or subject scope.
+
+Until a typed table rule is implemented, the PDF producer returns AMBIGUOUS monetary-row evidence, no financial facts and status ambiguous. Unreadable input returns failed; no matched monetary row returns not_found. Generated error diagnostics retain the actual capture hash, not a derived hash. A company name/orgnr mention is only diagnostic context. The engine records one per-source RefreshOutcome, preserves ambiguity in family availability, and retains source bytes/candidate rows in the canonical envelope. Missing currency is not NOK; an unparsed comparative table is not a chosen amount or evidence of absent accounts. Existing source request limits, cancellation, checkpoint, finalization and offline export apply; synchronous PDF CPU/memory is not newly bounded.
+
+Tests:43authored numeric/actual-PDF/pipeline cases in test_financial_numbers.py, plus adapter, accounts and fallback registration checks. The synthetic report with target identity and rows1200/0 but no accounting qualifiers remains ambiguous through persisted research. This is not table-layout accuracy or a completed financial release matrix.
+
 ## Retained HTML description publication — 2026-10-19 local (D-082)
 
 Trigger: normal single/batch research after exact official entity lookup. ResearchPipeline.research_company passes that acquired source ID to WebsiteAdapter.crawl; direct callers without it receive diagnostic candidates only. The counted gateway applies robots, source/deadline/request/rate/redirect/byte policies before retaining HTTP bytes. The website producer discovers bounded literal Organization descriptions and attaches a candidate html_json_ld locator; that action alone does not publish.

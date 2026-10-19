@@ -353,6 +353,28 @@ class ResearchPipeline:
                     for f in f2:
                         ledger.add_fact(f, None, None)
                     pdf_facts.extend(f2)
+                    pdf_state = {
+                        "not_found": "not_available", "not_available": "not_available",
+                        "ambiguous": "ambiguous", "failed": "failed", "blocked": "blocked",
+                        "not_applicable": "not_applicable",
+                    }.get(st2, "failed")
+                    if st2 == "found":
+                        pdf_state = ("available" if any(f.status == FactStatus.PUBLISHED.value for f in f2)
+                                     else "ambiguous")
+                    outcome.refresh_outcomes.append(RefreshOutcome.model_validate({
+                        "requested_url": src2.requested_url or src2.url or "", "source_id": src2.source_id,
+                        "family": "financials", "state": pdf_state, "observed_at": utcnow().isoformat(),
+                        "reason": src2.error_detail or f"PDF extraction/support state: {pdf_state}.",
+                    }))
+                    # Preserve useful unresolved observations before acquisition
+                    # failures; a failed source never proves financial absence.
+                    precedence = {"not_found": 0, "not_available": 0, "blocked": 1,
+                                  "failed": 2, "ambiguous": 3, "found": 3}
+                    if (pdf_state in ("ambiguous", "failed", "blocked")
+                            and precedence[pdf_state] > precedence.get(financials_status, 0)):
+                        financials_status = pdf_state
+                    self._trace(run_id, org_number, "adaptive_financials",
+                                f"PDF completed with {pdf_state}; {len(f2)} claim candidates.")
                 accepted_pdf = [f for f in pdf_facts if f.status == FactStatus.PUBLISHED.value]
                 if accepted_pdf:
                     financials_status = "found"

@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Tuple
 
 from nordtrace.core.budget import BudgetManager
@@ -20,12 +21,9 @@ from nordtrace.core.models import (
     CompanyIdentity,
     EvidenceRecord,
     Fact,
-    FactStatus,
     MatchVerdict,
     SourceRecord,
     SourceType,
-    content_hash,
-    utcnow,
 )
 from nordtrace.core.request_gateway import RequestGateway
 
@@ -41,47 +39,10 @@ _KEY_TERMS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"regnskapsåret|regnskap[åa]r", re.I), "fiscal_year"),
 ]
 
-_NUMBER_RE = re.compile(r"(-?\d[\d\s\u00a0.,]*)")
-
-
 @dataclass
 class PdfPage:
     page_number: int
     text: str
-
-
-_NUMBER_RE = re.compile(r"(-?\d[\d\u00a0.,]*\d|\d)")
-_SPACE_GROUP_RE = re.compile(r"^(\d{1,3}( \d{3})+)$")
-
-
-def _join_space_thousands(tokens: list) -> list:
-    """Rejoin tokens like ['1','234','567'] when consecutive tokens form
-    space-separated thousands groups (Norwegian convention)."""
-    out: list = []
-    i = 0
-    while i < len(tokens):
-        # Guard: don't start a group right after a 4+ digit token (year or prior number)
-        prev_is_number = i > 0 and tokens[i - 1].isdigit() and len(tokens[i - 1]) >= 4
-        if prev_is_number:
-            out.append(tokens[i])
-            i += 1
-            continue
-        # try to build a space-grouped number starting at i:
-        # first token 1-3 digits, every subsequent token exactly 3 digits
-        j = i + 1
-        first_ok = len(tokens[i]) <= 3 and tokens[i].isdigit()
-        if first_ok:
-            while j < len(tokens) and len(tokens[j]) == 3 and tokens[j].isdigit():
-                j += 1
-        candidate = " ".join(tokens[i:j])
-        groups = candidate.split(" ")
-        if j - i > 1 and all(len(g) == 3 for g in groups[1:]):
-            out.append(candidate)
-            i = j
-        else:
-            out.append(tokens[i])
-            i += 1
-    return out
 
 
 @dataclass
@@ -118,32 +79,67 @@ def extract_pdf_pages(pdf_bytes: bytes) -> PdfResult:
         return PdfResult(ok=False, error=f"pdf parse error: {type(e).__name__}")
 
 
-def _parse_number(raw: str) -> Optional[float]:
-    """Parse Norwegian-formatted numbers. Structure-based disambiguation:
-    groups of 3 after separator → thousands; 1-2 digits after separator → decimal."""
-    if not raw:
+def _parse_number(raw: str, *, decimal_mark: Optional[str] = None) -> Optional[Decimal]:
+    """Parse one bounded, already identified numeric cell without float rounding.
+
+    A single three-digit separator is ambiguous without an explicit convention.
+    This function establishes no currency, multiplier, period or table scope.
+    """
+    if decimal_mark not in (None, ".", ","):
+        raise ValueError("unsupported decimal convention")
+    if not isinstance(raw, str) or not raw.strip() or len(raw) > 256:
         return None
-    s = raw.replace("\u00a0", " ").strip().rstrip(".,;")
-    if not s:
+    text = raw.strip().replace("\u00a0", " ").replace("\u202f", " ").replace("\u2212", "-")
+    sign = ""
+    if text.startswith("(") and text.endswith(")"):
+        sign, text = "-", text[1:-1]
+    elif text.startswith(("-", "+")):
+        sign, text = text[0], text[1:]
+    if not re.fullmatch(r"[0-9][0-9 .,]*", text) or text.endswith((".", ",", " ")):
         return None
-    if re.match(r"^-?\d{1,3}(\s\d{3})+$", s):  # 1 234 567
-        s = s.replace(" ", "")
-    elif re.match(r"^-?\d{1,3}(\.\d{3})+$", s):  # 1.234.567
-        s = s.replace(".", "")
-    elif re.match(r"^-?\d{1,3}(,\d{3})+(\.\d+)?$", s):  # 47,687.4 -> 47687.4
-        s = s.replace(",", "")
-    elif re.match(r"^-?\d+,\d{1,2}$", s):  # 1,2 (decimal comma)
-        s = s.replace(",", ".")
-    s = s.replace(" ", "")
+
+    def integer_digits(value: str, group: Optional[str]) -> Optional[str]:
+        separator = group if group and group in value else " " if " " in value else None
+        if separator:
+            pattern = r"[0-9]{1,3}(?:" + re.escape(separator) + r"[0-9]{3})+"
+            return value.replace(separator, "") if re.fullmatch(pattern, value) else None
+        return value if re.fullmatch(r"[0-9]+", value) else None
+
+    chosen = decimal_mark
+    if chosen is None:
+        if "." in text and "," in text:
+            chosen = "." if text.rfind(".") > text.rfind(",") else ","
+        elif "." in text or "," in text:
+            mark = "." if "." in text else ","
+            if text.count(mark) == 1:
+                left, right = text.split(mark)
+                if len(right) == 3 and re.fullmatch(r"[0-9]{1,3}", left):
+                    return None
+                chosen = mark
+            else:
+                digits = integer_digits(text, mark)
+                return Decimal(sign + digits) if digits is not None else None
+    fraction = None
+    if chosen and chosen in text:
+        if text.count(chosen) != 1:
+            return None
+        integer, fraction = text.split(chosen)
+        if not re.fullmatch(r"[0-9]+", fraction):
+            return None
+    else:
+        integer = text
+    grouping = ("," if chosen == "." else ".") if chosen else None
+    digits = integer_digits(integer, grouping)
+    if digits is None:
+        return None
     try:
-        return float(s)
-    except ValueError:
+        return Decimal(sign + digits + ("." + fraction if fraction is not None else ""))
+    except InvalidOperation:
         return None
 
 
 def extract_financial_lines(pages: List[PdfPage]) -> List[Dict]:
-    """Deterministic key-line extraction with page numbers. Values must appear
-    in the document text; nothing is inferred beyond the matched line."""
+    """Unpublished row diagnostics; multiple numbers never select a reporting column."""
     out: List[Dict] = []
     for page in pages:
         for line in page.text.split("\n"):
@@ -152,21 +148,16 @@ def extract_financial_lines(pages: List[PdfPage]) -> List[Dict]:
                 continue
             for pat, field in _KEY_TERMS:
                 if pat.search(line_s):
-                    # find the last number on the line (statement convention)
-                    numbers = _join_space_thousands(_NUMBER_RE.findall(line_s))
-                    value = None
-                    for cand in reversed(numbers):
-                        value = _parse_number(cand)
-                        if value is not None and value != 0:
-                            break
-                    out.append(
-                        {
-                            "field": field,
-                            "line": line_s[:200],
-                            "page": page.page_number,
-                            "value": value,
-                        }
+                    # Plain text does not identify comparative-year columns.
+                    # Parentheses delimit one negative cell; spaces can separate
+                    # columns, so do not merge numeric tokens into a chosen value.
+                    cells = re.findall(
+                        r"\([0-9][0-9 \u00a0\u202f.,]*\)|[+\-\u2212]?[0-9][0-9\u00a0\u202f.,]*",
+                        line_s,
                     )
+                    value = _parse_number(cells[0]) if len(cells) == 1 else None
+                    out.append({"field": field, "line": line_s, "page": page.page_number,
+                                "value": value, "candidate_cells": cells})
                     break
     return out
 
@@ -194,7 +185,12 @@ class PdfFinancialPipeline:
             max_bytes=settings.max_pdf_bytes,
         )
         if src.access_status != "success":
-            status = "blocked" if src.access_status in ("blocked", "robots_denied") else "failed"
+            if src.access_status in ("blocked", "robots_denied", "rate_limited"):
+                status = "blocked"
+            elif src.http_status in (404, 410):
+                status = "not_found"
+            else:
+                status = "failed"
             return [], [], src, status
 
         # content-type verification
@@ -215,7 +211,7 @@ class PdfFinancialPipeline:
                 authority_tier=1,
                 retrieved_at=src.retrieved_at,
                 evidence_text=result.error,
-                content_hash=content_hash(pdf_bytes[:100000].hex() or src.content_hash or ""),
+                content_hash=src.content_hash,
                 entity_verdict=MatchVerdict.AMBIGUOUS.value,
                 org_number=identity.organisation_number,
             )
@@ -240,60 +236,30 @@ class PdfFinancialPipeline:
             )
             return [ev], [], src, "not_found"
 
-        lines = extract_financial_lines(result.pages[:max_pages])
-        now = utcnow().isoformat()
-        evidences: List[EvidenceRecord] = []
-        facts: List[Fact] = []
-
-        # fiscal year from document (prefer explicit)
-        fy = None
-        for ln_item in lines:
-            if ln_item["field"] == "fiscal_year":
-                m = re.search(r"(19|20)\d{2}", ln_item["line"])
-                if m:
-                    fy = f"FY{m.group(0)}"
-                    break
-
-        seen_fields: Dict[str, Dict] = {}
-        for ln_item in lines:
-            if ln_item["field"] == "fiscal_year" or ln_item["value"] is None:
-                continue
-            k = ln_item["field"]
-            if k not in seen_fields:  # first occurrence wins (statement order)
-                seen_fields[k] = ln_item
-        for field, ln_item in seen_fields.items():
-            ev = EvidenceRecord(
-                source_id=src.source_id,
-                url=src.url,
-                source_title=f"Annual report (PDF), p.{ln_item['page']}",
-                source_type=SourceType.COMPANY_DOCUMENT.value,
-                authority_tier=1,
-                retrieved_at=src.retrieved_at,
-                evidence_text=ln_item["line"],
-                page_or_section=f"page {ln_item['page']}",
-                content_hash=src.content_hash,
-                entity_verdict=MatchVerdict.LIKELY.value,
-                org_number=identity.organisation_number,
-                entity_match_details={"orgnr_in_doc": orgnr_in_doc, "name_in_doc": name_in_doc},
-            )
-            evidences.append(ev)
-            facts.append(
-                Fact(
-                    org_number=identity.organisation_number,
-                    run_id=run_id,
-                    category="financials",
-                    field=field,
-                    value=ln_item["value"],
-                    normalized_value=ln_item["value"],
-                    currency="NOK",
-                    reporting_period=fy,
-                    source_id=src.source_id,
-                    evidence_id=ev.evidence_id,
-                    retrieved_at=now,
-                    entity_verdict=MatchVerdict.LIKELY.value,
-                    fact_confidence=0.75,
-                    status=FactStatus.PUBLISHED.value,
-                )
-            )
-        status = "found" if facts else "not_found"
-        return evidences, facts, src, status
+        lines = [item for item in extract_financial_lines(result.pages[:max_pages])
+                 if item["field"] not in ("fiscal_year", "employees")]
+        if not lines:
+            return [], [], src, "not_found"
+        # A regex line and document mention do not identify accounting columns,
+        # period, currency, multiplier or entity/group statement scope.
+        src.error_detail = (
+            "PDF financial candidates require verified table columns, currency, scale, "
+            "period and entity/group scope"
+        )
+        evidences = []
+        for item in lines:
+            evidences.append(EvidenceRecord(
+                source_id=src.source_id, url=src.url,
+                source_title=f"Unverified financial row candidate, p.{item['page']}",
+                source_type=SourceType.COMPANY_DOCUMENT.value, authority_tier=1,
+                retrieved_at=src.retrieved_at, evidence_text=item["line"],
+                page_or_section=f"page {item['page']}", content_hash=src.content_hash,
+                entity_verdict=MatchVerdict.AMBIGUOUS.value, org_number=identity.organisation_number,
+                entity_match_details={
+                    "orgnr_mentioned": orgnr_in_doc, "name_mentioned": name_in_doc,
+                    "publication_support": "unimplemented", "field_candidate": item["field"],
+                    "raw_numeric_cells": item["candidate_cells"],
+                    "accounting_qualifiers": "unresolved",
+                },
+            ))
+        return evidences, [], src, "ambiguous"

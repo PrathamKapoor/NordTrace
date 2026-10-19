@@ -1,8 +1,9 @@
+from decimal import Decimal
+
 import pytest
 
 from nordtrace.adapters.brreg import BrregAdapter, _address_line
 from nordtrace.adapters.pdf_pipeline import (
-    _join_space_thousands,
     _parse_number,
     extract_financial_lines,
     extract_pdf_pages,
@@ -24,19 +25,19 @@ from nordtrace.adapters.website import _extract_contact, _extract_names, classif
     ],
 )
 def test_parse_number(raw, expected):
-    assert _parse_number(raw) == expected
+    assert _parse_number(raw) == Decimal(str(expected))
 
 
-@pytest.mark.parametrize("raw", ["abc", "", "12,3456", "--5"])
+@pytest.mark.parametrize("raw", ["abc", "", "12,34,56", "--5"])
 def test_parse_number_rejects_garbage(raw):
     assert _parse_number(raw) is None or _parse_number(raw) == -5
 
 
-def test_join_space_thousands():
-    assert _join_space_thousands(["1", "234", "567"]) == ["1 234 567"]
-    assert _join_space_thousands(["2024", "47", "687"]) == ["2024", "47", "687"]  # year guard
-    assert _join_space_thousands(["47,687.4", "46,445.4"]) == ["47,687.4", "46,445.4"]
-    assert _join_space_thousands(["12", "345", "678", "910"]) == ["12 345 678 910"]
+def test_numeric_columns_are_not_joined_without_table_headers():
+    from nordtrace.adapters.pdf_pipeline import PdfPage
+    rows = extract_financial_lines([PdfPage(1, "Driftsinntekter 2024 47 687")])
+    assert rows[0]["candidate_cells"] == ["2024", "47", "687"]
+    assert rows[0]["value"] is None
 
 
 # --- PDF extraction (real PDF fixture, downloaded during test session if missing) ---
